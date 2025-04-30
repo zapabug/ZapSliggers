@@ -149,3 +149,15 @@
     4. Tuned `GRAVITY_CONSTANT` to `0.5` and `GRAVITY_AOE_BONUS_FACTOR` to `0.1`.
 **Decisions:** Final gravity implementation uses the `effectiveRadius` (base + bonus scaling with `planetRadius^2`) within the force calculation (`~ effectiveRadius / Distance^2`). This provides a base pull proportional to radius, weakening with distance, but subtly enhances the influence range of larger planets.
 **Steps Explained:** Modified `applyGravity` function within the main `useEffect` hook in `GameRenderer.tsx` to calculate and use `effectiveRadius`. Added related constants.
+
+## Interaction 21: Shot Tracers Implementation (2025-08-02 Placeholder)
+**User Input:** Add shot tracers - active trail for current projectile, persistent traces for previous shots.
+**VibeStorm Response:** Implemented shot tracers:
+    1. Created `useShotTracers` hook to manage state.
+    2. Implemented active trail rendering (currently solid colored line) in `GameRenderer`. Goal: particle/smoke effect.
+    3. Implemented historical trace storage (last 10 per player) using `useState` in the hook.
+    4. Implemented historical trace rendering (currently dashed bright green lines) in `GameRenderer`.
+    5. Debugged rendering issue caused by stale state in `renderLoop` closure.
+    6. Resolved stale state issue by using a ref (`latestTracesRef`) updated via `useEffect` to provide `renderLoop` access to the latest historical trace data.
+**Decisions:** Active trails are solid lines (for now). Historical traces show the last 10 shots per player as dashed lines. Logic encapsulated in `useShotTracers`. `GameRenderer` uses ref-based access for historical trace state in `renderLoop`.
+**Steps Explained:** Created hook, modified `GameRenderer` to use hook, implemented drawing logic for both trail types, diagnosed and fixed the state closure issue with the ref pattern.

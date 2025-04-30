@@ -14,8 +14,9 @@ Okay, here is a concise roadmap focused on replicating the original Slingshot ga
     6.  **Collisions:** Implement basic collision detection (destroy projectile on planet hit). Handle ship hits (projectile destroyed, damage logic TBD). - *Done*
     7.  **Projectile Timeout:** Implement removal of projectiles after 45 seconds. - *Done*
     8.  **Visuals:** Render original assets (`.png` files) for planets, ships, projectiles on the canvas.
-    9.  **Last Shot Trace:** Implement rendering the path of the previous shot.
-   10.  **Level Loading:** Basic random level generation (place planets).
+    9.  **Last Shot Trace:** Implement rendering the path of the previous shots (Last 10, dashed lines). - *Done (via `useShotTracers`)*
+   10.  **Active Trail:** Implement visual trail for active projectile (Solid line). - *Done (via `useShotTracers`, goal: particles)*
+   11.  **Level Loading:** Basic random level generation (place planets).
      - Implement random generation of ship starting positions (within side zones, min separation enforced). - *Done*.
      - Implement random generation of planet positions (respecting min distance from ships and other planets). - *Done*.
      - Implement central planet spawning zone (currently 80% of virtual area). - *Done*.

@@ -6,7 +6,7 @@
 This document outlines the core gameplay loop and dynamics for Nostr Slingshot, focusing on the player experience.
 This document outlines the core gameplay loop and dynamics for Klunkstr, focusing on the player experience.
 
-**Current Status (Implementation):** Basic UI structure exists (`GameScreen`, `PlayerHUD`, `AimingInterface`), but core physics, rendering, turn logic, and abilities are **not yet implemented**. NIP-07 login and basic DM challenges are functional.
+**Current Status (Implementation):** Basic UI structure exists (`GameScreen`, `PlayerHUD`, `AimingInterface`, `ActionButtons`). `matter-js` engine initialized in `GameRenderer` with random positioning. Ship rotation/power controls functional. Projectile firing functional. Custom planetary gravity, basic collisions, projectile timeout, dynamic camera zoom, NIP-07 login, and `LobbyScreen`/`ChallengeHandler` are functional. Aiming state synchronization across turns implemented. **Active projectile trails (solid line) and historical shot traces (last 10 shots, dashed lines) implemented via `useShotTracers` hook.** Klunkstr rules (HP, abilities, etc.), turns, full asset rendering, and practice mode logic are **not yet implemented.**
 
 **1. Core Concept:**
    - A 2-player, turn-based space artillery game with physics-based projectiles affected by planet gravity.
@@ -31,28 +31,39 @@ This document outlines the core gameplay loop and dynamics for Klunkstr, focusin
      - UI provides a simple aiming indicator (e.g., line/vector showing direction and power magnitude).
      - UI is presented as overlays on the main game screen, including aiming controls (sliders/joystick), ability selectors, and player HUDs.
      - **No real-time simulated trajectory preview** is shown during aiming.
-     - The static trace of the player's shot from the *previous* turn remains visible as a visual reference (see "Last Shot Trace").
+     - The static traces of the player's **last 10 shots** remain visible as visual references (see "Last Shot Trace").
      - Players finalize and submit their `{ angle, power }` move before the timer ends (or via a "Ready" confirmation). (Submission uses Nostr `kind:30079` in the full game).
    - **B. Resolution Phase:**
      - Occurs once both players have submitted their moves or the timer expires.
      - **Simultaneous Firing:** Both players' projectiles are added to the `Matter.js` physics simulation at the same time step.
-     - **Visuals:** Projectiles have distinct colors/trails (e.g., P1 Blue, P2 Red).
+     - **Visuals:**
+       - Projectiles have distinct colors/trails (e.g., P1 Blue, P2 Red).
+       - **Active Trail:** A solid colored line follows the projectile as it flies. *(Goal: Change to particle/smoke effect)*.
+       - Abilities may alter projectile appearance.
      - **Simulation:** The physics engine runs, calculating projectile paths under the influence of planetary gravity (acting towards planet centers).
      - **Collision Detection:** Hits (projectile-ship), misses (projectile-planet, off-screen) are detected. Scores/health updated. Projectiles are removed upon collision/exit.
-     - **Path Recording:** The sequence of positions for each projectile during this phase is recorded.
+     - **Path Recording:** The sequence of positions for each projectile during this phase is recorded *(handled by `useShotTracers` hook)*.
      - **World Update:** Any moving planets update their positions according to their predefined paths for the next turn.
    - **C. Post-Resolution / Next Turn Prep:**
-     - **Last Shot Trace:** The recorded paths from the completed Resolution Phase are rendered as static, faint visual traces on the screen. These traces persist until the *next* Resolution Phase completes, serving as an aiming guide.
+     - **Last Shot Trace:** The recorded paths from the **last 10 completed shots for each player** are rendered as static, dashed visual traces on the **2D canvas**. These traces persist across turns, serving as an aiming guide. *(Implementation uses `useShotTracers` hook and state management)*.
      - Round/Game State Check: Determine if the round or match has ended based on shots taken or win conditions.
      - The next Aiming Phase begins.
+   - **D. Sudden Death Phase (End of Round 5 if no winner):**
+     - **Activation:** Occurs automatically after the 5th turn's resolution if no player won.
+     - **Projectile Behavior (5th Turn Projectiles Only):**
+       - **Boundary Interaction:** Projectiles **bounce** off play area boundaries instead of being removed.
+       - **Planet Interaction:** Projectiles **bounce** off Standard Planets and Gas Giant Cores instead of being removed. They still pass through Gas Giant outer layers.
+     - **Ship Gravity Activation:** Both player ships begin exerting their own gravitational pull on the bouncing projectiles.
+     - **Winning Condition:** The simulation continues. The *first* player whose ship is hit by *any* bouncing projectile **loses the round**.
 
 **4. Key Dynamics:**
    - **Simultaneous Turns:** Both players act within the same time window, adding tension and removing first-player advantage within a turn.
    *   **Center-Point Gravity:** Projectiles curve towards the center of planets based on their mass/gravity strength.
-   - **Last Shot Trace:** Aiming relies on player intuition and referencing the outcome of their previous shot, rather than precise simulated previews.
+   - **Last Shot Trace:** Aiming relies on referencing the outcomes of previous shots (up to the last 10 per player, shown as dashed lines).
    - **Client-Side Simulation:** Each client runs the *same* physics simulation locally using the confirmed moves received via Nostr, ensuring consistent outcomes if inputs and starting conditions are identical.
    - **Moving Planets:** Add dynamic challenge, requiring players to anticipate future positions (aided by predicted path display at round start).
    - **Randomized Gravity:** Adds replayability to levels.
+   - **Sudden Death:** Creates a chaotic end-phase for drawn rounds.
 
 **5. Power-ups & Special Mechanics:**
    - **Health Points (HP):** Players have a health pool, reduced by opponent hits.
@@ -115,7 +126,7 @@ This document outlines the core gameplay loop and dynamics for Klunkstr, focusin
 This document outlines the core gameplay loop and dynamics for **Klunkstr**.
 **Note:** The initial development phase focuses on first replicating the simpler core mechanics of the *original* Slingshot game (attraction gravity based on planet size, projectiles destroyed on planet impact, no aiming preview, short projectile lifespan) using the modern tech stack. The specific Klunkstr rules detailed below (HP system, abilities, Vulnerability, Sudden Death, etc.) will be layered on top of this foundation.
 
-**Current Status (Implementation):** Basic UI structure exists (`GameScreen`, `PlayerHUD`, `AimingInterface`, `ActionButtons`). `matter-js` engine initialized in `GameRenderer` with random positioning. Projectile firing from UI (including keyboard controls) is functional. **Custom planetary gravity (proportional to an effective radius based on planet size, subtly boosting larger planets' influence) is implemented.** **Basic projectile-planet and projectile-ship collision handling (projectile removal) is implemented. Projectile timeout (45s) is implemented. Dynamic camera zoom-out based on projectile/ship positions is implemented.** NIP-07 login via `nostr-login` is working. A `LobbyScreen` component exists to handle the state after login, using `ChallengeHandler` for DM challenges. Klunkstr rules (HP, abilities, etc.), turns, asset rendering, and practice mode logic are **not yet implemented.**
+**Current Status (Implementation):** Basic UI structure exists (`GameScreen`, `PlayerHUD`, `AimingInterface`, `ActionButtons`). `matter-js` engine initialized in `GameRenderer` with random positioning. **Ship rotation via keyboard (Arrow Up/Down) and joystick (touch/mouse drag) controls aiming angle.** **Power adjustment via keyboard (Arrow Left/Right) and slider.** **Projectile firing (Spacebar/Button) implemented, launching straight from the ship's current orientation.** Custom planetary gravity, basic collisions, projectile timeout, dynamic camera zoom, NIP-07 login, and `LobbyScreen`/`ChallengeHandler` are functional. **Aiming state synchronization across turns implemented.** Klunkstr rules (HP, abilities, etc.), turns, full asset rendering, and practice mode logic are **not yet implemented.**
 
 **1. Core Concept (Klunkstr Target):**
    - A 2-player, turn-based space artillery game with **2D physics-based projectiles** affected by planet gravity.
@@ -126,7 +137,7 @@ This document outlines the core gameplay loop and dynamics for **Klunkstr**.
    - **Format:** Best of 3 rounds. The first player to win 2 rounds wins the match.
    - **Rounds:** Each round consists of a maximum of 5 turns (shots) per player. If no winner is decided after 5 turns, a "Sudden Death" phase occurs (see Section 3.D).
    - **Levels:** Multiple levels with varying planet layouts and potentially moving planets. Levels are randomly generated or selected for each **round**.
-   - **Initial Ship Placement:** Ships are placed randomly within designated left/right starting zones at the beginning of each round, ensuring a minimum separation distance between them.
+   - **Initial Ship Placement:** Ships are placed randomly within designated left/right starting zones at the beginning of each round, ensuring a minimum separation distance between them. **Ships initially face each other (Player 1 points right, Player 2 points left).**
    - **Pre-Game State:** After login, players land in the `LobbyScreen`. From here they can manage challenges (via DMs) or initiate a single-player practice mode.
    - **Planet Types & Gravity:**
      - **Standard Planets:** Solid bodies. Projectiles are destroyed on impact.
@@ -136,14 +147,17 @@ This document outlines the core gameplay loop and dynamics for **Klunkstr**.
 **3. Turn Flow (Simultaneous Turns - Approx. 60s):**
    - **A. Aiming Phase:**
      - Both players aim concurrently within the turn timer.
-     - UI provides aiming controls (Joystick placeholder & Power slider in `AimingInterface.tsx`) and ability selection (`ActionButtons.tsx`).
+     - **Aiming Controls:** Players rotate their ship directly using **keyboard arrow keys (Up/Down)** or the **on-screen joystick (drag)**. Power is adjusted using **keyboard arrow keys (Left/Right)** or the **power slider**. (`GameScreen.tsx`, `AimingInterface.tsx`).
+     - **Firing:** Players fire by pressing **Spacebar** or the **Fire button**. The projectile is launched straight forward from the ship's current orientation with the selected power. (`ActionButtons.tsx`, `GameScreen.tsx`).
      - **No real-time simulated trajectory preview** is shown during aiming.
-     - The static trace of the player's shot from the *previous* turn remains visible as a visual reference (see "Last Shot Trace").
-     - Players finalize and submit their `{ angle, power }` move and chosen ability (if any) before the timer ends.
+     - The static traces of the player's **last 10 shots** remain visible as visual references (see "Last Shot Trace").
+     - Players finalize and submit their `{ power }` move (angle is implicit in ship rotation) and chosen ability (if any) before the timer ends. (Nostr submission TBD).
    - **B. Resolution Phase:**
      - Occurs once both players have submitted their moves or the timer expires.
      - **Simultaneous Firing:** Both players' projectiles are added to the `Matter.js` physics simulation at the same time step.
-     - **Visuals:** Projectiles have distinct colors/trails. Abilities may alter projectile appearance.
+     - **Visuals:**
+       - Projectiles have distinct colors/trails. Abilities may alter projectile appearance.
+       - **Active Trail:** A solid colored line follows the projectile as it flies. *(Goal: Change to particle/smoke effect)*.
      - **Simulation:** The physics engine runs, calculating projectile paths under the influence of planetary gravity (acting towards planet centers, strength based on size).
      - **Collision Detection:**
        - **Player Hit (Standard Projectile / Lead Tipped):** Direct hit on opponent's ship **instantly wins the round** (Currently removes projectile, win logic TBD).
@@ -154,10 +168,10 @@ This document outlines the core gameplay loop and dynamics for **Klunkstr**.
        - **Planet Hit (Gas Giant Outer Layers):** Projectile passes through, path still affected by gravity.
        - **Off-Screen / Timeout:** Projectile is removed after 45 seconds or if it leaves a very large boundary (implicitly handled by zoom limits).
        - **Projectile-Projectile:** Default pass-through.
-     - **Path Recording:** The sequence of positions for each projectile during this phase is recorded.
+     - **Path Recording:** The sequence of positions for each projectile during this phase is recorded *(handled by `useShotTracers` hook)*.
      - **World Update:** Any moving planets update their positions.
    - **C. Post-Resolution / Next Turn Prep:**
-     - **Last Shot Trace:** The recorded paths from the completed Resolution Phase are rendered as static, faint visual traces on the **2D canvas**. These traces persist until the *next* Resolution Phase completes, serving as an aiming guide.
+     - **Last Shot Trace:** The recorded paths from the **last 10 completed shots for each player** are rendered as static, dashed visual traces on the **2D canvas**. These traces persist across turns, serving as an aiming guide. *(Implementation uses `useShotTracers` hook and state management)*.
      - **Round/Game State Check:** Determine if the round or match has ended based on win conditions. If Turn 5 ends with no winner, proceed to Sudden Death (Section 3.D). Otherwise, start the next Aiming Phase.
    - **D. Sudden Death Phase (End of Round 5 if no winner):**
      - **Activation:** Occurs automatically after the 5th turn's resolution if no player won.
@@ -170,7 +184,7 @@ This document outlines the core gameplay loop and dynamics for **Klunkstr**.
 **4. Key Dynamics:**
    - **Simultaneous Turns:** Both players act within the same time window.
    *   **Center-Point Gravity:** Projectiles curve towards planet centers. Strength scales with an effective radius (base radius plus a bonus factor related to planet size) making larger planets slightly more influential at range. Gravity weakens with distance (`~ effectiveRadius / Distance^2`).
-   - **Last Shot Trace:** Aiming relies on referencing the previous shot's outcome.
+   - **Last Shot Trace:** Aiming relies on referencing the outcomes of previous shots (up to the last 10 per player, shown as dashed lines).
    - **Client-Side Simulation:** Ensures consistent outcomes based on Nostr-communicated moves.
    - **Moving Planets:** Add dynamic challenge.
    - **Randomized Gravity:** Adds replayability.
@@ -193,11 +207,12 @@ This document outlines the core gameplay loop and dynamics for **Klunkstr**.
 
 **7. Visual Presentation & Camera:**
    - **Rendering:** 2D physics/logic, rendered directly onto an **HTML Canvas using 2D drawing APIs**. We will use sprites or simple shapes for planets, launchers, and projectiles. The virtual coordinate system uses a wider aspect ratio (2400x1200).
+   - **Ship Appearance:** Ships are currently rendered as **simple triangles** (slightly larger than initial implementation) with distinct colors (Player 1 Blue, Player 2 Red). Placeholder sprites/models TBD.
    - **Aspect Ratio Handling:** The game view automatically adapts to different screen aspect ratios. It scales the 2400x1200 virtual view to fit the screen, adding black bars (letterboxing/pillarboxing) as necessary to maintain the intended aspect ratio and center the content.
    - **Camera Control (View Panning/Zoom):** Implemented basic dynamic view panning and zooming on the 2D canvas.
      - **Focus:** Pans/zooms to keep projectiles and ships within view.
      - **Zoom:** Zooms out automatically if projectiles/ships travel far apart. The view will always show at least 50% of the virtual game area (minimum zoom factor is 2x). The default view (when no projectiles are active) shows approximately 60% of the virtual area. The transition between zoom levels is smoothed (lerped).
-   - **Player Orientation:** Player launchers/ships maintain a fixed orientation (sprite/shape) throughout the match, always facing the opponent's starting position. Aiming adjustments rotate the weapon/launcher part.
+   - **Player Orientation:** **Player ships rotate directly based on aiming input (keyboard/joystick).** They start facing each other. Projectiles are fired relative to the ship's current forward direction.
    - **Aesthetic:** Sci-Fi theme, visually inspired by intricate mechanical contraptions (Da Vinci/Trebuchet) translated into 2D sprites or vector art.
    - **Future Enhancement (Animation):** Add detailed 2D sprite animations.
 
@@ -208,6 +223,6 @@ This document outlines the core gameplay loop and dynamics for **Klunkstr**.
    - **Game Over:** Match ends when a player wins 2 rounds.
    - **Nostr Communication:** Moves via `kind:30079`.
    - **Wagering:** Mandatory NUT-18 pre-paid escrow.
-   - **Model Placeholders:** Basic 2D shapes/sprites will be used initially.
-   - **UI Refinements:** `AimingInterface` and `ActionButtons` provide the controls. `PlayerHUD` displays info.
+   - **Model Placeholders:** Basic 2D shapes/sprites will be used initially (currently triangles for ships, circles for planets).
+   - **UI Refinements:** `AimingInterface` provides a **functional joystick** for angle and a slider for power. `ActionButtons` provides fire/ability buttons. `PlayerHUD` displays info. Keyboard controls also available for aiming/power/firing.
    - **App Layout:** Horizontal full-screen view.

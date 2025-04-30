@@ -43,6 +43,28 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
   // State for current player (0 or 1)
   const [currentPlayerIndex, setCurrentPlayerIndex] = useState<0 | 1>(0);
 
+  // --- Effect to Sync Aim State on Turn Change ---
+  useEffect(() => {
+    // Get the actual angle of the ship that is NOW current
+    const currentShipAngleRad = gameRendererRef.current?.getShipAngle(currentPlayerIndex);
+
+    if (currentShipAngleRad !== undefined) {
+      // Convert radians back to degrees (0-360 range)
+      let angleDeg = currentShipAngleRad * (180 / Math.PI);
+      angleDeg = (angleDeg % 360 + 360) % 360; // Normalize to 0-360
+
+      console.log(`Turn changed to ${currentPlayerIndex}. Syncing aim angle state to: ${angleDeg.toFixed(1)} degrees`);
+
+      // Update the aim state (angle only, keep existing power)
+      setCurrentAim(prevAim => ({ ...prevAim, angle: angleDeg }));
+    } else {
+      console.warn(`Could not get ship angle for player ${currentPlayerIndex} on turn change.`);
+      // Optionally reset to a default angle if getting the angle fails
+      // setCurrentAim(prevAim => ({ ...prevAim, angle: currentPlayerIndex === 1 ? 180 : 0 }));
+    }
+    // Dependency: Run when the current player changes
+  }, [currentPlayerIndex]);
+
   // TODO: Replace mock state with actual game state management (e.g., Zustand, props)
   // TODO: Fetch profile data for HUDs if needed beyond pubkey (useProfile hook?)
   // TODO: Implement game loop logic (turn handling, receiving Nostr events, triggering physics updates)
@@ -53,19 +75,20 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
   // Event Handlers
   // Use useCallback to memoize the handler passed to AimingInterface
   const handleAimChange = useCallback((aim: { angle: number; power: number }) => {
-    // console.log('Aim updated:', aim); // For debugging
+    // Update local state
     setCurrentAim(aim);
-  }, []); // Empty dependency array means this function reference doesn't change
+    // ALSO update the ship angle in the renderer
+    gameRendererRef.current?.setShipAim(currentPlayerIndex, aim.angle);
+  }, [currentPlayerIndex]); // Add currentPlayerIndex dependency
 
   const handleFire = () => {
     console.log(`Fire button clicked by Player ${currentPlayerIndex}! Aim:`, currentAim);
 
-    // Scale power appropriately (AimingInterface might give 0-100)
-    const scaledPower = currentAim.power / 20; // Example scaling (maps 0-100 to 0-5 for fireProjectile)
+    const scaledPower = currentAim.power / 20;
 
+    // Call fireProjectile WITHOUT the angle
     gameRendererRef.current?.fireProjectile(
         currentPlayerIndex,
-        currentAim.angle, 
         scaledPower
     );
 
@@ -85,37 +108,62 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
   // --- Keyboard Controls --- 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-        // console.log('Key pressed:', event.key); // Debugging
+        let newAngle: number | undefined = undefined;
+        let newPower: number | undefined = undefined;
+        let preventDefault = false; // Flag to prevent default behavior
+
         switch (event.key) {
             case 'ArrowUp':
-                setCurrentAim(prev => ({ ...prev, angle: (prev.angle - 2 + 360) % 360 })); // Decrement angle (wraps around)
+                newAngle = (currentAim.angle - 2 + 360) % 360;
+                preventDefault = true; // Prevent scroll
                 break;
             case 'ArrowDown':
-                setCurrentAim(prev => ({ ...prev, angle: (prev.angle + 2) % 360 })); // Increment angle (wraps around)
+                newAngle = (currentAim.angle + 2) % 360;
+                preventDefault = true; // Prevent scroll
                 break;
             case 'ArrowLeft':
-                setCurrentAim(prev => ({ ...prev, power: Math.max(0, prev.power - 2) })); // Decrease power (min 0)
+                newPower = Math.max(0, currentAim.power - 2);
+                preventDefault = true; // Prevent scroll
                 break;
             case 'ArrowRight':
-                setCurrentAim(prev => ({ ...prev, power: Math.min(100, prev.power + 2) })); // Increase power (max 100)
+                newPower = Math.min(100, currentAim.power + 2);
+                preventDefault = true; // Prevent scroll
                 break;
-            case ' ': // Space bar
-                event.preventDefault(); // Prevent scrolling if space is pressed
+            case ' ': 
+                // Space already has preventDefault
+                event.preventDefault();
                 handleFire();
                 break;
             default:
                 break;
         }
+
+        // Prevent default browser action (scrolling) if needed
+        if (preventDefault) {
+          event.preventDefault();
+        }
+
+        // Update local state if changed
+        if (newAngle !== undefined || newPower !== undefined) {
+          const updatedAim = {
+            angle: newAngle !== undefined ? newAngle : currentAim.angle,
+            power: newPower !== undefined ? newPower : currentAim.power,
+          };
+          setCurrentAim(updatedAim);
+          
+          // If angle changed, update the renderer
+          if (newAngle !== undefined) {
+            gameRendererRef.current?.setShipAim(currentPlayerIndex, newAngle);
+          }
+        }
     };
 
     window.addEventListener('keydown', handleKeyDown);
 
-    // Cleanup function
     return () => {
         window.removeEventListener('keydown', handleKeyDown);
     };
-    // Rerun effect if handleFire changes (it shouldn't due to useCallback/state usage, but good practice)
-  }, [handleFire]); // Dependency array includes handleFire
+  }, [handleFire, currentAim.angle, currentAim.power, currentPlayerIndex]); // Update dependencies
   // --- End Keyboard Controls ---
 
   // Remove unused PhysicsUpdater component
@@ -162,6 +210,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
       <div className="absolute bottom-4 left-4 z-10 pointer-events-auto flex flex-col items-start max-w-xs">
         <AimingInterface
           onAimChange={handleAimChange} // Pass the handler
+          currentAngle={currentAim.angle} // Pass current angle state
         />
       </div>
 

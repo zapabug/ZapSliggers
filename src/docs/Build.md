@@ -193,6 +193,10 @@
    - NDK Setup: Singleton + custom hook pattern, manual fetching. - *Done*.
    - Lobby Flow: Added dedicated `LobbyScreen.tsx` shown after login, before game. Handles challenges (via `ChallengeHandler`). Will house practice mode entry point. - *Updated*.
    - Viewport & Positioning: Implemented wider virtual viewport (1200x600) and random initial placement for ships/planets with minimum distance constraints. - *Done*.
+   - Lobby Flow: Added dedicated `LobbyScreen.tsx`. - *Done*.
+   - Viewport & Positioning: Implemented wider virtual viewport (2400x1200), random initial placement, adaptive camera zoom. - *Done*.
+   - Gravity Tuning: Implemented effectiveRadius calculation for subtle size scaling. - *Done*.
+   - **Shot Tracers:** Implemented active (solid line) and historical (last 10, dashed line) traces using `useShotTracers` hook. Resolved state update issues using ref-based access in `renderLoop`. - *New*. 
 
 **8. Comments & Education:**
    - `@nostr-dev-kit/ndk` provides a comprehensive toolkit...
@@ -224,6 +228,7 @@
      - **Challenge Flow:** Refine `LobbyScreen` UI for listing/accepting challenges... 
      - **Wagering (NUT-18):** Define/Implement Backend Service API...
      - **Turn Sync:** Implement sending/receiving moves (`kind:30079`)...
+   - **Shot Tracers:** `useShotTracers` hook manages state for active/historical traces. `useState` for historical traces ensures re-renders, while `useRef` for active trails avoids unnecessary renders tied to Matter.js bodies. `GameRenderer` uses a ref (`latestTracesRef`) updated via `useEffect` to access the latest historical state in the `renderLoop` closure.
 
 **9. Next Steps:**
    - **Phase 1A: Original Slingshot Replica (Current Focus):**

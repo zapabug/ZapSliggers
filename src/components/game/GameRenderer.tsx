@@ -1,17 +1,21 @@
 import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
 import Matter from 'matter-js'; // Import Matter.js
+import { useShotTracers } from '../../hooks/useShotTracers'; // Corrected import path
 
 // Destructure Matter.js modules
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const { Engine, Runner, Bodies, World, Composite, Vector, Body, Events } = Matter;
 
 // Define an interface for our projectile body with custom properties
+// Ensure this matches the definition in useShotTracers.ts
 interface ProjectileBody extends Matter.Body {
   custom: {
     createdAt: number;
     firedByPlayerIndex: 0 | 1;
     ownerShipLabel: string;
   };
+  // Trail storage must be on the body for the update loop to easily access it
+  trail?: Matter.Vector[]; // Use Matter.Vector type
 }
 
 // --- Constants ---
@@ -23,8 +27,8 @@ const MIN_PLANET_SHIP_DISTANCE = 150; // Min distance between planet center and 
 const MIN_PLANET_PLANET_DISTANCE = 50; // Min distance between planet edges
 const SHIP_START_AREA_WIDTH_FACTOR = 0.25; // Ships spawn in the outer 25% on each side
 const NUM_PLANETS = 3; // Number of planets to generate
-const SHIP_RADIUS = 20; // Visual/Physics radius of ships
-const PLANET_MIN_RADIUS = 80; // Increased from 40
+const SHIP_RADIUS = 25; // Visual/Physics radius of ships
+const PLANET_MIN_RADIUS = 30; // Increased from 40
 const PLANET_MAX_RADIUS = 180; // Increased from 90
 const EDGE_PADDING = 50; // Keep entities away from screen edges
 const GRAVITY_CONSTANT = 0.5; // Increased from 0.05 to make gravity stronger
@@ -51,7 +55,9 @@ interface GameRendererProps {
 
 // Define the interface for the methods exposed via the ref
 export interface GameRendererRef {
-  fireProjectile: (playerIndex: 0 | 1, angle: number, power: number) => void;
+  fireProjectile: (playerIndex: 0 | 1, power: number) => void;
+  setShipAim: (playerIndex: 0 | 1, angleDegrees: number) => void;
+  getShipAngle: (playerIndex: 0 | 1) => number | undefined;
 }
 
 const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>((props, ref) => {
@@ -61,6 +67,7 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>((props, ref)
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null);
   const engineRef = useRef<Matter.Engine | null>(null);
   const runnerRef = useRef<Matter.Runner | null>(null);
+  const shipBodiesRef = useRef<(Matter.Body | null)[]>([null, null]); // Store ship bodies
 
   // --- Refs and Constants for Dynamic Viewport ---
   const currentVirtualWidthRef = useRef(VIRTUAL_WIDTH);
@@ -79,6 +86,24 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>((props, ref)
   const scaleRef = useRef(1);
   const offsetXRef = useRef(0);
   const offsetYRef = useRef(0);
+
+  // --- Use the Shot Tracers Hook --- 
+  const { 
+    projectileTrails,
+    lastShotTraces,
+    handleProjectileFired,
+    handleProjectileUpdate,
+    handleProjectileRemoved,
+    resetTraces
+  } = useShotTracers();
+
+  // --- NEW: Ref to hold the latest historical traces for the render loop ---
+  const latestTracesRef = useRef(lastShotTraces);
+
+  // --- NEW: Effect to update the ref whenever the state changes ---
+  useEffect(() => {
+    latestTracesRef.current = lastShotTraces;
+  }, [lastShotTraces]);
 
   // --- State for generated positions ---
   const [initialPositions, setInitialPositions] = useState<{
@@ -199,171 +224,172 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>((props, ref)
     };
   }, []);
 
-  // --- Expose fireProjectile method via ref ---
+  // --- Expose methods via ref ---
   useImperativeHandle(ref, () => ({
-    fireProjectile: (playerIndex: 0 | 1, angle: number, power: number) => {
-      if (!engineRef.current || !initialPositions) return; // Wait for positions
+    // --- Modified fireProjectile ---
+    fireProjectile: (playerIndex: 0 | 1, power: number) => {
+      if (!engineRef.current) return;
 
-      // Determine starting position based on player index from generated state
-      const startPos = initialPositions.ships[playerIndex];
-      if (!startPos) {
-          console.error(`Could not find initial position for player index ${playerIndex}`);
-          return;
+      // --- Clear the previous "last shot trace" (now handled by the hook) ---
+      // lastShotTracesRef.current[playerIndex] = undefined; // REMOVE THIS LINE
+      // ---
+
+      const shipLabel = `ship-${playerIndex}`;
+      const shipBody = shipBodiesRef.current[playerIndex];
+
+      if (!shipBody) {
+        console.error(`Could not find ship body with label ${shipLabel}`);
+        return;
       }
 
-      // Clamp power to avoid extreme velocities
-      const clampedPower = Math.min(Math.max(power, 0.1), 5); // Example range 0.1 to 5
-      const velocityScale = 5 * clampedPower; // Adjust scale as needed
-
-      // Convert angle (degrees) to radians for trigonometry
-      // Assuming 0 degrees is right, positive is clockwise (adjust if needed)
-      // If angle comes from a UI joystick, 0 might be up.
-      // Let's assume 0 degrees = right for now.
-      const angleRad = angle * (Math.PI / 180);
-
-      // Calculate velocity components
-      const velocityX = Math.cos(angleRad) * velocityScale;
-      const velocityY = Math.sin(angleRad) * velocityScale;
-
-      // Create projectile body
+      const shipAngle = shipBody.angle; 
+      const shipPosition = shipBody.position;
+      const clampedPower = Math.min(Math.max(power, 0.1), 5); 
+      const velocityScale = 5 * clampedPower;
+      const finalLaunchAngleRad = shipAngle;
+      const spawnOffset = SHIP_RADIUS * 1.1; 
+      const startX = shipPosition.x + spawnOffset * Math.cos(shipAngle);
+      const startY = shipPosition.y + spawnOffset * Math.sin(shipAngle);
+      const velocityX = Math.cos(finalLaunchAngleRad) * velocityScale;
+      const velocityY = Math.sin(finalLaunchAngleRad) * velocityScale;
       const projectileRadius = 5;
+
       const projectile = Bodies.circle(
-        startPos.x,
-        startPos.y,
+        startX, 
+        startY,
         projectileRadius,
         {
           label: 'projectile',
-          frictionAir: 0.01, // Add some air resistance
-          restitution: 0.6, // Make it slightly bouncy if needed (though settings say 0)
+          frictionAir: 0.01,
+          restitution: 0.6, 
           density: 0.01,
+          angle: finalLaunchAngleRad 
         }
-      );
+      ) as ProjectileBody; // Cast to our interface
 
-      // Add custom properties AFTER body creation (using the defined interface)
-      (projectile as ProjectileBody).custom = { 
+      projectile.custom = { 
         createdAt: Date.now(),
         firedByPlayerIndex: playerIndex,
-        ownerShipLabel: `ship-${playerIndex}` // Add owner ship label for collision check
+        ownerShipLabel: `projectile-${playerIndex}-${Date.now()}`
       };
+      
+      // --- Initialize trail and call hook handler ---
+      projectile.trail = []; // Initialize trail array on the body
+      handleProjectileFired(projectile); // Notify the hook
+      // ---
 
-      // Add to world
       World.add(engineRef.current.world, projectile);
-
-      // Apply initial velocity
       Body.setVelocity(projectile, { x: velocityX, y: velocityY });
 
-      console.log(`Fired projectile for player ${playerIndex} Angle: ${angle}, Power: ${power}, Vel: (${velocityX.toFixed(2)}, ${velocityY.toFixed(2)})`);
+      console.log(`Fired projectile for player ${playerIndex} ShipAngle: ${shipAngle.toFixed(2)}, Power: ${power}, Vel: (${velocityX.toFixed(2)}, ${velocityY.toFixed(2)})`);
+    },
+
+    // --- New setShipAim method ---
+    setShipAim: (playerIndex: 0 | 1, angleDegrees: number) => {
+      if (!engineRef.current) return;
+
+      const shipLabel = `ship-${playerIndex}`;
+      const shipBody = Composite.allBodies(engineRef.current.world).find(b => b.label === shipLabel);
+
+      if (!shipBody) {
+        console.warn(`setShipAim: Could not find ship body with label ${shipLabel}`); // Warn instead of error maybe?
+        return;
+      }
+
+      // Convert degrees to radians. 
+      // IMPORTANT: Adjust based on UI orientation. Assuming 0 degrees from UI means pointing right.
+      // Matter.js angle: 0 = right, positive = clockwise.
+      // If UI 0 degrees = up, subtract 90 degrees first: (angleDegrees - 90) * (Math.PI / 180);
+      const angleRad = angleDegrees * (Math.PI / 180);
+
+      Body.setAngle(shipBody, angleRad);
+      // console.log(`Set ship ${playerIndex} angle to ${angleDegrees} degrees (${angleRad.toFixed(2)} rad)`);
+    },
+
+    // --- New getShipAngle method ---
+    getShipAngle: (playerIndex: 0 | 1): number | undefined => {
+      if (!engineRef.current) return undefined;
+      const shipLabel = `ship-${playerIndex}`;
+      const shipBody = Composite.allBodies(engineRef.current.world).find(b => b.label === shipLabel);
+      // Convert radians to degrees before returning
+      return shipBody ? (shipBody.angle * (180 / Math.PI) + 360) % 360 : undefined; 
     }
+
   }));
 
-  // --- Initialize Matter.js Engine and Runner ---
+  // --- Main Setup and Cleanup useEffect --- 
   useEffect(() => {
     const canvas = canvasRef.current;
-    // Wait until canvas AND initial positions are ready
     if (!canvas || !initialPositions) return;
 
-    // *** MODIFIED: Set canvas resolution considering device pixel ratio ***
     const { clientWidth, clientHeight } = canvas;
     const dpr = window.devicePixelRatio || 1;
-    // We set canvas drawing buffer size based on client size * dpr
-    // The CSS size (clientWidth/Height) remains the actual display size.
     canvas.width = clientWidth * dpr;
     canvas.height = clientHeight * dpr;
-    console.log(`[GameRenderer] Set canvas resolution (DPR ${dpr}): ${canvas.width}x${canvas.height}`);
-    // *** END MODIFIED ***
-
-    // Get context AFTER setting canvas size
     const ctx = canvas.getContext('2d');
-    if (!ctx) {
-        console.error('Failed to get 2D context');
-        return; 
-    }
+    if (!ctx) return; 
 
-    // --- NEW: Resize Handler Logic ---
     const handleResize = () => {
         const canvasEl = canvasRef.current;
         if (!canvasEl) return;
-
-        // Get ACTUAL display size (CSS pixels)
         const width = canvasEl.clientWidth;
         const height = canvasEl.clientHeight;
-
-        // Update drawing buffer size based on DPR
         const currentDpr = window.devicePixelRatio || 1;
         canvasEl.width = width * currentDpr;
         canvasEl.height = height * currentDpr;
-
         const currentAspectRatio = width / height;
-
         let newScale = 1;
         let newOffsetX = 0;
         let newOffsetY = 0;
-
         if (currentAspectRatio > DESIGN_ASPECT_RATIO) {
-            // Window is wider than design: Fit height, letterbox horizontally
             newScale = height / VIRTUAL_HEIGHT;
             newOffsetX = (width - VIRTUAL_WIDTH * newScale) / 2;
             newOffsetY = 0;
         } else {
-            // Window is taller than design: Fit width, pillarbox vertically
             newScale = width / VIRTUAL_WIDTH;
             newOffsetX = 0;
             newOffsetY = (height - VIRTUAL_HEIGHT * newScale) / 2;
         }
-
         scaleRef.current = newScale;
-        // Store offsets in CSS pixels (will apply before DPR scaling in render loop)
         offsetXRef.current = newOffsetX; 
         offsetYRef.current = newOffsetY;
-
-        console.log(`[Resize] W:${width} H:${height} AR:${currentAspectRatio.toFixed(2)} | Scale:${newScale.toFixed(2)} OffsetX:${newOffsetX.toFixed(0)} OffsetY:${newOffsetY.toFixed(0)}`);
-
-        // Ensure context scaling is reset for subsequent draws if needed
         const context = canvasEl.getContext('2d');
-        if (context) {
-            context.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
-        }
+        if (context) context.setTransform(1, 0, 0, 1, 0, 0);
     };
-    
-    // Initial call and setup resize listener
-    handleResize(); // Call once initially
+    handleResize(); 
     window.addEventListener('resize', handleResize);
-    // --- END NEW Resize Handler Logic ---
 
-    // Create engine
     engineRef.current = Engine.create();
     const world = engineRef.current.world;
-    world.gravity.y = 0; // Disable world gravity as per original Slingshot mechanics
-
-    // Create runner
+    world.gravity.y = 0; 
     runnerRef.current = Runner.create();
-
-    // --- Add Generated Planets ---
     World.add(world, initialPositions.planets);
-
-     // --- Add placeholder Ships (using generated positions) ---
      const shipBodies = initialPositions.ships.map((pos, index) =>
-        Bodies.circle(pos.x, pos.y, SHIP_RADIUS, { isStatic: true, label: `ship-${index}` })
+        Bodies.circle(pos.x, pos.y, SHIP_RADIUS, {
+            isStatic: true,
+            label: `ship-${index}`,
+            angle: index === 1 ? Math.PI : 0 
+        })
      );
      World.add(world, shipBodies);
+     shipBodiesRef.current[0] = shipBodies[0];
+     shipBodiesRef.current[1] = shipBodies[1];
 
-    // --- Apply Planetary Gravity & Projectile Updates ---
-    // Rename function to reflect broader responsibilities
+    // --- Physics Update Loop --- (Restored)
     const updateProjectilesAndApplyGravity = () => {
         if (!engineRef.current) return;
-        // Type the projectiles array using our custom interface
         const projectiles = Composite.allBodies(engineRef.current.world).filter(
             (body): body is ProjectileBody => body.label === 'projectile'
         );
         const planets = Composite.allBodies(engineRef.current.world).filter(
             (body) => body.label === 'planet'
         );
+        const projectilesToRemove: ProjectileBody[] = [];
 
-        // --- Calculate Bounding Box for Zoom --- 
-        const ships = Composite.allBodies(engineRef.current.world).filter(b => b.label.startsWith('ship-'));
-        const activeObjects = [...ships, ...projectiles]; // Combine ships and projectiles
+        // --- Update Viewport --- (Restored)
+        const ships = shipBodiesRef.current.filter(b => b !== null) as Matter.Body[];
+        const activeObjects = [...ships, ...projectiles];
         let minX = VIRTUAL_WIDTH, maxX = 0, minY = VIRTUAL_HEIGHT, maxY = 0;
-
         if (activeObjects.length > 0) {
             activeObjects.forEach(obj => {
                 minX = Math.min(minX, obj.position.x - (obj.circleRadius || 0));
@@ -371,275 +397,256 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>((props, ref)
                 minY = Math.min(minY, obj.position.y - (obj.circleRadius || 0));
                 maxY = Math.max(maxY, obj.position.y + (obj.circleRadius || 0));
             });
-        } else {
-            // Default to center view if no objects (or just center on ships if always present)
-            minX = VIRTUAL_WIDTH / 2 - VIRTUAL_WIDTH / 4;
-            maxX = VIRTUAL_WIDTH / 2 + VIRTUAL_WIDTH / 4;
-            minY = VIRTUAL_HEIGHT / 2 - VIRTUAL_HEIGHT / 4;
-            maxY = VIRTUAL_HEIGHT / 2 + VIRTUAL_HEIGHT / 4;
-            // MODIFIED: Use a larger default view (approx 20% bigger than 50% width/height)
-            const defaultViewWidthFactor = 1 / (4 / 1.2); // ~1/3.33 -> 60% width
-            const defaultViewHeightFactor = 1 / (4 / 1.2); // ~1/3.33 -> 60% height
+        } else { 
+            const defaultViewWidthFactor = 1 / 1.66;
+            const defaultViewHeightFactor = 1 / 1.66;
             minX = VIRTUAL_WIDTH / 2 - (VIRTUAL_WIDTH * defaultViewWidthFactor / 2);
             maxX = VIRTUAL_WIDTH / 2 + (VIRTUAL_WIDTH * defaultViewWidthFactor / 2);
             minY = VIRTUAL_HEIGHT / 2 - (VIRTUAL_HEIGHT * defaultViewHeightFactor / 2);
             maxY = VIRTUAL_HEIGHT / 2 + (VIRTUAL_HEIGHT * defaultViewHeightFactor / 2);
         }
-
-        // Add padding
         minX -= VIEWPORT_PADDING;
         maxX += VIEWPORT_PADDING;
         minY -= VIEWPORT_PADDING;
         maxY += VIEWPORT_PADDING;
-
-        // Calculate required width/height and center
-        let requiredWidth = Math.max(maxX - minX, VIRTUAL_WIDTH / MAX_ZOOM_FACTOR); // Ensure minimum width
-        let requiredHeight = Math.max(maxY - minY, VIRTUAL_HEIGHT / MAX_ZOOM_FACTOR); // Ensure minimum height
+        let requiredWidth = Math.max(maxX - minX, VIRTUAL_WIDTH / MAX_ZOOM_FACTOR); 
+        let requiredHeight = Math.max(maxY - minY, VIRTUAL_HEIGHT / MAX_ZOOM_FACTOR); 
         const requiredCenterX = (minX + maxX) / 2;
         const requiredCenterY = (minY + maxY) / 2;
-
-        // Maintain aspect ratio (based on initial VIRTUAL dimensions)
         const originalAspectRatio = VIRTUAL_WIDTH / VIRTUAL_HEIGHT;
         const requiredAspectRatio = requiredWidth / requiredHeight;
-
         if (requiredAspectRatio > originalAspectRatio) {
-            // Wider than original: Adjust height to match aspect ratio
             requiredHeight = requiredWidth / originalAspectRatio;
         } else {
-            // Taller than original (or same): Adjust width to match aspect ratio
             requiredWidth = requiredHeight * originalAspectRatio;
         }
-
-        // Clamp maximum zoom
         requiredWidth = Math.min(requiredWidth, VIRTUAL_WIDTH * MAX_ZOOM_FACTOR);
         requiredHeight = Math.min(requiredHeight, VIRTUAL_HEIGHT * MAX_ZOOM_FACTOR);
-        
-        // Update target refs
         targetVirtualWidthRef.current = requiredWidth;
         targetVirtualHeightRef.current = requiredHeight;
         targetCenterXRef.current = requiredCenterX;
         targetCenterYRef.current = requiredCenterY;
-        // --- End Bounding Box Calculation ---
 
         projectiles.forEach((projectile) => {
-            // Apply gravity from each planet
+            // Apply gravity 
             planets.forEach((planet) => {
                 const dx = planet.position.x - projectile.position.x;
                 const dy = planet.position.y - projectile.position.y;
-                const planetRadius = planet.circleRadius || PLANET_MIN_RADIUS; // Use a fallback
+                const planetRadius = planet.circleRadius || PLANET_MIN_RADIUS;
                 const distanceSq = dx * dx + dy * dy;
+                if (distanceSq === 0) return; 
                 const distance = Math.sqrt(distanceSq);
-
-                // Calculate effective radius with a bonus for larger planets
-                // Bonus scales quadratically with radius relative to world width
                 const effectiveRadius = planetRadius * (1 + GRAVITY_AOE_BONUS_FACTOR * (planetRadius / VIRTUAL_WIDTH));
-
-                // Only apply gravity if the projectile is outside the planet
                 if (distance > planetRadius) { 
-                    // Use effectiveRadius in the force calculation
                     const forceMagnitude = (GRAVITY_CONSTANT * effectiveRadius * projectile.mass) / distanceSq;
-                    const force = {
-                        x: (dx / distance) * forceMagnitude,
-                        y: (dy / distance) * forceMagnitude,
-                    };
+                    const force = { x: (dx / distance) * forceMagnitude, y: (dy / distance) * forceMagnitude };
                     Body.applyForce(projectile, projectile.position, force);
                 }
             });
 
-            // --- Projectile Timeout Check ---
+            handleProjectileUpdate(projectile);
+
             const age = Date.now() - projectile.custom.createdAt;
-            if (age > 45000) { // Timeout after 45000ms (45 seconds)
+            if (age > 45000) { 
                 console.log('Projectile timed out', projectile.id);
-                World.remove(engineRef.current!.world, projectile);
-                return; // Stop processing this projectile
+                handleProjectileRemoved(projectile); 
+                projectilesToRemove.push(projectile); 
             }
+        });
 
-            // --- Collision Checks ---
-            // Planet Collision
-            const planetCollisions = Matter.Query.collides(projectile, planets);
-            if (planetCollisions.length > 0) {
-                console.log('Projectile hit planet', projectile.id, planetCollisions[0].bodyA.id, planetCollisions[0].bodyB.id);
-                World.remove(engineRef.current!.world, projectile);
-                return; // Stop processing this projectile
+        projectilesToRemove.forEach(p => {
+            if (engineRef.current) {
+                Composite.remove(engineRef.current.world, p);
             }
+        });
+    };
+    Events.on(engineRef.current, 'beforeUpdate', updateProjectilesAndApplyGravity);
 
-            // Ship Collision
-            const ships = Composite.allBodies(engineRef.current!.world).filter(b => b.label.startsWith('ship-'));
-            const shipCollisions = Matter.Query.collides(projectile, ships);
-            if (shipCollisions.length > 0) {
-                // Check if the collided ship is NOT the one that fired the projectile
-                const collidedShip = shipCollisions[0].bodyA === projectile ? shipCollisions[0].bodyB : shipCollisions[0].bodyA;
-                if (collidedShip.label !== projectile.custom.ownerShipLabel) {
-                    console.log('Projectile hit opponent ship', projectile.id, collidedShip.label);
-                    World.remove(engineRef.current!.world, projectile);
-                    // TODO: Implement damage/hit logic here
-                    // e.g., find ship index, update HP state in GameScreen
-                    return; // Stop processing this projectile
+    // --- Collision Handling --- (Restored)
+    const handleCollisions = (event: Matter.IEventCollision<Matter.Engine>) => {
+        event.pairs.forEach(pair => {
+            const { bodyA, bodyB } = pair;
+            let projectile: ProjectileBody | null = null;
+            let otherBody: Matter.Body | null = null;
+            if (bodyA.label === 'projectile') {
+                projectile = bodyA as ProjectileBody;
+                otherBody = bodyB;
+            } else if (bodyB.label === 'projectile') {
+                projectile = bodyB as ProjectileBody;
+                otherBody = bodyA;
+            }
+            if (projectile && otherBody && engineRef.current && projectile.trail) { 
+                console.log(`Collision: Proj ${projectile.id} hit ${otherBody.label} ${otherBody.id}`);
+                handleProjectileRemoved(projectile); 
+                Composite.remove(engineRef.current.world, projectile); 
+                if (otherBody.label.startsWith('ship-')) {
+                    const firingPlayerIndex = projectile.custom.firedByPlayerIndex;
+                    const targetPlayerLabel = `ship-${1 - firingPlayerIndex}`;
+                    if (otherBody.label === targetPlayerLabel) {
+                        console.log(`Player ${firingPlayerIndex} HIT Player ${1 - firingPlayerIndex}!`);
+                    }
                 }
             }
         });
     };
+    Events.on(engineRef.current, 'collisionStart', handleCollisions);
 
-    // Replace the old gravity update with the new combined update function
-    Events.on(engineRef.current, 'beforeUpdate', updateProjectilesAndApplyGravity);
-
-    // --- Start the runner ---
+    // Start Runner
     Runner.run(runnerRef.current, engineRef.current);
 
-    // --- Animation Loop ---
+    // --- Animation Loop --- 
     let animationFrameId: number;
     const renderLoop = () => {
-      if (!engineRef.current || !ctx || !canvas) {
-        animationFrameId = requestAnimationFrame(renderLoop);
-        return;
-      }
-
-      // --- Lerp Dynamic Viewport Target ---
-      currentVirtualWidthRef.current += (targetVirtualWidthRef.current - currentVirtualWidthRef.current) * ZOOM_LERP_FACTOR;
-      currentVirtualHeightRef.current += (targetVirtualHeightRef.current - currentVirtualHeightRef.current) * ZOOM_LERP_FACTOR;
-      currentCenterXRef.current += (targetCenterXRef.current - currentCenterXRef.current) * ZOOM_LERP_FACTOR;
-      currentCenterYRef.current += (targetCenterYRef.current - currentCenterYRef.current) * ZOOM_LERP_FACTOR;
-      
-      // --- Clear and Transform Canvas ---
-      ctx.save(); // Save default state (identity transform)
-
-      // 1. Clear canvas (whole canvas, pre-transform)
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      // 2. Apply Device Pixel Ratio Scaling
-      const dpr = window.devicePixelRatio || 1;
-      ctx.scale(dpr, dpr); 
-
-      // 3. Apply Aspect Ratio Offset (calculated in CSS pixels)
-      ctx.translate(offsetXRef.current, offsetYRef.current);
-      
-      // 4. Apply Aspect Ratio Scale (maps VIRTUAL coords to available screen space)
-      ctx.scale(scaleRef.current, scaleRef.current);
-
-      // --- Draw Background (covering the VIRTUAL space) ---
-      if (backgroundImage) {
-        const bgScaleX = VIRTUAL_WIDTH / backgroundImage.naturalWidth;
-        const bgScaleY = VIRTUAL_HEIGHT / backgroundImage.naturalHeight;
-        const bgScale = Math.max(bgScaleX, bgScaleY); 
-        const bgWidth = backgroundImage.naturalWidth * bgScale;
-        const bgHeight = backgroundImage.naturalHeight * bgScale;
-        const bgX = (VIRTUAL_WIDTH - bgWidth) / 2;
-        const bgY = (VIRTUAL_HEIGHT - bgHeight) / 2;
-        ctx.drawImage(backgroundImage, bgX, bgY, bgWidth, bgHeight);
-      } else {
-        ctx.fillStyle = 'rgba(10, 10, 20, 1)'; // Dark blue fallback
-        ctx.fillRect(0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
-      }
-     
-      // --- 5. Apply Dynamic Zoom/Pan (relative to VIRTUAL space) ---
-      // Calculate the scale factor needed to fit the dynamic view (currentVirtualWidth/Height)
-      // into the base virtual view (VIRTUAL_WIDTH/HEIGHT).
-      const dynamicZoomScaleX = VIRTUAL_WIDTH / currentVirtualWidthRef.current;
-      const dynamicZoomScaleY = VIRTUAL_HEIGHT / currentVirtualHeightRef.current;
-      // Use the smaller scale factor to ensure the entire dynamic area fits
-      const dynamicZoomScale = Math.min(dynamicZoomScaleX, dynamicZoomScaleY);
-
-      // Apply the transformations:
-      // a. Translate origin to the center of the base virtual canvas
-      ctx.translate(VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT / 2);
-      // b. Scale by the dynamic zoom factor
-      ctx.scale(dynamicZoomScale, dynamicZoomScale);
-      // c. Translate back by the center of the *dynamic* view area
-      ctx.translate(-currentCenterXRef.current, -currentCenterYRef.current);
-
-      // --- Draw Game Objects (using Matter.js bodies) ---
-      const bodies = Composite.allBodies(engineRef.current.world);
-
-      bodies.forEach((body) => {
-          ctx.beginPath();
-          const { position } = body;
-  
-          // Adjust line width based on the combined scale (aspect ratio * dynamic zoom)
-          const baseLineWidth = 1;
-          // Effective scale is the product of the two scales applied
-          const effectiveScale = scaleRef.current * dynamicZoomScale; 
-          ctx.lineWidth = baseLineWidth / effectiveScale; 
-  
-          if (body.label === 'planet' && body.circleRadius) {
-           ctx.moveTo(position.x + body.circleRadius, position.y);
-           ctx.arc(position.x, position.y, body.circleRadius, 0, Math.PI * 2);
-           ctx.fillStyle = 'grey';
-           ctx.fill();
-           ctx.strokeStyle = 'white';
-           ctx.stroke();
-           // TODO: Draw planet textures later
-        } else if (body.label === 'projectile' && body.circleRadius) {
-           ctx.moveTo(position.x + body.circleRadius, position.y);
-           ctx.arc(position.x, position.y, body.circleRadius, 0, Math.PI * 2);
-           ctx.fillStyle = 'yellow'; // Projectile color
-           ctx.fill();
-        } else if (body.label.startsWith('ship-') && body.circleRadius) {
-           // Use circleRadius as a general size indicator for the triangle
-           const size = body.circleRadius;
-           // Get angle (currently 0 for static ships, but use it for future rotation)
-           // Note: Matter.js angle is 0 = right, positive = clockwise. Adjust if aiming logic differs.
-           const angle = body.angle;
-
-           ctx.save(); // Save context state
-           ctx.translate(position.x, position.y); // Move origin to body center
-           ctx.rotate(angle); // Rotate coordinate system
-
-           // Draw the triangle pointing along the new x-axis (which is the direction of 'angle')
-           ctx.beginPath();
-           ctx.moveTo(size, 0); // Tip of the triangle (adjust multiplier if needed)
-           ctx.lineTo(-size / 2, -size / 1.5); // Back left corner (adjusted for better shape)
-           ctx.lineTo(-size / 2, size / 1.5);  // Back right corner (adjusted for better shape)
-           ctx.closePath();
-
-           // Set color based on label
-           ctx.fillStyle = body.label === 'ship-0' ? 'blue' : 'red';
-           ctx.fill();
-           ctx.strokeStyle = 'white';
-           ctx.stroke();
-
-           ctx.restore(); // Restore context state for this specific body drawing
-           // TODO: Draw ship textures later instead of primitives
+        // ... (Restored rendering logic, including body drawing) ...
+        const engine = engineRef.current;
+        const canvas = canvasRef.current;
+        const ctx = canvas?.getContext('2d');
+        if (!engine || !canvas || !ctx) {
+          animationFrameId = requestAnimationFrame(renderLoop);
+          return;
         }
-      });
+        currentVirtualWidthRef.current += (targetVirtualWidthRef.current - currentVirtualWidthRef.current) * ZOOM_LERP_FACTOR;
+        currentVirtualHeightRef.current += (targetVirtualHeightRef.current - currentVirtualHeightRef.current) * ZOOM_LERP_FACTOR;
+        currentCenterXRef.current += (targetCenterXRef.current - currentCenterXRef.current) * ZOOM_LERP_FACTOR;
+        currentCenterYRef.current += (targetCenterYRef.current - currentCenterYRef.current) * ZOOM_LERP_FACTOR;
+        ctx.save();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const dpr = window.devicePixelRatio || 1;
+        ctx.scale(dpr, dpr);
+        ctx.translate(offsetXRef.current, offsetYRef.current);
+        ctx.scale(scaleRef.current, scaleRef.current);
+        if (backgroundImage) {
+            const bgScaleX = VIRTUAL_WIDTH / backgroundImage.naturalWidth;
+            const bgScaleY = VIRTUAL_HEIGHT / backgroundImage.naturalHeight;
+            const bgScale = Math.max(bgScaleX, bgScaleY); 
+            const bgWidth = backgroundImage.naturalWidth * bgScale;
+            const bgHeight = backgroundImage.naturalHeight * bgScale;
+            const bgX = (VIRTUAL_WIDTH - bgWidth) / 2;
+            const bgY = (VIRTUAL_HEIGHT - bgHeight) / 2;
+            ctx.drawImage(backgroundImage, bgX, bgY, bgWidth, bgHeight);
+        } else {
+            ctx.fillStyle = 'rgba(10, 10, 20, 1)';
+            ctx.fillRect(0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
+        }
+        const dynamicZoomScaleX = VIRTUAL_WIDTH / currentVirtualWidthRef.current;
+        const dynamicZoomScaleY = VIRTUAL_HEIGHT / currentVirtualHeightRef.current;
+        const dynamicZoomScale = Math.max(0.001, Math.min(dynamicZoomScaleX, dynamicZoomScaleY)); 
+        ctx.translate(VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT / 2);
+        ctx.scale(dynamicZoomScale, dynamicZoomScale);
+        ctx.translate(-currentCenterXRef.current, -currentCenterYRef.current);
+        const effectiveScale = scaleRef.current * dynamicZoomScale;
 
-      // --- Restore Canvas State ---
-      ctx.restore(); // Restore to the state before transforms
+        // *** USE REF HERE ***
+        // Access the latest traces via the ref
+        const currentLastTraces = latestTracesRef.current; 
+        console.log(`[RenderLoop] Drawing historical traces. P0: ${currentLastTraces[0].length}, P1: ${currentLastTraces[1].length}`);
+        
+        // Draw Last 10 Shot Traces (Dashed Lines - MORE VISIBLE)
+        ctx.save();
+        ctx.lineWidth = 2 / effectiveScale; 
+        ctx.globalAlpha = 0.8; 
+        ctx.setLineDash([10 / effectiveScale, 5 / effectiveScale]); 
+        ([0, 1] as const).forEach(playerIndex => {
+            // Use the ref's value for drawing
+            currentLastTraces[playerIndex].forEach((trace: Matter.Vector[]) => {
+                if (trace.length > 1) {
+                    ctx.strokeStyle = '#00FF00'; // Bright Green for testing
+                    ctx.beginPath();
+                    ctx.moveTo(trace[0].x, trace[0].y);
+                    for (let i = 1; i < trace.length; i++) {
+                        ctx.lineTo(trace[i].x, trace[i].y);
+                    }
+                    ctx.stroke();
+                }
+            });
+        });
+        ctx.setLineDash([]); 
+        ctx.restore(); 
 
-      // Request next frame
-      animationFrameId = requestAnimationFrame(renderLoop);
+        // Draw Active Projectile Trails (Solid Lines - Use direct map ref from hook)
+        ctx.save();
+        ctx.lineWidth = 3 / effectiveScale; 
+        projectileTrails.forEach((trail: Matter.Vector[], projectileId: number) => {
+             // ... active trail drawing ...
+            const projectileBody = Composite.get(engine.world, projectileId, 'body') as ProjectileBody | undefined;
+            if (trail.length > 1 && projectileBody) {
+                ctx.strokeStyle = projectileBody.custom.firedByPlayerIndex === 0 ? '#66f' : '#f66'; 
+                ctx.beginPath();
+                ctx.moveTo(trail[0].x, trail[0].y);
+                for (let i = 1; i < trail.length; i++) {
+                    ctx.lineTo(trail[i].x, trail[i].y);
+                }
+                ctx.stroke();
+            }
+        });
+        ctx.restore();
+
+        // Draw Bodies 
+        // ... (body drawing logic) ...
+        const bodies = Composite.allBodies(engine.world);
+        bodies.forEach((body) => {
+             ctx.beginPath();
+              const { position } = body;
+              ctx.lineWidth = 1 / effectiveScale; 
+              if (body.label === 'planet' && body.circleRadius) {
+               ctx.moveTo(position.x + body.circleRadius, position.y);
+               ctx.arc(position.x, position.y, body.circleRadius, 0, Math.PI * 2);
+               ctx.fillStyle = 'grey';
+               ctx.fill();
+               ctx.strokeStyle = 'white';
+               ctx.stroke();
+            } else if (body.label === 'projectile' && body.circleRadius) {
+               ctx.moveTo(position.x + body.circleRadius, position.y);
+               ctx.arc(position.x, position.y, body.circleRadius, 0, Math.PI * 2);
+               const projBody = body as ProjectileBody;
+               ctx.fillStyle = projBody.custom?.firedByPlayerIndex === 0 ? '#66f' : '#f66';
+               ctx.fill();
+            } else if (body.label.startsWith('ship-') && body.circleRadius) {
+               const size = body.circleRadius * 1.5; 
+               const angle = body.angle;
+               ctx.save();
+               ctx.translate(position.x, position.y);
+               ctx.rotate(angle);
+               ctx.beginPath();
+               ctx.moveTo(size * 0.75, 0); 
+               ctx.lineTo(-size * 0.5, -size * 0.6); 
+               ctx.lineTo(-size * 0.5, size * 0.6);  
+               ctx.closePath();
+               ctx.fillStyle = body.label === 'ship-0' ? '#00f' : '#f00';
+               ctx.fill();
+               ctx.strokeStyle = 'white';
+               ctx.stroke();
+               ctx.restore();
+            }
+        });
+
+        ctx.restore(); // Restore transforms
+        animationFrameId = requestAnimationFrame(renderLoop);
     };
 
-    // Start the loop
-    animationFrameId = requestAnimationFrame(renderLoop);
+    renderLoop(); // Start the loop
 
-    // --- Cleanup ---
+    // --- Cleanup --- 
     return () => {
       console.log('[GameRenderer] Cleaning up...');
-      // --- NEW: Remove resize listener ---
       window.removeEventListener('resize', handleResize);
-
-      // Stop the animation loop
       cancelAnimationFrame(animationFrameId);
-      // Stop the runner
       if (runnerRef.current) {
         Runner.stop(runnerRef.current);
       }
-      // Clear the engine
       if (engineRef.current) {
-        // --- Remove Gravity Listener ---
         Events.off(engineRef.current, 'beforeUpdate', updateProjectilesAndApplyGravity);
-        // --- End Remove ---
+        Events.off(engineRef.current, 'collisionStart', handleCollisions); 
         World.clear(engineRef.current.world, false);
         Engine.clear(engineRef.current);
       }
-      // Nullify refs
       engineRef.current = null;
       runnerRef.current = null;
+      shipBodiesRef.current = [null, null];
+      resetTraces(); 
     };
-    // Rerun effect only if canvas or backgroundImage changes (though backgroundImage is handled separately for drawing)
-    // Primarily depends on canvas ref being available.
-    // Add initialPositions as a dependency so Matter world is rebuilt if positions change
-  }, [backgroundImage, initialPositions]); // Add player positions as dependencies if they can change
+    // Revert dependency array to original state
+}, [initialPositions, backgroundImage]); 
 
   // Style the canvas to fill its container
   // The container size will be managed by GameScreen.tsx
