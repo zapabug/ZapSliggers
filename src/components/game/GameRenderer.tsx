@@ -13,7 +13,7 @@ const VIRTUAL_WIDTH = 2400;
 const VIRTUAL_HEIGHT = 1200;
 const DESIGN_ASPECT_RATIO = VIRTUAL_WIDTH / VIRTUAL_HEIGHT;
 const SHIP_RADIUS = 63; // Needed for drawing
-const PLANET_MIN_RADIUS = 30; // Needed for drawing fallback
+const PLANET_MIN_RADIUS = 40; // Needed for drawing fallback
 // Removed unused GRAVITY_CONSTANT etc.
 
 // Define props for the GameRenderer component

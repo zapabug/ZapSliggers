@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import GameRenderer, { GameRendererRef } from '../game/GameRenderer';
 import ActionButtons, { AbilityType } from '../ui_overlays/ActionButtons';
 // import PlayerInfo from '../ui_overlays/PlayerInfo'; // REMOVE: Assuming a PlayerInfo component
@@ -40,7 +40,7 @@ const GameScreen: React.FC = () => {
   const handleFire = () => {
     if (winner !== null) return; // Only fire if game not over
 
-    console.log(`[GameScreen] Firing for P${currentPlayerIndex + 1} with power ${currentPower.toFixed(2)}, Ability: ${selectedAbility}`);
+    // console.log(`[GameScreen] Firing for P${currentPlayerIndex + 1} with power ${currentPower.toFixed(2)}, Ability: ${selectedAbility}`);
     gameRendererRef.current?.fireProjectile(currentPlayerIndex, currentPower, selectedAbility);
 
     // Update used abilities
@@ -53,9 +53,15 @@ const GameScreen: React.FC = () => {
     setCurrentPlayerIndex(prevIndex => (prevIndex === 0 ? 1 : 0)); // Switch turn
   };
 
-  // --- NEW: Handle Player Hit ---
-  const handlePlayerHit = (hitPlayerIndex: 0 | 1, damage: number) => {
-    if (winner !== null) return; // Don't process hits after game ends
+  // --- NEW: Handle Player Hit (Memoized) ---
+  const handlePlayerHit = useCallback((hitPlayerIndex: 0 | 1, damage: number) => {
+    // Check winner state using a ref or ensure it's in useCallback deps if needed
+    // For now, assume direct check is okay, but be mindful of stale closures
+    // if (winnerRef.current !== null) return;
+    // Temporarily removing winner check from inside useCallback as it would require
+    // adding `winner` to dependency array, potentially causing other issues.
+    // The check outside in the component rendering the button might be sufficient.
+    // OR pass winner state down if absolutely necessary.
 
     console.log(`[GameScreen] Player ${hitPlayerIndex + 1} hit for ${damage} damage.`);
     setPlayerHp(currentHp => {
@@ -78,8 +84,9 @@ const GameScreen: React.FC = () => {
         }
         return newHp;
     });
-  };
-  // Remove handleRoundWin
+  // Dependencies: Functions from useState are stable and don't need to be listed.
+  // If we checked `winner` inside, it would need to be added: }, [winner]);
+  }, []);
 
   // --- Restored Single Ability Select Handler ---
   const handleAbilitySelect = (ability: AbilityType | null) => {

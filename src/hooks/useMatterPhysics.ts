@@ -15,11 +15,16 @@ interface ShotTracerHandlers {
 const { Engine, Runner, Bodies, World, Composite, Vector, Body, Events } = Matter;
 
 // Constants from GameRenderer relevant to physics
-const SHIP_RADIUS = 63;
-const PLANET_MIN_RADIUS = 30;
-const GRAVITY_CONSTANT = 0.5;
-const GRAVITY_AOE_BONUS_FACTOR = 0.1;
-const PROJECTILE_DAMAGE = 25; // Example damage value
+const SHIP_RADIUS = 63; // Sets the size (radius) for player ship bodies. Used for ship creation and collision detection.
+const PLANET_MIN_RADIUS = 40; // Default radius used for planets in gravity calculations if a specific radius isn't found.
+const GRAVITY_CONSTANT = 0.4; // Multiplier controlling the overall strength of gravitational pull from planets.
+const GRAVITY_AOE_BONUS_FACTOR = 0.05; // Factor applied to increase a planet's effective gravitational range based on its size.
+const PLASTIC_GRAVITY_FACTOR = 0.5; // Factor by which planet gravity is reduced for 'plastic' projectiles.
+const SHIP_GRAVITY_RANGE = SHIP_RADIUS * 4; // Range within which 'gravity' projectile is pulled by opponent ship.
+const SHIP_GRAVITY_CONSTANT = 0.3; // Strength of the opponent ship's pull on 'gravity' projectiles.
+const DEFAULT_FRICTION_AIR = 0.005; // Default air friction for standard projectiles & fragments
+const PLASTIC_FRICTION_AIR = 0.02;  // Increased air friction (drag) for plastic projectiles.
+const GRAVITY_FRICTION_AIR = 0.015; // Slightly increased air friction (drag) for gravity projectiles.
 
 interface UseMatterPhysicsProps {
   levelData: InitialGamePositions;
@@ -117,9 +122,67 @@ export const useMatterPhysics = ({
     const currentEngine = engineRef.current;
     if (!currentEngine) return;
 
+    const bodiesToRemove: ProjectileBody[] = [];
+    const bodiesToAdd: Matter.Body[] = [];
+    const projectilesToNotifyFired: ProjectileBody[] = [];
+
     Composite.allBodies(currentEngine.world).forEach(body => {
       if (body.label.startsWith('projectile-')) {
         const projectileBody = body as ProjectileBody;
+
+        // --- SPLITTER LOGIC ---
+        if (
+          projectileBody.custom?.abilityType === 'splitter' &&
+          !projectileBody.custom?.hasSplit && // Check if not already split
+          Date.now() - projectileBody.custom.createdAt > 1500
+        ) {
+          const originalPos = Vector.clone(projectileBody.position);
+          const originalVel = Vector.clone(projectileBody.velocity);
+          const firedBy = projectileBody.custom.firedByPlayerIndex;
+          const originalLabel = projectileBody.custom.ownerShipLabel;
+
+          // Mark original for removal (and notify tracer)
+          bodiesToRemove.push(projectileBody);
+          shotTracerHandlers.handleProjectileRemoved(projectileBody);
+
+          const spreadAngle = 0.15; // Radians, adjust as needed
+          const velocities = [
+            Vector.rotate(originalVel, -spreadAngle),
+            originalVel, // Center fragment keeps original velocity
+            Vector.rotate(originalVel, spreadAngle),
+          ];
+
+          // Create 3 fragments
+          for (let i = 0; i < 3; i++) {
+            const fragmentLabel = `${originalLabel}-frag${i}`;
+            const fragment: ProjectileBody = Bodies.circle(originalPos.x, originalPos.y, 4, { // Smaller radius for fragments
+              label: fragmentLabel,
+              frictionAir: 0.005,
+              restitution: 0.6,
+              density: 0.04, // Slightly lower density for fragments
+              collisionFilter: { group: -1 } // Prevent fragments colliding with each other
+            }) as ProjectileBody;
+
+            fragment.custom = {
+              firedByPlayerIndex: firedBy,
+              abilityType: 'splitter_fragment', // Mark as fragment
+              createdAt: Date.now(),
+              ownerShipLabel: fragmentLabel,
+              // No hasSplit needed for fragments
+            };
+            fragment.trail = [Vector.clone(originalPos)]; // Start new trail
+
+            Body.setVelocity(fragment, velocities[i]);
+            bodiesToAdd.push(fragment);
+            projectilesToNotifyFired.push(fragment); // Notify tracer about new fragments
+          }
+
+          // Skip gravity/update for the original projectile this tick
+          return; 
+        }
+        // --- END SPLITTER LOGIC ---
+
+        // --- Standard Update & Gravity ---
         if (!projectileBody.custom || !projectileBody.trail) {
             console.warn(`[Physics Update] Proj ${projectileBody.id} missing data/trail.`);
             projectileBody.trail = projectileBody.trail || [Vector.clone(projectileBody.position)]; // Ensure trail exists
@@ -131,7 +194,7 @@ export const useMatterPhysics = ({
 
         shotTracerHandlers.handleProjectileUpdate(projectileBody);
 
-        // Apply gravity
+        // --- Apply Planet Gravity ---
         Composite.allBodies(currentEngine.world).forEach(staticBody => {
           if (staticBody.label === 'planet') {
              const distanceVector = Vector.sub(staticBody.position, projectileBody.position);
@@ -139,12 +202,44 @@ export const useMatterPhysics = ({
              if (distanceSq > 100) { // Min distance^2
                  const planetRadius = staticBody.plugin?.klunkstr?.radius || PLANET_MIN_RADIUS;
                  const effectiveRadius = planetRadius * (1 + GRAVITY_AOE_BONUS_FACTOR * (planetRadius / virtualWidth));
-                 const forceMagnitude = (GRAVITY_CONSTANT * projectileBody.mass * effectiveRadius) / distanceSq;
+                 
+                 // Calculate base force
+                 let forceMagnitude = (GRAVITY_CONSTANT * projectileBody.mass * effectiveRadius) / distanceSq;
+                 
+                 // --- Adjust force based on ability type ---
+                 if (projectileBody.custom?.abilityType === 'plastic') {
+                     forceMagnitude *= PLASTIC_GRAVITY_FACTOR;
+                 }
+                 // --- End ability adjustment ---
+
                  const forceVector = Vector.mult(Vector.normalise(distanceVector), forceMagnitude);
                  Body.applyForce(projectileBody, projectileBody.position, forceVector);
              }
           }
         });
+        // --- End Planet Gravity ---
+
+        // --- Apply Opponent Ship Gravity (for 'gravity' ability) ---
+        if (projectileBody.custom?.abilityType === 'gravity') {
+            const firingPlayerIndex = projectileBody.custom.firedByPlayerIndex;
+            const opponentPlayerIndex = firingPlayerIndex === 0 ? 1 : 0;
+            const opponentShipBody = shipBodiesRef.current[opponentPlayerIndex];
+
+            if (opponentShipBody) {
+                const shipDistanceVector = Vector.sub(opponentShipBody.position, projectileBody.position);
+                const shipDistanceSq = Vector.magnitudeSquared(shipDistanceVector);
+
+                // Check if within range
+                if (shipDistanceSq > 100 && shipDistanceSq < (SHIP_GRAVITY_RANGE * SHIP_GRAVITY_RANGE)) { 
+                    // Apply force pulling projectile towards opponent ship
+                    // Using opponent ship mass and SHIP_GRAVITY_CONSTANT
+                    const shipForceMagnitude = (SHIP_GRAVITY_CONSTANT * projectileBody.mass * opponentShipBody.mass) / shipDistanceSq;
+                    const shipForceVector = Vector.mult(Vector.normalise(shipDistanceVector), shipForceMagnitude);
+                    Body.applyForce(projectileBody, projectileBody.position, shipForceVector);
+                }
+            }
+        }
+        // --- End Opponent Ship Gravity ---
 
         // Check timeout
         const now = Date.now();
@@ -155,6 +250,13 @@ export const useMatterPhysics = ({
         }
       }
     });
+
+    // Perform removals and additions after iterating
+    bodiesToRemove.forEach(body => {
+        World.remove(currentEngine.world, body);
+    });
+    bodiesToAdd.forEach(body => World.add(currentEngine.world, body));
+    projectilesToNotifyFired.forEach(body => shotTracerHandlers.handleProjectileFired(body));
   }, [shotTracerHandlers, virtualWidth]);
 
   // --- Function to Initialize/Reset the Matter.js World ---
@@ -253,26 +355,43 @@ export const useMatterPhysics = ({
     if (!engine || !shipBody) return;
 
     const angle = shipBody.angle;
-    const speed = 10 + power; // Base speed + power scaling
+    const speed = 10 + power * 1.2; // Base speed + power scaled by 1.2x
     const velocity = Vector.mult(Vector.rotate({ x: 1, y: 0 }, angle), speed);
 
     // Start position slightly in front of the ship
     const startOffset = Vector.mult(Vector.rotate({ x: 1, y: 0 }, angle), SHIP_RADIUS * 1.1);
     const startPosition = Vector.add(shipBody.position, startOffset);
 
+    // Determine frictionAir based on ability type
+    let frictionAir = DEFAULT_FRICTION_AIR;
+    if (abilityType === 'plastic') {
+        frictionAir = PLASTIC_FRICTION_AIR;
+    } else if (abilityType === 'gravity') {
+        frictionAir = GRAVITY_FRICTION_AIR;
+    }
+    // Splitter projectiles use default friction initially
+
     const projectile: ProjectileBody = Bodies.circle(startPosition.x, startPosition.y, 5, {
         label: `projectile-${playerIndex}-${Date.now()}`,
-        frictionAir: 0.01, // Low air friction
-        restitution: 0.6, // Slightly bouncy
-        density: 0.01, // Adjust density as needed
-        plugin: {},
-        custom: { // Add custom data block
-            firedByPlayerIndex: playerIndex,
-            abilityType: abilityType || 'standard', // Store ability type or 'standard'
-            createdAt: Date.now()
-        },
-        trail: [Vector.clone(startPosition)], // Initialize trail
+        frictionAir: frictionAir, // Apply calculated air friction
+        restitution: 0.6,
+        density: 0.05, // Adjust density as needed
+        collisionFilter: { group: -1 } // Prevent projectiles colliding with each other
     }) as ProjectileBody;
+
+    const projectileLabel = `projectile-${playerIndex}-${Date.now()}`;
+    projectile.label = projectileLabel; // Assign label separately
+
+    // Assign custom properties and initialize trail *after* creation
+    projectile.custom = {
+        firedByPlayerIndex: playerIndex,
+        abilityType: abilityType, // Assign null if abilityType is null, otherwise assign the AbilityType
+        createdAt: Date.now(),
+        ownerShipLabel: projectileLabel, // Add the missing required property
+        // Explicitly set hasSplit: false for splitter, undefined otherwise
+        hasSplit: abilityType === 'splitter' ? false : undefined,
+    };
+    projectile.trail = [Vector.clone(startPosition)]; // Initialize trail here
 
     // Set initial velocity
     Body.setVelocity(projectile, velocity);

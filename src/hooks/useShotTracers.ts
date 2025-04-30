@@ -9,6 +9,7 @@ export interface ProjectileBody extends Matter.Body {
     firedByPlayerIndex: 0 | 1;
     ownerShipLabel: string;
     abilityType: AbilityType | null; // Add optional ability type
+    hasSplit?: boolean; // Optional flag for splitter projectiles
   };
   // Trail storage must be on the body for the update loop to easily access it
   trail?: Matter.Vector[];
@@ -39,7 +40,7 @@ export function useShotTracers() {
         return newTrails; // Return the new map
     });
     // DEBUG LOG
-    console.log(`[useShotTracers DEBUG] Started tracking trail for projectile ${projectile.id}. Initial trail length: ${projectile.trail?.length ?? 0}`);
+    // console.log(`[useShotTracers DEBUG] Started tracking trail for projectile ${projectile.id}. Initial trail length: ${projectile.trail?.length ?? 0}`);
   }, []);
 
   const handleProjectileUpdate = useCallback((projectile: ProjectileBody) => {
@@ -97,10 +98,10 @@ export function useShotTracers() {
   }, []); // REMOVED projectileTrails dependency
 
   const handleProjectileRemoved = useCallback((projectile: ProjectileBody) => {
-    let traceStored = false; 
-    const trailLengthOnRemove = projectile.trail?.length ?? 0;
+    // let traceStored = false; // Unused
+    // const trailLengthOnRemove = projectile.trail?.length ?? 0; // Unused
     // DEBUG LOG
-    console.log(`[useShotTracers DEBUG] Attempting remove for ${projectile.id}. Trail length on body: ${trailLengthOnRemove}`);
+    // console.log(`[useShotTracers DEBUG] Attempting remove for ${projectile.id}. Trail length on body: ${trailLengthOnRemove}`);
 
     if (projectile.trail && projectile.trail.length > 1) {
       const playerIndex = projectile.custom.firedByPlayerIndex;
@@ -118,7 +119,6 @@ export function useShotTracers() {
           };
       });
       console.log(`[useShotTracers] Stored trace for player ${playerIndex}. Trace points: ${newTrace.length}`);
-      traceStored = true;
     } else {
         console.log(`[useShotTracers] Projectile ${projectile.id} removed with no significant trail to store.`);
     }
@@ -126,13 +126,13 @@ export function useShotTracers() {
     // --- Update Active Trails State (Remove) ---
     setProjectileTrails(prevTrails => {
         // DEBUG LOG
-        const trailExistsBeforeDelete = prevTrails.has(projectile.id);
-        const stateTrailLengthBeforeDelete = prevTrails.get(projectile.id)?.trail.length ?? -1;
+        // const trailExistsBeforeDelete = prevTrails.has(projectile.id); // Unused
+        // const stateTrailLengthBeforeDelete = prevTrails.get(projectile.id)?.trail.length ?? -1; // Unused
 
         const newTrails = new Map(prevTrails);
         const deleted = newTrails.delete(projectile.id);
         // DEBUG LOG
-        console.log(`[useShotTracers DEBUG] Stopped tracking active trail for projectile ${projectile.id}. Existed in map: ${trailExistsBeforeDelete} -> ${deleted}. State trail length: ${stateTrailLengthBeforeDelete}. Trace stored: ${traceStored}`);
+        // console.log(`[useShotTracers DEBUG] Stopped tracking active trail for projectile ${projectile.id}. Existed in map: ${trailExistsBeforeDelete} -> ${deleted}. State trail length: ${stateTrailLengthBeforeDelete}. Trace stored: ${traceStored}`);
 
         // Only return new map if deletion actually happened
         return deleted ? newTrails : prevTrails; 

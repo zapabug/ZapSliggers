@@ -1,7 +1,7 @@
 import React from 'react';
 
-// Define known ability types (adjust as needed based on Gameplay.md)
-export type AbilityType = 'triple' | 'explosive' | 'lead';
+// Define known ability types based on refined mechanics
+export type AbilityType = 'splitter' | 'gravity' | 'plastic' | 'splitter_fragment';
 
 interface ActionButtonsProps {
   onFire: () => void;
@@ -17,13 +17,14 @@ interface ActionButtonsProps {
 
 // Placeholder SVG function (replace with actual SVGs or an icon library)
 const AbilityIcon: React.FC<{ ability: AbilityType }> = ({ ability }) => {
+  // Note: No icon needed for 'splitter_fragment' as it's not selectable
   switch (ability) {
-    case 'triple':
-      return <span className="text-xs">🔱</span>; // Placeholder
-    case 'explosive':
-      return <span className="text-xs">💥</span>; // Placeholder
-    case 'lead':
-      return <span className="text-xs">⚓</span>; // Placeholder
+    case 'splitter':
+      return <span className="text-xs">🔱</span>; // Placeholder for Splitter
+    case 'gravity':
+      return <span className="text-xs">🧲</span>; // Placeholder for Gravity Pull
+    case 'plastic':
+      return <span className="text-xs">🪁</span>; // Placeholder for Plastic (Low Gravity)
     default:
       return null;
   }
@@ -42,14 +43,14 @@ const ActionButtons: React.FC<ActionButtonsProps> = (props) => {
     disabled,
   } = props;
 
-  // Use available abilities directly
-  const availableAbilities: AbilityType[] = ['triple', 'explosive', 'lead'];
+  // Selectable abilities available to the player
+  const availableAbilities: AbilityType[] = ['splitter', 'gravity', 'plastic'];
 
-  // Define specific angles for each ability
-  const abilityAngles: { [key in AbilityType]: number } = {
-    triple: -100,
-    explosive: -45,
-    lead: 10,
+  // Define specific angles for each selectable ability button
+  const abilityAngles: { [key in 'splitter' | 'gravity' | 'plastic']: number } = {
+    splitter: -100,
+    gravity: -45,
+    plastic: 10,
   };
 
   const radius = 50; // Increased from 40 to give more space
@@ -100,7 +101,8 @@ const ActionButtons: React.FC<ActionButtonsProps> = (props) => {
               borderStyle = 'border-transparent';
           }
 
-          const angleDegrees = abilityAngles[ability];
+          // Assert the type when indexing abilityAngles
+          const angleDegrees = abilityAngles[ability as 'splitter' | 'gravity' | 'plastic'];
           const angleRadians = angleDegrees * (Math.PI / 180);
           const x = radius * Math.sin(angleRadians);
           const y = -radius * Math.cos(angleRadians);
