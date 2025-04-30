@@ -4,18 +4,21 @@ import Matter from 'matter-js';
 // Destructure Matter.js modules for convenience
 const { Bodies } = Matter;
 
-// --- Constants (Copied from GameRenderer for consistency) ---
+// --- Constants ---
 const VIRTUAL_WIDTH = 2400;
 const VIRTUAL_HEIGHT = 1200;
 const SHIP_RADIUS = 63;
 const PLANET_MIN_RADIUS = 30;
 const PLANET_MAX_RADIUS = 180;
-const EDGE_PADDING = 50;
-const PLANET_SPAWN_AREA_FACTOR = 0.8; // Spawn planets within central 80%
-const MIN_SHIP_SEPARATION_FACTOR = 0.4; // Minimum 40% of width separation
-const MIN_PLANET_SHIP_DISTANCE = 150; // Min distance between planet edge and ship center
-const MIN_PLANET_PLANET_DISTANCE = 50; // Min distance between planet edges
-const SHIP_START_AREA_WIDTH_FACTOR = 0.25; // Ships spawn in leftmost/rightmost 25%
+// const EDGE_PADDING = 50; // No longer needed with constrained zones
+const PLANET_SPAWN_AREA_FACTOR = 0.8; // Spawn planets within central 80% *of initial view*
+const SHIP_ZONE_WIDTH_FACTOR = 0.2; // Ships spawn in outer 20% *of initial view*
+const INITIAL_VIEW_WIDTH_FACTOR = 0.6; // Initial view is central 60%
+const INITIAL_VIEW_HEIGHT_FACTOR = 0.6;
+// Minimum distances remain the same
+const MIN_SHIP_SEPARATION_FACTOR = 0.4; // Min separation relative to *initial view width*
+const MIN_PLANET_SHIP_DISTANCE = 150; 
+const MIN_PLANET_PLANET_DISTANCE = 50; 
 const NUM_PLANETS = 3;
 
 // --- Helper Function ---
@@ -26,41 +29,96 @@ const calculateDistance = (p1: { x: number; y: number }, p2: { x: number; y: num
 // --- Interface for the returned data ---
 export interface InitialGamePositions {
   ships: [{ x: number; y: number }, { x: number; y: number }];
-  planets: Matter.Body[]; // Planets are now Matter.Body objects
+  planets: Matter.Body[]; 
 }
 
-// --- NEW: Exportable Generation Function ---
+// --- Exportable Generation Function ---
 export const generateInitialPositions = (width: number, height: number): InitialGamePositions => {
     console.log("[generateInitialPositions] Generating new level layout...");
-    const shipPadding = SHIP_RADIUS + EDGE_PADDING;
-    const shipY = height / 2; // Start ships vertically centered
-    const shipStartXRange = width * SHIP_START_AREA_WIDTH_FACTOR;
 
-    // Place ships with minimum separation
-    const ship1X = Math.random() * (shipStartXRange - shipPadding * 2) + shipPadding;
-    const minShip2X = ship1X + width * MIN_SHIP_SEPARATION_FACTOR;
-    const maxShip2X = width - shipPadding;
-    const ship2X = Math.random() * (maxShip2X - minShip2X) + minShip2X;
+    // --- Calculate Initial View Bounds (Central 60%) ---
+    const initialViewWidth = width * INITIAL_VIEW_WIDTH_FACTOR;
+    const initialViewHeight = height * INITIAL_VIEW_HEIGHT_FACTOR;
+    const initialViewMinX = (width - initialViewWidth) / 2;
+    const initialViewMaxX = initialViewMinX + initialViewWidth;
+    const initialViewMinY = (height - initialViewHeight) / 2;
+    const initialViewMaxY = initialViewMinY + initialViewHeight;
+
+    // --- Calculate Ship Spawn Zones (Outer 20% of Initial View) ---
+    const shipZoneWidth = initialViewWidth * SHIP_ZONE_WIDTH_FACTOR;
+    const shipPadding = SHIP_RADIUS + 20; // Increase padding slightly
+    
+    // Left Zone X bounds
+    const ship1MinX = initialViewMinX + shipPadding;
+    const ship1MaxX = initialViewMinX + shipZoneWidth - shipPadding;
+    // Right Zone X bounds
+    const ship2MinX = initialViewMaxX - shipZoneWidth + shipPadding;
+    const ship2MaxX = initialViewMaxX - shipPadding;
+
+    // --- NEW: Y bounds for ships (within initial view height) ---
+    const shipMinY = initialViewMinY + shipPadding;
+    const shipMaxY = initialViewMaxY - shipPadding;
+    
+    // --- Place ships RANDOMLY ensuring minimum separation ---
+    let ship1Pos: { x: number, y: number };
+    let ship2Pos: { x: number, y: number };
+    const minSeparationSq = Math.pow(initialViewWidth * MIN_SHIP_SEPARATION_FACTOR, 2); // Use squared distance
+    let attemptsShips = 0;
+    const maxAttemptsShips = 200;
+
+    do {
+        // Random X and Y for Ship 1 in its zone
+        const x1 = Math.random() * (ship1MaxX - ship1MinX) + ship1MinX;
+        const y1 = Math.random() * (shipMaxY - shipMinY) + shipMinY;
+        ship1Pos = { x: x1, y: y1 };
+
+        // Random X and Y for Ship 2 in its zone
+        const x2 = Math.random() * (ship2MaxX - ship2MinX) + ship2MinX;
+        const y2 = Math.random() * (shipMaxY - shipMinY) + shipMinY;
+        ship2Pos = { x: x2, y: y2 };
+
+        attemptsShips++;
+
+        // Check distance between the two potential ship positions
+        const dx = ship2Pos.x - ship1Pos.x;
+        const dy = ship2Pos.y - ship1Pos.y;
+        const distSq = dx * dx + dy * dy;
+
+        if (distSq >= minSeparationSq) {
+            break; // Found suitable positions
+        }
+
+    } while (attemptsShips < maxAttemptsShips);
+
+    if (attemptsShips >= maxAttemptsShips) {
+        console.warn(`Could not place ships with minimum separation after ${maxAttemptsShips} attempts, using last attempt.`);
+        // Fallback: use the last generated positions even if too close
+    }
 
     const ships: [{ x: number; y: number }, { x: number; y: number }] = [
-        { x: ship1X, y: shipY },
-        { x: ship2X, y: shipY },
+        ship1Pos, // Use generated random positions
+        ship2Pos, // Use generated random positions
     ];
 
-    // --- Generate Planets ---
-    const planets: Matter.Body[] = [];
-    const planetSpawnWidth = width * PLANET_SPAWN_AREA_FACTOR;
-    const planetSpawnHeight = height * PLANET_SPAWN_AREA_FACTOR;
-    const planetSpawnXOffset = (width - planetSpawnWidth) / 2;
-    const planetSpawnYOffset = (height - planetSpawnHeight) / 2;
-    let attempts = 0;
-    const maxAttempts = 500;
+    // --- Calculate Planet Spawn Area (Central 80% of Initial View) ---
+    const planetSpawnAreaWidth = initialViewWidth * PLANET_SPAWN_AREA_FACTOR;
+    const planetSpawnAreaHeight = initialViewHeight * PLANET_SPAWN_AREA_FACTOR;
+    const planetSpawnMinX = initialViewMinX + (initialViewWidth - planetSpawnAreaWidth) / 2;
+    const planetSpawnMaxX = planetSpawnMinX + planetSpawnAreaWidth;
+    const planetSpawnMinY = initialViewMinY + (initialViewHeight - planetSpawnAreaHeight) / 2;
+    const planetSpawnMaxY = planetSpawnMinY + planetSpawnAreaHeight;
 
-    while (planets.length < NUM_PLANETS && attempts < maxAttempts) {
-        attempts++;
+    // --- Generate Planets within the calculated area ---
+    const planets: Matter.Body[] = [];
+    let attemptsPlanets = 0;
+    const maxAttemptsPlanets = 500;
+
+    while (planets.length < NUM_PLANETS && attemptsPlanets < maxAttemptsPlanets) {
+        attemptsPlanets++;
         const radius = Math.random() * (PLANET_MAX_RADIUS - PLANET_MIN_RADIUS) + PLANET_MIN_RADIUS;
-        const x = Math.random() * planetSpawnWidth + planetSpawnXOffset;
-        const y = Math.random() * planetSpawnHeight + planetSpawnYOffset;
+        // Generate within the specific planet spawn bounds
+        const x = Math.random() * (planetSpawnMaxX - planetSpawnMinX) + planetSpawnMinX;
+        const y = Math.random() * (planetSpawnMaxY - planetSpawnMinY) + planetSpawnMinY;
         const position = { x, y };
 
         let collision = false;
@@ -85,41 +143,37 @@ export const generateInitialPositions = (width: number, height: number): Initial
         if (collision) continue;
 
         // If no collision, create and add the planet body
-        // --- REVERT to Gray Colors ---
-        const grayValue = Math.floor(Math.random() * (160 - 80 + 1)) + 80; // Random int between 80 (#50) and 160 (#A0)
-        const grayHex = grayValue.toString(16).padStart(2, '0'); // Convert to 2-digit hex
-        const grayColor = `#${grayHex}${grayHex}${grayHex}`; // Form the #rrggbb color
+        const grayValue = Math.floor(Math.random() * (160 - 80 + 1)) + 80; 
+        const grayHex = grayValue.toString(16).padStart(2, '0'); 
+        const grayColor = `#${grayHex}${grayHex}${grayHex}`;
 
         const planetBody = Bodies.circle(x, y, radius, {
             isStatic: true,
             label: 'planet',
             friction: 0.5,
             restitution: 0.5,
-            render: { fillStyle: grayColor }, // Use generated gray color
-            // Store radius in a custom property for easier access
+            render: { fillStyle: grayColor }, 
             plugin: { klunkstr: { radius: radius } }
         });
-        // --- END REVERT ---
         planets.push(planetBody);
     }
 
     if (planets.length < NUM_PLANETS) {
-        console.warn(`[generateInitialPositions] Could only place ${planets.length}/${NUM_PLANETS} planets after ${maxAttempts} attempts.`);
+        console.warn(`[generateInitialPositions] Could only place ${planets.length}/${NUM_PLANETS} planets after ${maxAttemptsPlanets} attempts.`);
     }
 
     console.log("[generateInitialPositions] Level generation complete.");
     return { ships, planets };
 };
 
-// --- The Hook (Now simpler, just calls the generator) ---
+// --- The Hook (No change needed here) ---
 export const useGameInitialization = (): InitialGamePositions | null => {
   const [positions, setPositions] = useState<InitialGamePositions | null>(null);
 
   useEffect(() => {
-    // Generate positions once on mount
     const initialData = generateInitialPositions(VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
     setPositions(initialData);
-  }, []); // Empty dependency array ensures it runs only once
+  }, []); 
 
   return positions;
 }; 

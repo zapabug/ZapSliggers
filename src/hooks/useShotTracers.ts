@@ -8,7 +8,7 @@ export interface ProjectileBody extends Matter.Body {
     createdAt: number;
     firedByPlayerIndex: 0 | 1;
     ownerShipLabel: string;
-    abilityType: AbilityType | null; // Add optional ability type
+    abilityType: AbilityType | 'standard' | null; // Allow 'standard' string
   };
   // Trail storage must be on the body for the update loop to easily access it
   trail?: Matter.Vector[];

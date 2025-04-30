@@ -19,20 +19,20 @@ const SHIP_RADIUS = 63;
 const PLANET_MIN_RADIUS = 30;
 const GRAVITY_CONSTANT = 0.5;
 const GRAVITY_AOE_BONUS_FACTOR = 0.1;
-const PROJECTILE_DAMAGE = 25; // Example damage value
 
 interface UseMatterPhysicsProps {
   levelData: InitialGamePositions;
   virtualWidth: number;
   virtualHeight: number;
   shotTracerHandlers: ShotTracerHandlers;
-  onPlayerHit: (hitPlayerIndex: 0 | 1, damage: number) => void;
+  onPlayerHit: (hitPlayerIndex: 0 | 1, firingPlayerIndex: 0 | 1, projectileType: AbilityType | 'standard') => void;
 }
 
 export interface MatterPhysicsHandles {
   engine: Matter.Engine | null;
   shipBodies: React.RefObject<(Matter.Body | null)[]>;
-  getDynamicBodies: () => Matter.Body[]; // For viewport calculation
+  getDynamicBodies: () => Matter.Body[];
+  getAllBodies: () => Matter.Body[];
   fireProjectile: (playerIndex: 0 | 1, power: number, abilityType: AbilityType | null) => void;
   setShipAim: (playerIndex: 0 | 1, angleDegrees: number) => void;
   getShipAngle: (playerIndex: 0 | 1) => number | undefined;
@@ -79,6 +79,7 @@ export const useMatterPhysics = ({
             }
 
             const firedByPlayerIndex = projectile.custom.firedByPlayerIndex;
+            const projectileType = projectile.custom.abilityType || 'standard';
             let projectileRemoved = false;
 
             if (otherBody.label === 'planet') {
@@ -88,14 +89,12 @@ export const useMatterPhysics = ({
                 projectileRemoved = true;
             } else if (otherBody.label.startsWith('ship-')) {
                 const hitPlayerIndex = parseInt(otherBody.label.split('-')[1], 10) as 0 | 1;
-                if (hitPlayerIndex !== firedByPlayerIndex) {
-                    console.log(`[Collision] Proj ${projectile.id} (P${firedByPlayerIndex}) hit P${hitPlayerIndex}`);
-                    onPlayerHit(hitPlayerIndex, PROJECTILE_DAMAGE);
-                    
-                    shotTracerHandlers.handleProjectileRemoved(projectile);
-                    World.remove(currentEngine.world, projectile);
-                    projectileRemoved = true;
-                }
+                console.log(`[Collision] Proj ${projectile.id} (P${firedByPlayerIndex}, Type: ${projectileType}) hit P${hitPlayerIndex}`);
+                onPlayerHit(hitPlayerIndex, firedByPlayerIndex, projectileType);
+                
+                shotTracerHandlers.handleProjectileRemoved(projectile);
+                World.remove(currentEngine.world, projectile);
+                projectileRemoved = true;
             } else if (otherBody.label === 'boundary') {
                 console.log(`[Collision] Proj ${projectile.id} hit boundary`);
                 shotTracerHandlers.handleProjectileRemoved(projectile);
@@ -248,41 +247,44 @@ export const useMatterPhysics = ({
 
   // --- Exposed Control Functions ---
   const fireProjectile = useCallback((playerIndex: 0 | 1, power: number, abilityType: AbilityType | null) => {
-    if (!engineRef.current) return;
+    const engine = engineRef.current;
     const shipBody = shipBodiesRef.current[playerIndex];
-    if (!shipBody) return;
+    if (!engine || !shipBody) return;
 
-    console.log(`[Physics Hook Fire] P${playerIndex} Ability: ${abilityType || 'Standard'}`);
+    const angle = shipBody.angle;
+    const speed = 10 + power; // Base speed + power scaling
+    const velocity = Vector.mult(Vector.rotate({ x: 1, y: 0 }, angle), speed);
 
-    const shipAngle = shipBody.angle;
-    const shipPosition = shipBody.position;
-    const clampedPower = Math.min(Math.max(power, 0.1), 5);
-    const velocityScale = 5 * clampedPower;
-    const finalLaunchAngleRad = shipAngle;
-    const spawnOffset = SHIP_RADIUS * 1.1;
-    const spawnX = shipPosition.x + Math.cos(finalLaunchAngleRad) * spawnOffset;
-    const spawnY = shipPosition.y + Math.sin(finalLaunchAngleRad) * spawnOffset;
-    const velocityX = Math.cos(finalLaunchAngleRad) * velocityScale;
-    const velocityY = Math.sin(finalLaunchAngleRad) * velocityScale;
+    // Start position slightly in front of the ship
+    const startOffset = Vector.mult(Vector.rotate({ x: 1, y: 0 }, angle), SHIP_RADIUS * 1.1);
+    const startPosition = Vector.add(shipBody.position, startOffset);
 
-    const projectileId = Matter.Common.nextId();
-    const projectile = Bodies.circle(spawnX, spawnY, 5, {
-        label: `projectile-${projectileId}`,
-        frictionAir: 0, friction: 0, restitution: 0.5, density: 0.1,
-        id: projectileId
+    // Create body without custom initially to satisfy types
+    const projectile: ProjectileBody = Bodies.circle(startPosition.x, startPosition.y, 5, {
+        label: `projectile-${playerIndex}-${Date.now()}`,
+        frictionAir: 0.01, 
+        restitution: 0.6, 
+        density: 0.01, 
+        plugin: {},
+        // custom property removed from initial definition
     }) as ProjectileBody;
 
-    projectile.custom = {
-        createdAt: Date.now(),
+    // Attach custom data and trail AFTER creation
+    projectile.custom = { 
         firedByPlayerIndex: playerIndex,
         ownerShipLabel: shipBody.label,
-        abilityType: abilityType
+        abilityType: abilityType || 'standard', 
+        createdAt: Date.now()
     };
-    projectile.trail = [Vector.clone({ x: spawnX, y: spawnY })];
+    projectile.trail = [Vector.clone(startPosition)];
 
-    Body.setVelocity(projectile, { x: velocityX, y: velocityY });
-    World.add(engineRef.current.world, projectile);
+    // Set initial velocity
+    Body.setVelocity(projectile, velocity);
+
+    World.add(engine.world, projectile);
     shotTracerHandlers.handleProjectileFired(projectile);
+    console.log(`[Physics] Fired projectile ${projectile.id} by P${playerIndex}, Power: ${power}, Ability: ${abilityType || 'None'}`);
+
   }, [shotTracerHandlers]);
 
   const setShipAim = useCallback((playerIndex: 0 | 1, angleDegrees: number) => {
@@ -314,12 +316,17 @@ export const useMatterPhysics = ({
       );
   }, []);
 
+  const getAllBodies = useCallback(() => {
+      if (!engineRef.current) return [];
+      return Composite.allBodies(engineRef.current.world);
+  }, []);
 
   // Return the necessary values and functions
   return {
     engine: engineRef.current,
     shipBodies: shipBodiesRef, // Pass the ref itself
     getDynamicBodies,
+    getAllBodies,
     fireProjectile,
     setShipAim,
     getShipAngle,

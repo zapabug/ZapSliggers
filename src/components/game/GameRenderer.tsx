@@ -19,7 +19,7 @@ const PLANET_MIN_RADIUS = 30; // Needed for drawing fallback
 // Define props for the GameRenderer component
 interface GameRendererProps {
   levelData: InitialGamePositions;
-  onPlayerHit: (hitPlayerIndex: 0 | 1, damage: number) => void; // Pass down to useMatterPhysics
+  onPlayerHit: (hitPlayerIndex: 0 | 1, firingPlayerIndex: 0 | 1, projectileType: AbilityType | 'standard') => void; // Updated signature
   onLevelReset?: () => void; // Made optional
 }
 

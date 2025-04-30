@@ -198,12 +198,13 @@ This document outlines the core gameplay loop and dynamics for **Klunkstr**.
    - **Projectile Collision Default:** Projectiles pass through each other.
    - **Available Abilities (Cost 25 HP Each):** *(Selection logic in `GameScreen.tsx`, UI in `ActionButtons.tsx`)*
      - **1. Triple Shot Arrow:** Fires three projectiles in a narrow spread. Each deals "half damage" (instantly wins round *only* if opponent is Vulnerable). *(Physics effect TBD)*.
-     - **2. Explosive Arrow:** Creates AoE explosion on impact. Direct hit and AoE deal "half damage" (instantly wins round *only* if opponent is Vulnerable). *(Physics effect TBD)*.
+     - **2. Explosive Arrow:** Creates AoE explosion upon **detecting proximity** to the opponent's ship (within a defined radius). Direct hit *or* AoE deals "half damage" (instantly wins round *only* if opponent is Vulnerable). If it hits a planet/boundary first, it is destroyed without exploding. *(Physics effect TBD)*.
      - **3. Lead Tipped Arrow:** Projectile significantly more affected by gravity. Standard damage (instantly wins round). *(Physics effect TBD)*.
 
 **6. Specific Interactions:**
    - **Standard Arrow / Lead Tipped vs. Player:** Instantly wins round. *(Basic detection implemented)*.
    - **Triple/Explosive vs. Player:** Instantly wins round *only* if target is Vulnerable. *(Logic TBD)*.
+   - **Self-Hit:** If a player's projectile hits their *own* ship, that player instantly **loses** the round. *(Logic TBD)*.
 
 **7. Visual Presentation & Camera:**
    - **Rendering:** 2D physics/logic, rendered directly onto an **HTML Canvas using 2D drawing APIs**. We will use sprites or simple shapes for planets, launchers, and projectiles. The virtual coordinate system uses a wider aspect ratio (2400x1200).
@@ -226,3 +227,27 @@ This document outlines the core gameplay loop and dynamics for **Klunkstr**.
    - **Model Placeholders:** Basic 2D shapes/sprites will be used initially (currently triangles for ships, circles for planets).
    - **UI Refinements:** `AimingInterface` provides a **functional joystick** for angle and a slider for power. `ActionButtons` provides fire/ability buttons. `PlayerHUD` displays info. Keyboard controls also available for aiming/power/firing.
    - **App Layout:** Horizontal full-screen view.
+
+**9. Lobby & Matchmaking Flow (Nostr):**
+
+   - **A. Entering the Queue:**
+     - When a player (Player 1) indicates they want to play (e.g., clicks "Find Match" in the `LobbyScreen`), the application publishes a **public Nostr event** (e.g., `kind:1` or a custom kind like `kind:30078` specifically for matchmaking).
+     - This event should contain:
+       - Text indicating the player is looking for a Klunkstr match.
+       - A way for others to join (e.g., a unique identifier for the challenge, or potentially a direct link/URI that opens the game client configured to challenge Player 1).
+       - Optionally, the required wager amount (e.g., 2000 sats).
+     - Example Text: "Klunkstr duel! Player 1 is ready. [Link/ID to join] - 2000 sats wager."
+
+   - **B. Joining the Match:**
+     - Other players can discover these public posts.
+     - When a second player (Player 2) accepts the challenge (e.g., clicks the link/responds via the app), they signal their intention (potentially via a direct `kind:4` DM to Player 1 or another public event referencing the original). 
+
+   - **C. Awaiting Payment:**
+     - Once two players are matched, the application (or perhaps a coordinating bot/service if needed for escrow) publishes **another public Nostr event**.
+     - This event indicates the match is formed and awaiting the NUT-18 payment.
+     - It should clearly state the required amount (e.g., 2000 sats) and the payment destination (e.g., a NUT-18 Mint URL or Lightning Address associated with the escrow).
+     - Crucially, this event should state that **anyone** can pay the escrow to start the match, not just the players involved.
+     - Example Text: "Klunkstr match formed: Player 1 vs Player 2. Awaiting 2000 sats payment to [Payment Destination] to begin! Anyone can fund."
+
+   - **D. Starting the Game:**
+     - Once the payment is confirmed (e.g., via NUT-18 confirmation or Lightning payment notification), the game client receives a signal (e.g., a final DM or event) and transitions both players from the `LobbyScreen` to the `GameScreen` to begin the match.

@@ -1,35 +1,34 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import Matter from 'matter-js';
 
-// Constants for viewport behavior
-const ZOOM_LERP_FACTOR = 0.08; // How fast to zoom/pan (0-1)
-const MAX_ZOOM_FACTOR = 1.5;   // Prevents zooming in *too* much
-const MAX_VIEW_FACTOR = 1.5;   // Allow zooming out to show 1.5x the virtual area
-const VIEWPORT_PADDING = 100;  // Pixels to keep around edges
+// --- Constants ---
+const ZOOM_LERP_FACTOR = 0.08; 
+const MAX_ZOOM_FACTOR = 1.5;   
+const MAX_VIEW_FACTOR = 1.5;   
+const VIEWPORT_PADDING = 100;  
 
+// --- Interfaces ---
 interface UseDynamicViewportProps {
     engine: Matter.Engine | null;
-    getDynamicBodies: () => Matter.Body[]; // Function from useMatterPhysics
+    // Changed back to getDynamicBodies
+    getDynamicBodies: () => Matter.Body[]; 
     virtualWidth: number;
     virtualHeight: number;
-    designAspectRatio: number;
-    canvasSize: { width: number; height: number }; // Current canvas pixel size
+    designAspectRatio: number; 
+    canvasSize: { width: number; height: number };
 }
-
-interface DynamicViewportResult {
+interface DynamicViewportResult { 
     scale: number;
     offsetX: number;
     offsetY: number;
-    // Optional: expose lerped values if needed elsewhere
-    // lerpedViewport: { width: number, height: number, centerX: number, centerY: number };
 }
 
 export const useDynamicViewport = ({
     engine,
-    getDynamicBodies,
+    getDynamicBodies, // Use getDynamicBodies
     virtualWidth,
     virtualHeight,
-    designAspectRatio,
+    designAspectRatio, 
     canvasSize,
 }: UseDynamicViewportProps): DynamicViewportResult => {
     const currentVirtualWidthRef = useRef(virtualWidth);
@@ -43,15 +42,19 @@ export const useDynamicViewport = ({
 
     const [viewport, setViewport] = useState<DynamicViewportResult>({ scale: 1, offsetX: 0, offsetY: 0 });
 
-    // Update Target Viewport based on Body Positions
     const updateTargetViewport = useCallback(() => {
         if (!engine) return;
 
-        const dynamicBodies = getDynamicBodies();
-        let minX = virtualWidth, maxX = 0, minY = virtualHeight, maxY = 0;
+        // Use getDynamicBodies
+        const dynamicBodies = getDynamicBodies(); 
         const hasDynamicBodies = dynamicBodies.length > 0;
 
+        let minX = virtualWidth, maxX = 0, minY = virtualHeight, maxY = 0;
+
         if (hasDynamicBodies) {
+            // Calculate bounds based on dynamic bodies
+            minX = Infinity; maxX = -Infinity;
+            minY = Infinity; maxY = -Infinity;
             dynamicBodies.forEach(body => {
                 const bounds = body.bounds;
                 minX = Math.min(minX, bounds.min.x);
@@ -60,15 +63,17 @@ export const useDynamicViewport = ({
                 maxY = Math.max(maxY, bounds.max.y);
             });
         } else {
-            minX = 0;
-            maxX = virtualWidth;
-            minY = 0;
-            maxY = virtualHeight;
-        }
-
-        // Calculate required size
+            // Default view uses central 60%
+            minX = virtualWidth * 0.2;
+            maxX = virtualWidth * 0.8;
+            minY = virtualHeight * 0.2;
+            maxY = virtualHeight * 0.8;
+        } 
+        
+        // Add padding
         let requiredWidth = (maxX - minX) + 2 * VIEWPORT_PADDING;
         let requiredHeight = (maxY - minY) + 2 * VIEWPORT_PADDING;
+        
         const centerX = (minX + maxX) / 2;
         const centerY = (minY + maxY) / 2;
 
@@ -91,54 +96,36 @@ export const useDynamicViewport = ({
         targetCenterXRef.current = centerX;
         targetCenterYRef.current = centerY;
 
-    }, [engine, getDynamicBodies, virtualWidth, virtualHeight, designAspectRatio]);
+    }, [engine, getDynamicBodies, virtualWidth, virtualHeight, designAspectRatio]); 
 
-    // Lerp and Calculate Final Viewport for Rendering
     useEffect(() => {
         let animationFrameId: number;
-
         const lerpAndUpdate = () => {
-            // Lerp Viewport Towards Target
             currentVirtualWidthRef.current += (targetVirtualWidthRef.current - currentVirtualWidthRef.current) * ZOOM_LERP_FACTOR;
             currentVirtualHeightRef.current += (targetVirtualHeightRef.current - currentVirtualHeightRef.current) * ZOOM_LERP_FACTOR;
             currentCenterXRef.current += (targetCenterXRef.current - currentCenterXRef.current) * ZOOM_LERP_FACTOR;
             currentCenterYRef.current += (targetCenterYRef.current - currentCenterYRef.current) * ZOOM_LERP_FACTOR;
-
-            // Calculate Final Viewport Scale and Offset for Rendering
             if (canvasSize.width > 0 && canvasSize.height > 0) {
-                const scaleX = canvasSize.width / currentVirtualWidthRef.current;
+                const scaleX = canvasSize.width / currentVirtualWidthRef.current; 
                 const scaleY = canvasSize.height / currentVirtualHeightRef.current;
-                const finalScale = Math.min(scaleX, scaleY); // Maintain aspect ratio
-                const viewWidth = currentVirtualWidthRef.current * finalScale;
+                const finalScale = Math.min(scaleX, scaleY);
+                const viewWidth = currentVirtualWidthRef.current * finalScale; 
                 const viewHeight = currentVirtualHeightRef.current * finalScale;
                 const finalOffsetX = (canvasSize.width - viewWidth) / 2 - (currentCenterXRef.current - currentVirtualWidthRef.current / 2) * finalScale;
                 const finalOffsetY = (canvasSize.height - viewHeight) / 2 - (currentCenterYRef.current - currentVirtualHeightRef.current / 2) * finalScale;
-
-                // Update state to trigger re-render in GameRenderer
                 setViewport({ scale: finalScale, offsetX: finalOffsetX, offsetY: finalOffsetY });
             } else {
-                 setViewport({ scale: 1, offsetX: 0, offsetY: 0 }); // Default if canvas size is zero
+                 setViewport({ scale: 1, offsetX: 0, offsetY: 0 });
             }
-
             animationFrameId = requestAnimationFrame(lerpAndUpdate);
         };
-
-        // Start the lerp loop
         lerpAndUpdate();
+        return () => cancelAnimationFrame(animationFrameId);
+    }, [canvasSize, targetVirtualWidthRef, targetVirtualHeightRef, targetCenterXRef, targetCenterYRef]); 
 
-        return () => {
-            cancelAnimationFrame(animationFrameId);
-        };
-    }, [canvasSize]); // Rerun effect if canvas size changes
-
-    // Effect to update the target viewport when engine/bodies might change
-    // This runs less frequently than the lerp loop
     useEffect(() => {
-        updateTargetViewport();
-        // We could potentially add a listener to the engine's 'afterUpdate'
-        // event for more precise updates, but checking periodically might be sufficient
-        const intervalId = setInterval(updateTargetViewport, 100); // Check every 100ms
-
+        updateTargetViewport(); 
+        const intervalId = setInterval(updateTargetViewport, 100);
         return () => clearInterval(intervalId);
     }, [updateTargetViewport]);
 
