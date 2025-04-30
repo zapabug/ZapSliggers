@@ -92,29 +92,72 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
 
   }, [currentPlayerIndex]);
 
-  // --- NEW: Handle Player Hit Callback ---
-  const handlePlayerHit = useCallback((hitPlayerIndex: 0 | 1, damage: number) => {
-      console.log(`[GameScreen] handlePlayerHit called for Player ${hitPlayerIndex}, Damage: ${damage}`);
-      setPlayerStates(currentStates => {
-          const newStates: [PlayerState, PlayerState] = [
-              { ...currentStates[0], usedAbilities: new Set(currentStates[0].usedAbilities) }, 
-              { ...currentStates[1], usedAbilities: new Set(currentStates[1].usedAbilities) }
-          ];
-          const newState = newStates[hitPlayerIndex];
-          newState.hp = Math.max(0, newState.hp - damage);
-          console.log(`[GameScreen HP Update] P${hitPlayerIndex} HP: ${currentStates[hitPlayerIndex].hp} -> ${newState.hp}`);
+  // --- Callback for Round Win ---
+  // Needs to be defined before handlePlayerHit
+  const handleRoundWin = useCallback((winningPlayerIndex: 0 | 1) => {
+    console.log(`!!! Round Win detected for Player ${winningPlayerIndex} !!!`);
 
-          // Check for win condition after HP update
-          if (newState.hp <= 0) {
-              const winnerIndex = hitPlayerIndex === 0 ? 1 : 0; // The other player wins
-              console.log(`!!! Player ${hitPlayerIndex} defeated! Player ${winnerIndex} wins the round! !!!`);
-              // Trigger round win logic here (e.g., show win screen, update score)
-              handleRoundWin(winnerIndex);
-          }
+    // Reset the game via the renderer ref to generate a new map layout
+    gameRendererRef.current?.resetGame(); 
 
-          return newStates;
-      });
-  }, []); // No dependencies needed if it only calls setters
+    // DO NOT Reset player states here - HP/abilities are per-match, not per-round
+    // Resetting player position/map is handled by resetGame()
+
+    // Reset the turn to player 0 (can adjust later)
+    setCurrentPlayerIndex(0); 
+
+    // Reset selected ability for the start of the new round
+    setSelectedAbility(null);
+
+    // TODO: Implement other round end logic (show modal, update scores etc)
+  }, []); // Dependencies removed as we only call external refs/setters
+
+  // --- Handle Player Hit Callback ---
+  // Updated signature: Assumes GameRenderer provides firing player index and projectile type
+  const handlePlayerHit = useCallback((hitPlayerIndex: 0 | 1, firingPlayerIndex: 0 | 1, projectileType: AbilityType | 'standard') => {
+      console.log(`[GameScreen] handlePlayerHit: FiringPlayer=${firingPlayerIndex}, HitPlayer=${hitPlayerIndex}, Type=${projectileType}`);
+
+      // --- Check for Self-Hit first ---
+      if (hitPlayerIndex === firingPlayerIndex) {
+          console.log(`!!! Player ${firingPlayerIndex} hit themselves! Round Loss!`);
+          const winnerIndex = (1 - firingPlayerIndex) as 0 | 1; // The other player wins
+          handleRoundWin(winnerIndex);
+          return; // Stop further processing
+      }
+
+      // --- Determine Winner based on Projectile Type and Vulnerability ---
+      const targetPlayerState = playerStates[hitPlayerIndex];
+      let roundWinnerIndex: 0 | 1 | null = null;
+
+      switch (projectileType) {
+          case 'standard':
+          case 'lead':
+              // Instant win on standard/lead hit
+              console.log(`Player ${firingPlayerIndex} landed a standard/lead hit! Round Win!`);
+              roundWinnerIndex = firingPlayerIndex;
+              break;
+
+          case 'triple':
+          case 'explosive':
+              // Win only if target is Vulnerable
+              if (targetPlayerState.isVulnerable) {
+                  console.log(`Player ${firingPlayerIndex} landed a ${projectileType} hit on a Vulnerable target! Round Win!`);
+                  roundWinnerIndex = firingPlayerIndex;
+              } else {
+                  console.log(`Player ${firingPlayerIndex} landed a ${projectileType} hit, but target was not Vulnerable. No immediate win.`);
+                  // No round win - game continues
+              }
+              break;
+      }
+
+      // --- Call handleRoundWin if a winner was determined ---
+      if (roundWinnerIndex !== null) {
+          handleRoundWin(roundWinnerIndex);
+      }
+
+      // --- REMOVED HP Deduction Logic --- 
+
+  }, [playerStates, handleRoundWin]); // Dependencies: playerStates (for vulnerability check), handleRoundWin
 
   // TODO: Replace mock state with actual game state management (e.g., Zustand, props)
   // TODO: Fetch profile data for HUDs if needed beyond pubkey (useProfile hook?)
@@ -273,14 +316,6 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
   }, [handleFire, currentAim.angle, currentAim.power, currentPlayerIndex]); // Update dependencies
   // --- End Keyboard Controls ---
 
-  // Callback function to handle round win detection (now called by handlePlayerHit)
-  const handleRoundWin = useCallback((winningPlayerIndex: 0 | 1) => {
-    console.log(`!!! Round Win detected for Player ${winningPlayerIndex} !!!`);
-    // TODO: Implement actual round end logic (show modal, update scores etc)
-    // Maybe reset for a new round?
-    // handleNewRound(); // Example call
-  }, []);
-
   return (
     // Main container: Remove flex centering
     <div className="relative w-full h-screen bg-black text-white overflow-hidden">
@@ -328,17 +363,17 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
         />
       </div>
 
-      <div className="absolute bottom-16 right-8 z-10">
-        <ActionButtons 
+      {/* Action/Fire Buttons Container */}
+      <div className="absolute bottom-4 right-4 z-10">
+        <ActionButtons
           onFire={handleFire}
-          onAbilitySelect={handleSelectAbility} // CORRECTED Prop name
+          onAbilitySelect={handleSelectAbility}
           selectedAbility={selectedAbility}
-          // Pass state directly from playerStates for the current player
           usedAbilities={playerStates[currentPlayerIndex].usedAbilities}
           currentHp={playerStates[currentPlayerIndex].hp}
           abilityCost={ABILITY_COST}
-          maxAbilityUses={MAX_ABILITY_USES} 
-          disabled={currentPlayerIndex !== localPlayerIndex} 
+          maxAbilityUses={MAX_ABILITY_USES}
+          disabled={false}
         />
       </div>
 
