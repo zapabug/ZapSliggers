@@ -199,8 +199,26 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>((props: Game
         label: 'ship-1', restitution: 0.5, friction: 0.1, frictionAir: 0.01, angle: Math.PI
     });
     shipBodiesRef.current = [ship1Body, ship2Body];
+
+    // --- Create Static Boundary Walls (Extended) ---
+    const wallThickness = 50; // Thickness of the boundary walls 
+    const extendedWidth = VIRTUAL_WIDTH * 2; // Total width of the boundary box
+    const extendedHeight = VIRTUAL_HEIGHT * 2; // Total height of the boundary box
+
+    const boundaries = [
+        // Top wall (Center Y = -VIRTUAL_HEIGHT / 2)
+        Bodies.rectangle(VIRTUAL_WIDTH / 2, -VIRTUAL_HEIGHT / 2, extendedWidth, wallThickness, { isStatic: true, label: 'boundary' }),
+        // Bottom wall (Center Y = VIRTUAL_HEIGHT * 1.5)
+        Bodies.rectangle(VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT * 1.5, extendedWidth, wallThickness, { isStatic: true, label: 'boundary' }),
+        // Left wall (Center X = -VIRTUAL_WIDTH / 2)
+        Bodies.rectangle(-VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT / 2, wallThickness, extendedHeight, { isStatic: true, label: 'boundary' }),
+        // Right wall (Center X = VIRTUAL_WIDTH * 1.5)
+        Bodies.rectangle(VIRTUAL_WIDTH * 1.5, VIRTUAL_HEIGHT / 2, wallThickness, extendedHeight, { isStatic: true, label: 'boundary' })
+    ];
+    // --- End Boundary Walls ---
+
     // Planets are already Matter.Body objects from the hook
-    const allBodies = [ship1Body, ship2Body, ...initialPositions.planets];
+    const allBodies = [ship1Body, ship2Body, ...initialPositions.planets, ...boundaries]; // Add boundaries to the world
     World.add(engine.world, allBodies);
 
     // --- Define physics update, collision, and render logic INSIDE useEffect ---
@@ -244,9 +262,32 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>((props: Game
 
           // Check projectile timeout
           const now = Date.now();
+          let shouldRemove = false;
+          let removalReason = "";
+
           // Access custom.createdAt directly
           if (now - projectileBody.custom.createdAt > 45000) { 
-              console.log(`[Timeout] Removing proj ${projectileBody.id}`);
+              removalReason = "Timeout";
+              shouldRemove = true;
+          }
+
+          // --- REDUNDANT OUT OF BOUNDS CHECK (COMMENTED OUT) --- 
+          /* 
+          const boundsPadding = 200; 
+          if (!shouldRemove && (
+              projectileBody.position.x < -boundsPadding || 
+              projectileBody.position.x > VIRTUAL_WIDTH + boundsPadding ||
+              projectileBody.position.y < -boundsPadding ||
+              projectileBody.position.y > VIRTUAL_HEIGHT + boundsPadding
+          )) {
+              removalReason = "OutOfBounds";
+              shouldRemove = true;
+          }
+          */
+          // --- END REDUNDANT OUT OF BOUNDS CHECK ---
+
+          if (shouldRemove) {
+              console.log(`[${removalReason}] Removing proj ${projectileBody.id}`);
               // Pass the whole body to the removal hook
               handleProjectileRemoved(projectileBody);
               World.remove(currentEngine.world, projectileBody);
@@ -254,7 +295,7 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>((props: Game
         }
       });
 
-      // --- Dynamic Viewport Logic ---
+      // --- Dynamic Viewport Update Logic --- 
       let minX = VIRTUAL_WIDTH, maxX = 0, minY = VIRTUAL_HEIGHT, maxY = 0;
       let hasDynamicBodies = false;
       Composite.allBodies(currentEngine.world).forEach(body => {
@@ -283,16 +324,12 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>((props: Game
       requiredHeight = Math.max(requiredHeight, VIRTUAL_HEIGHT / MAX_ZOOM_FACTOR);
       requiredWidth = Math.min(requiredWidth, VIRTUAL_WIDTH);
       requiredHeight = Math.min(requiredHeight, VIRTUAL_HEIGHT);
-      // Lerp towards target viewport (using outer scope constant)
+      // Set target refs directly (lerping happens in render loop update)
       targetVirtualWidthRef.current = requiredWidth;
       targetVirtualHeightRef.current = requiredHeight;
       targetCenterXRef.current = centerX;
       targetCenterYRef.current = centerY;
-      currentVirtualWidthRef.current += (targetVirtualWidthRef.current - currentVirtualWidthRef.current) * ZOOM_LERP_FACTOR;
-      currentVirtualHeightRef.current += (targetVirtualHeightRef.current - currentVirtualHeightRef.current) * ZOOM_LERP_FACTOR;
-      currentCenterXRef.current += (targetCenterXRef.current - currentCenterXRef.current) * ZOOM_LERP_FACTOR;
-      currentCenterYRef.current += (targetCenterYRef.current - currentCenterYRef.current) * ZOOM_LERP_FACTOR;
-    };
+    }; // End of updateProjectilesAndApplyGravity
 
     const handleCollisions = (event: Matter.IEventCollision<Matter.Engine>) => {
       const currentEngine = engineRef.current;
@@ -329,113 +366,170 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>((props: Game
                       // Call the callback passed via props
                       props.onRoundWin(winningPlayerIndex); 
                   }
+              } else if (otherBody.label === 'boundary') { 
+                  console.log(`[Collision] Proj ${projectile.id} hit boundary`);
+                  // Pass the whole body to the removal hook
+                  handleProjectileRemoved(projectile);
+                  World.remove(currentEngine.world, projectile); 
               }
           }
       });
-    };
+    }; // End of handleCollisions
 
     const renderLoop = () => {
-      const currentEngine = engineRef.current;
-      const currentCanvas = canvasRef.current;
-      if (!currentEngine || !currentCanvas) return;
-      const ctx = currentCanvas.getContext('2d');
+      if (!canvasRef.current || !engineRef.current) return;
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      // Calculate viewport transforms based on current refs
-      const scaleX = currentCanvas.width / currentVirtualWidthRef.current;
-      const scaleY = currentCanvas.height / currentVirtualHeightRef.current;
-      scaleRef.current = Math.min(scaleX, scaleY);
-      const viewWidth = currentVirtualWidthRef.current * scaleRef.current;
-      const viewHeight = currentVirtualHeightRef.current * scaleRef.current;
-      offsetXRef.current = (currentCanvas.width - viewWidth) / 2 - (currentCenterXRef.current - currentVirtualWidthRef.current / 2) * scaleRef.current;
-      offsetYRef.current = (currentCanvas.height - viewHeight) / 2 - (currentCenterYRef.current - currentVirtualHeightRef.current / 2) * scaleRef.current;
+      // --- Lerp Viewport Towards Target ---
+      currentVirtualWidthRef.current += (targetVirtualWidthRef.current - currentVirtualWidthRef.current) * ZOOM_LERP_FACTOR;
+      currentVirtualHeightRef.current += (targetVirtualHeightRef.current - currentVirtualHeightRef.current) * ZOOM_LERP_FACTOR;
+      currentCenterXRef.current += (targetCenterXRef.current - currentCenterXRef.current) * ZOOM_LERP_FACTOR;
+      currentCenterYRef.current += (targetCenterYRef.current - currentCenterYRef.current) * ZOOM_LERP_FACTOR;
 
-      ctx.save();
-      ctx.translate(offsetXRef.current, offsetYRef.current);
-      ctx.scale(scaleRef.current, scaleRef.current);
+      // --- Calculate Final Viewport Scale and Offset for Rendering ---
+      const scaleX = canvas.width / currentVirtualWidthRef.current;
+      const scaleY = canvas.height / currentVirtualHeightRef.current;
+      const finalScale = Math.min(scaleX, scaleY); // Maintain aspect ratio
+      const viewWidth = currentVirtualWidthRef.current * finalScale;
+      const viewHeight = currentVirtualHeightRef.current * finalScale;
+      const finalOffsetX = (canvas.width - viewWidth) / 2 - (currentCenterXRef.current - currentVirtualWidthRef.current / 2) * finalScale;
+      const finalOffsetY = (canvas.height - viewHeight) / 2 - (currentCenterYRef.current - currentVirtualHeightRef.current / 2) * finalScale;
+      
+      // Update refs used by drawing (optional, but keeps them consistent if needed elsewhere)
+      scaleRef.current = finalScale;
+      offsetXRef.current = finalOffsetX;
+      offsetYRef.current = finalOffsetY;
 
-      // Draw background
+      // --- Apply Viewport Transformations ---
+      ctx.save(); // Save the default state
+      ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas *before* transform
+
+      // Apply the dynamic translation and scaling
+      ctx.translate(finalOffsetX, finalOffsetY);
+      ctx.scale(finalScale, finalScale);
+
+      // --- Draw Background (Stretched to Extended Boundaries) ---
+      const bgX = -VIRTUAL_WIDTH / 2;
+      const bgY = -VIRTUAL_HEIGHT / 2;
+      const bgWidth = VIRTUAL_WIDTH * 2;
+      const bgHeight = VIRTUAL_HEIGHT * 2;
       if (backgroundImage) {
-        ctx.drawImage(backgroundImage, 0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
+          ctx.drawImage(backgroundImage, bgX, bgY, bgWidth, bgHeight);
       } else {
-        ctx.fillStyle = '#0A0A14'; ctx.fillRect(0, 0, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
+          ctx.fillStyle = '#000020'; 
+          ctx.fillRect(bgX, bgY, bgWidth, bgHeight);
       }
+      // --- End Background ---
 
-      // Draw Planets (using radius from plugin)
-      ctx.fillStyle = '#8B4513';
-      const planets = Composite.allBodies(currentEngine.world).filter(b => b.label === 'planet');
-      planets.forEach(planet => {
-          const radius = planet.plugin?.klunkstr?.radius || PLANET_MIN_RADIUS;
-          ctx.beginPath(); ctx.arc(planet.position.x, planet.position.y, radius, 0, Math.PI * 2); ctx.fill();
+      // --- Draw Game Field Border (at Extended Physical Boundary Positions) ---
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'; // Semi-transparent white
+      ctx.lineWidth = 4; // Adjust thickness as needed
+      const borderX = -VIRTUAL_WIDTH / 2;
+      const borderY = -VIRTUAL_HEIGHT / 2;
+      const borderWidth = VIRTUAL_WIDTH * 2;
+      const borderHeight = VIRTUAL_HEIGHT * 2;
+      ctx.strokeRect(borderX, borderY, borderWidth, borderHeight);
+      // --- End Game Field Border ---
+
+      // --- Draw Game Objects (Planets, Ships, Projectiles) ---
+      const bodies = Composite.allBodies(engineRef.current.world);
+      bodies.forEach(body => {
+        // Planet drawing logic...
+        if (body.label === 'planet') {
+          const radius = body.plugin?.klunkstr?.radius || PLANET_MIN_RADIUS;
+          ctx.beginPath();
+          ctx.arc(body.position.x, body.position.y, radius, 0, 2 * Math.PI);
+          ctx.fillStyle = body.render.fillStyle || '#888'; 
+          ctx.fill();
+        }
+        // Ship drawing logic...
+        else if (body.label.startsWith('ship-')) {
+          const playerIndex = parseInt(body.label.split('-')[1], 10);
+          const shipRadius = SHIP_RADIUS;
+          ctx.save(); 
+          ctx.translate(body.position.x, body.position.y);
+          ctx.rotate(body.angle);
+          ctx.beginPath();
+          ctx.moveTo(shipRadius, 0); 
+          ctx.lineTo(-shipRadius / 2, -shipRadius / 2);
+          ctx.lineTo(-shipRadius / 2, shipRadius / 2);
+          ctx.closePath();
+          ctx.fillStyle = playerIndex === 0 ? '#00f' : '#f00'; 
+          ctx.fill();
+          ctx.restore(); 
+        }
+        // Projectile drawing logic...
+        else if (body.label.startsWith('projectile-')) {
+          ctx.beginPath();
+          ctx.arc(body.position.x, body.position.y, 5, 0, 2 * Math.PI);
+          const projectileBody = body as ProjectileBody;
+          const ownerIndex = projectileBody.custom?.firedByPlayerIndex ?? 0;
+          ctx.fillStyle = ownerIndex === 0 ? '#add8e6' : '#ffcccb'; 
+          ctx.fill();
+        }
       });
 
-      // Draw Ships
-      const ships = Composite.allBodies(currentEngine.world).filter(b => b.label.startsWith('ship-'));
-      ships.forEach(ship => {
-          const playerIndex = parseInt(ship.label.split('-')[1], 10);
-          ctx.save();
-          ctx.translate(ship.position.x, ship.position.y);
-          ctx.rotate(ship.angle);
-          ctx.fillStyle = playerIndex === 0 ? 'blue' : 'red';
-          ctx.beginPath(); ctx.moveTo(SHIP_RADIUS, 0); ctx.lineTo(-SHIP_RADIUS / 2, -SHIP_RADIUS / 2); ctx.lineTo(-SHIP_RADIUS / 2, SHIP_RADIUS / 2); ctx.closePath(); ctx.fill();
-          ctx.restore();
-      });
-
-      // Draw Projectiles & Active Trails
-      const projectiles = Composite.allBodies(currentEngine.world).filter(b => b.label.startsWith('projectile-'));
-      projectiles.forEach(body => {
-          // Cast to ProjectileBody to access custom props
-          const proj = body as ProjectileBody;
-          // Access custom directly
-          if (!proj.custom) return; // Guard 
-          // Access custom.firedByPlayerIndex directly
-          ctx.fillStyle = proj.custom.firedByPlayerIndex === 0 ? 'lightblue' : 'lightcoral'; 
-          ctx.beginPath(); ctx.arc(proj.position.x, proj.position.y, 5, 0, Math.PI * 2); ctx.fill();
-          
-          // Use .get() for Map access
-          const trail = projectileTrails.get(proj.id);
-          if (trail && trail.length > 1) {
-              ctx.strokeStyle = proj.custom.firedByPlayerIndex === 0 ? 'rgba(173, 216, 230, 0.7)' : 'rgba(240, 128, 128, 0.7)';
-              ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(trail[0].x, trail[0].y);
-              for (let i = 1; i < trail.length; i++) { ctx.lineTo(trail[i].x, trail[i].y); }
-              ctx.stroke();
+      // --- Draw Active Projectile Trails ---
+      Object.values(projectileTrails).forEach(trailData => {
+          if (trailData.trail.length < 2) return;
+          ctx.beginPath();
+          ctx.moveTo(trailData.trail[0].x, trailData.trail[0].y);
+          for (let i = 1; i < trailData.trail.length; i++) {
+              ctx.lineTo(trailData.trail[i].x, trailData.trail[i].y);
           }
+          ctx.strokeStyle = trailData.ownerIndex === 0 ? '#00f' : '#f00'; 
+          ctx.lineWidth = 2;
+          ctx.stroke();
       });
 
-      // Draw Historical Traces (using ref updated by useEffect)
-      ctx.lineWidth = 1; ctx.setLineDash([5, 5]);
-      Object.values(latestTracesRef.current).forEach(traceArray => {
-          traceArray.forEach(trace => {
-              if (trace.length > 1) {
-                  ctx.strokeStyle = 'rgba(0, 255, 0, 0.5)'; ctx.beginPath(); ctx.moveTo(trace[0].x, trace[0].y);
-                  for (let i = 1; i < trace.length; i++) { ctx.lineTo(trace[i].x, trace[i].y); }
-                  ctx.stroke();
-              }
-          });
+      // --- Draw Historical Shot Traces (Using the Ref!) ---
+      Object.values(latestTracesRef.current).forEach(playerTraces => {
+        playerTraces.forEach((trace: Matter.Vector[]) => {
+          if (trace.length < 2) return;
+          ctx.beginPath();
+          ctx.moveTo(trace[0].x, trace[0].y);
+          for (let i = 1; i < trace.length; i++) {
+            ctx.lineTo(trace[i].x, trace[i].y);
+          }
+          ctx.strokeStyle = '#0f0'; 
+          ctx.lineWidth = 1;
+          ctx.setLineDash([5, 5]); 
+          ctx.stroke();
+          ctx.setLineDash([]); 
+        });
       });
-      ctx.setLineDash([]);
-      ctx.restore(); // Restore transforms
-    };
 
-    // --- Start simulation and render loop ---
+      // --- Restore Canvas Transformations ---
+      ctx.restore(); // Restore the default state (removes translate/scale)
+
+    }; // End of renderLoop
+
+    // --- Start simulation and render loop --- 
+    Events.on(engine, 'beforeUpdate', updateProjectilesAndApplyGravity); // Run physics updates before engine step
     Events.on(engine, 'collisionStart', handleCollisions);
     console.log("[GameRenderer Init] Starting Matter.js runner and render loop.");
-    Runner.run(runner, engine);
+    Runner.run(runner, engine); // Use static Runner.run
+    
     let animationFrameId: number;
-    const gameLoop = () => {
-        updateProjectilesAndApplyGravity(); // Update physics state first
-        renderLoop(); // Then render based on new state
-        animationFrameId = requestAnimationFrame(gameLoop);
+    const animationLoop = () => { // Separate render loop driven by requestAnimationFrame
+        renderLoop();
+        animationFrameId = requestAnimationFrame(animationLoop);
     };
-    gameLoop(); // Start the combined loop
+    animationLoop(); // Start the render loop
 
-    // --- Cleanup function for the useEffect ---
+    // --- Cleanup function for the useEffect --- 
     return () => {
         console.log("[GameRenderer Init] Cleanup actions...");
-        cancelAnimationFrame(animationFrameId); // Stop animation loop first
-        if (runnerRef.current) Runner.stop(runnerRef.current);
+        cancelAnimationFrame(animationFrameId); // Stop render loop first
+        if (runnerRef.current) {
+            Runner.stop(runnerRef.current); // Use static Runner.stop
+            // Must pass the runner instance to the static stop method
+        }
         if (engineRef.current) {
             // Unbind events before clearing the engine
+            Events.off(engineRef.current, 'beforeUpdate', updateProjectilesAndApplyGravity);
             Events.off(engineRef.current, 'collisionStart', handleCollisions);
             World.clear(engineRef.current.world, false); // Clear world bodies
             Engine.clear(engineRef.current); // Clear the engine itself
@@ -467,22 +561,19 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>((props: Game
   }, []);
 
   // Style the canvas to fill its container
-  // The container size will be managed by GameScreen.tsx
   const canvasStyle: React.CSSProperties = {
-    display: 'block', // Prevent extra space below canvas
+    display: 'block', 
     width: '100%',
     height: '100%',
-    backgroundColor: '#000020', // Ensure background while image loads
+    backgroundColor: '#000020', 
   };
 
   return (
     <canvas
       ref={canvasRef}
-      // Remove fixed width/height attributes
-      // The canvas element will now inherit size from its CSS-styled container
       style={canvasStyle}
     />
   );
 });
 
-export default GameRenderer; 
+export default GameRenderer;

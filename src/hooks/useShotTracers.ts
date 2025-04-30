@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import Matter from 'matter-js';
 import { AbilityType } from '../components/ui_overlays/ActionButtons'; // Import AbilityType
 
@@ -18,8 +18,10 @@ const MAX_TRAIL_LENGTH = 150; // Max points for active trail
 const MAX_SAVED_TRACES = 10; // Keep history of last 10 shots per player
 
 export function useShotTracers() {
-  const projectileTrailsRef = useRef<Map<number, Matter.Vector[]>>(new Map());
-  // Use useState for historical traces to trigger re-renders in consuming component
+  // --- Use useState for Active Trails to trigger re-renders ---
+  const [projectileTrails, setProjectileTrails] = useState<Map<number, { trail: Matter.Vector[], ownerIndex: 0 | 1 }>>(new Map());
+  
+  // Use useState for historical traces as before
   const [lastShotTraces, setLastShotTraces] = useState<{ [key in 0 | 1]: Matter.Vector[][] }>({ 0: [], 1: [] });
 
   const handleProjectileFired = useCallback((projectile: ProjectileBody) => {
@@ -27,74 +29,86 @@ export function useShotTracers() {
         console.warn("Projectile fired without an initialized trail array.", projectile.id);
         projectile.trail = []; // Initialize if missing
     }
-    // No need to update lastShotTraces state here
-    projectileTrailsRef.current.set(projectile.id, projectile.trail);
+    // --- Update Active Trails State ---
+    setProjectileTrails(prevTrails => {
+        const newTrails = new Map(prevTrails); // Create a new map copy
+        newTrails.set(projectile.id, { 
+            trail: projectile.trail!, // Use non-null assertion as we initialize above
+            ownerIndex: projectile.custom.firedByPlayerIndex 
+        }); 
+        return newTrails; // Return the new map
+    });
     console.log(`[useShotTracers] Started tracking trail for projectile ${projectile.id}`);
   }, []);
 
   const handleProjectileUpdate = useCallback((projectile: ProjectileBody) => {
-    // Ensure the trail is being tracked
-    if (!projectileTrailsRef.current.has(projectile.id) || !projectile.trail) {
-        // This might happen if the update loop runs before the fire handler somehow?
-        // console.warn(`[useShotTracers] Update called for untracked projectile ${projectile.id}`);
-        return;
-    }
+    // Update the trail directly on the projectile body
+    // This doesn't require a state update here, as the trail array itself is mutated
+    // and the render loop reads the latest trail data via projectileTrails state.
+    if (!projectile.trail) return; // Should not happen if fired correctly
 
-    // Add current position
     projectile.trail.push(Matter.Vector.clone(projectile.position));
-
-    // Limit trail length
     if (projectile.trail.length > MAX_TRAIL_LENGTH) {
-      projectile.trail.shift(); // Remove the oldest point
+      projectile.trail.shift(); 
     }
+    
+    // We need to trigger a re-render so the renderLoop reads the updated trail length
+    // We can do this by updating the state map with the *same* object reference,
+    // but because we set the state, React knows to re-render.
+    setProjectileTrails(prevTrails => {
+        // Only update if the trail is actually being tracked
+        if (prevTrails.has(projectile.id)) {
+            // No need to create a new Map, just trigger the update
+            return new Map(prevTrails); 
+        }
+        return prevTrails; // No change if not tracked
+    });
+
   }, []);
 
   const handleProjectileRemoved = useCallback((projectile: ProjectileBody) => {
-    let traceStored = false; // Flag for logging
-    // Ensure the trail exists and has points before storing it
+    let traceStored = false; 
     if (projectile.trail && projectile.trail.length > 1) {
       const playerIndex = projectile.custom.firedByPlayerIndex;
-      const newTrace = [...projectile.trail]; // Create a copy of the trail
+      const newTrace = [...projectile.trail]; 
 
-      // Update state using the setter function
       setLastShotTraces(prevTraces => {
           const playerTraces = prevTraces[playerIndex];
-          const updatedTraces = [...playerTraces, newTrace]; // Add the new trace copy
-          
-          // Limit history
+          const updatedTraces = [...playerTraces, newTrace]; 
           if (updatedTraces.length > MAX_SAVED_TRACES) {
-              updatedTraces.shift(); // Remove the oldest
+              updatedTraces.shift(); 
           }
-          
-          // Return the new state object for this player
-          // Important: Create a new object wrapper to ensure state change detection
           return {
               ...prevTraces,
               [playerIndex]: updatedTraces
           };
       });
-
       console.log(`[useShotTracers] Stored trace for player ${playerIndex}. Trace points: ${newTrace.length}`);
       traceStored = true;
     } else {
         console.log(`[useShotTracers] Projectile ${projectile.id} removed with no significant trail to store.`);
     }
 
-    // Remove the active trail from the map
-    const deleted = projectileTrailsRef.current.delete(projectile.id);
-    console.log(`[useShotTracers] Stopped tracking active trail for projectile ${projectile.id}. Existed in map: ${deleted}. Trace stored: ${traceStored}`);
+    // --- Update Active Trails State (Remove) ---
+    setProjectileTrails(prevTrails => {
+        const newTrails = new Map(prevTrails);
+        const deleted = newTrails.delete(projectile.id);
+        console.log(`[useShotTracers] Stopped tracking active trail for projectile ${projectile.id}. Existed in map: ${deleted}. Trace stored: ${traceStored}`);
+        // Only return new map if deletion actually happened
+        return deleted ? newTrails : prevTrails; 
+    });
   }, []);
 
   const resetTraces = useCallback(() => {
-    projectileTrailsRef.current.clear();
-    // Reset state using the setter
+    // --- Reset Active Trails State ---
+    setProjectileTrails(new Map());
     setLastShotTraces({ 0: [], 1: [] });
     console.log('[useShotTracers] All traces reset.');
   }, []);
 
   return {
-    projectileTrails: projectileTrailsRef.current, // Active trails can still use ref 
-    lastShotTraces, // Return the state variable directly
+    projectileTrails, // Return the state variable directly
+    lastShotTraces, 
     handleProjectileFired,
     handleProjectileUpdate,
     handleProjectileRemoved,

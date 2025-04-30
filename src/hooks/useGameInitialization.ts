@@ -109,16 +109,29 @@ export function useGameInitialization() {
             }
 
             if (validPosition) {
+                // Generate a random LIGHT GRAY color for the planet
+                const grayValue = Math.floor(Math.random() * (255 - 100 + 1)) + 100; // Random int between 100 and 255
+                const grayHex = grayValue.toString(16).padStart(2, '0'); // Convert to 2-digit hex
+                const grayColor = `#${grayHex}${grayHex}${grayHex}`; // Form the #rrggbb color
+
                 const newPlanet = Bodies.circle(planetX!, planetY!, planetRadius!, {
                     isStatic: true,
                     label: 'planet',
                     friction: 0.5,
                     restitution: 0,
-                    // Store radius in custom data
-                    plugin: { // Matter-js expects custom data under `plugin`
+                    plugin: { 
                       klunkstr: {
                           radius: planetRadius
                       }
+                    },
+                    render: {
+                        fillStyle: grayColor,
+                        // You could also add sprite configuration here later if needed
+                        // sprite: {
+                        //    texture: '/images/planet_sprite.png',
+                        //    xScale: 1,
+                        //    yScale: 1
+                        // }
                     }
                 });
                 generatedPlanets.push(newPlanet);
