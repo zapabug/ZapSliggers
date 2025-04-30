@@ -45,6 +45,12 @@ export interface GameRendererRef {
   getShipAngle: (playerIndex: 0 | 1) => number | undefined;
 }
 
+const ZOOM_LERP_FACTOR = 0.08; // How fast to zoom/pan (0-1)
+
+// --- NEW: HP Constants (defined outside component) ---
+const STARTING_HP = 100;
+const PROJECTILE_DAMAGE = 25; // Example damage value
+
 const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>((props: GameRendererProps, ref: ForwardedRef<GameRendererRef>) => {
   // Remove default positions from props destructuring, they will be generated
   // const { player1Pos = { x: 100, y: 500 }, player2Pos = { x: 700, y: 500 } } = props;
@@ -53,6 +59,8 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>((props: Game
   const engineRef = useRef<Matter.Engine | null>(null);
   const runnerRef = useRef<Matter.Runner | null>(null);
   const shipBodiesRef = useRef<(Matter.Body | null)[]>([null, null]); // Store ship bodies
+  // --- NEW: Player HP State ---
+  const [playerHP, setPlayerHP] = useState<[number, number]>([STARTING_HP, STARTING_HP]);
 
   // --- Refs and Constants for Dynamic Viewport ---
   const currentVirtualWidthRef = useRef(VIRTUAL_WIDTH);
@@ -66,7 +74,6 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>((props: Game
   const MAX_ZOOM_FACTOR = 2; // MODIFIED: Max zoom in is now 2x (shows 50% of virtual space)
   const MAX_VIEW_FACTOR = 1.5; // NEW: Allow zooming out to show 1.5x the virtual area
   const VIEWPORT_PADDING = 100; // Pixels to keep around edges
-  const ZOOM_LERP_FACTOR = 0.08; // How fast to zoom/pan (0-1)
 
   // --- NEW: Refs for Dynamic Zoom ---
   const scaleRef = useRef(1);
@@ -338,6 +345,7 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>((props: Game
     const handleCollisions = (event: Matter.IEventCollision<Matter.Engine>) => {
       const currentEngine = engineRef.current;
       if (!currentEngine) return;
+
       event.pairs.forEach(pair => {
           const { bodyA, bodyB } = pair;
           let projectile: ProjectileBody | null = null;
@@ -349,35 +357,65 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>((props: Game
               // Access custom directly
               if (!projectile.custom) {
                   console.warn(`[Collision] Projectile ${projectile.id} involved in collision missing custom data.`);
-                  return; 
-              } 
-              if (otherBody.label === 'planet') {
-                  console.log(`[Collision] Proj ${projectile.id} hit planet ${otherBody.id}`);
-                  // Pass the whole body to the removal hook
+                  // Remove projectile even if data is missing to prevent it flying forever
                   handleProjectileRemoved(projectile);
                   World.remove(currentEngine.world, projectile);
+                  return; 
+              } 
+
+              const firedByPlayerIndex = projectile.custom.firedByPlayerIndex;
+              let projectileRemoved = false; // Track if projectile is handled
+
+              if (otherBody.label === 'planet') {
+                  console.log(`[Collision] Proj ${projectile.id} hit planet ${otherBody.id}`);
+                  handleProjectileRemoved(projectile);
+                  World.remove(currentEngine.world, projectile);
+                  projectileRemoved = true;
               } else if (otherBody.label.startsWith('ship-')) {
-                  const hitPlayerIndex = parseInt(otherBody.label.split('-')[1], 10);
+                  const hitPlayerIndex = parseInt(otherBody.label.split('-')[1], 10) as 0 | 1;
                   // Access custom.firedByPlayerIndex directly
-                  if (hitPlayerIndex !== projectile.custom.firedByPlayerIndex) { 
-                      console.log(`[Collision] Proj ${projectile.id} hit P${hitPlayerIndex}`);
-                      // Pass the whole body to the removal hook
+                  if (hitPlayerIndex !== firedByPlayerIndex) { 
+                      console.log(`[Collision] Proj ${projectile.id} (from P${firedByPlayerIndex}) hit P${hitPlayerIndex}`);
+                      
+                      // --- NEW: Update HP State ---
+                      setPlayerHP(currentHP => {
+                          const newHP: [number, number] = [...currentHP];
+                          newHP[hitPlayerIndex] = Math.max(0, newHP[hitPlayerIndex] - PROJECTILE_DAMAGE);
+                          console.log(`[HP Update] P${hitPlayerIndex} HP: ${currentHP[hitPlayerIndex]} -> ${newHP[hitPlayerIndex]}`);
+                          
+                          // Check for win condition *after* HP update
+                          if (newHP[hitPlayerIndex] <= 0) {
+                              console.log(`[Win Condition] P${hitPlayerIndex} defeated. P${firedByPlayerIndex} wins!`);
+                              // Call the callback passed via props with the *winning* player index
+                              props.onRoundWin(firedByPlayerIndex); 
+                          }
+                          return newHP;
+                      });
+
+                      // Remove projectile after processing hit
                       handleProjectileRemoved(projectile);
                       World.remove(currentEngine.world, projectile);
-                      
-                      // Determine winning player index (the one who fired)
-                      const winningPlayerIndex = projectile.custom.firedByPlayerIndex;
-                      // Call the callback passed via props
-                      props.onRoundWin(winningPlayerIndex); 
+                      projectileRemoved = true;
+                  } else {
+                      // Optional: Handle hitting your own projectile? Ignore for now.
+                      // console.log(`[Collision] Proj ${projectile.id} hit its own ship P${hitPlayerIndex}. Ignoring.`);
                   }
               } else if (otherBody.label === 'boundary') { 
                   console.log(`[Collision] Proj ${projectile.id} hit boundary`);
-                  // Pass the whole body to the removal hook
                   handleProjectileRemoved(projectile);
                   World.remove(currentEngine.world, projectile); 
+                  projectileRemoved = true;
+              }
+
+              // Ensure projectile is removed if it hit something unexpected (shouldn't happen often)
+              if (!projectileRemoved) {
+                  console.warn(`[Collision Warning] Proj ${projectile.id} collided with unhandled body: ${otherBody.label}. Removing projectile.`);
+                  handleProjectileRemoved(projectile);
+                  World.remove(currentEngine.world, projectile);
               }
           }
       });
+
     }; // End of handleCollisions
 
     const renderLoop = () => {
@@ -553,7 +591,8 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>((props: Game
   // - initialPositions: Rerun if the level layout changes.
   // - resetTraces: Stable callback from useShotTracers, needed for cleanup.
   // - props.onRoundWin: Rerun if the win callback function changes.
-  }, [initialPositions, resetTraces, props.onRoundWin]);
+  // ADD playerHP dependency to ensure renderLoop uses latest HP for drawing bars
+  }, [initialPositions, resetTraces, props.onRoundWin, playerHP]);
 
   // ... (Keep Handle Resize useEffect)
   useEffect(() => {

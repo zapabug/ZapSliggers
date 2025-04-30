@@ -64,14 +64,15 @@ src/
     *   Manages game-related UI state (aiming angle, power).
     *   Manages core player state (HP, used abilities, vulnerability).
     *   Connects UI actions (fire, aim, select ability) to component logic and `GameRenderer` methods via refs/callbacks.
-    *   Handles round win callbacks from `GameRenderer`.
+    *   Handles round win callbacks from `GameRenderer` (*Needs full win condition implementation*).
 *   **`GameRenderer.tsx`**:
     *   The core canvas rendering component.
     *   Initializes and runs the Matter.js physics simulation (*Target for `useMatterPhysics`*).
     *   Handles drawing game elements (ships, planets, projectiles, background, traces).
+    *   Includes collision detection logic (*Needs implementation for ship hits*).
     *   Manages dynamic viewport/camera (*Target for `useDynamicViewport`*).
     *   Generates initial level layout (*Target for `useGameInitialization`*).
-    *   Uses `useShotTracers` hook.
+    *   Uses `useShotTracers` hook (*Tracer rendering requires further debugging*).
     *   Exposes control methods (`fireProjectile`, `setShipAim`) via `useImperativeHandle`.
 *   **`ChallengeHandler.tsx`**:
     *   Responsible for sending/receiving Nostr DMs (`kind:4`) for game challenges.
@@ -84,7 +85,7 @@ src/
 ## Custom Hooks
 
 *   **`useNDKInit`**: (Existing) Manages NDK connection state.
-*   **`useShotTracers`**: (Existing) Handles logic and state for projectile trails.
+*   **`useShotTracers`**: (Existing) Handles logic and state for projectile trails (*Requires further debugging for rendering consistency*).
 *   **`useMatterPhysics`**: (Planned) Abstract Matter.js setup and core physics loop.
 *   **`useDynamicViewport`**: (Planned) Abstract dynamic camera/zoom logic.
 *   **`useGameInitialization`**: (Planned) Abstract random level generation logic.
