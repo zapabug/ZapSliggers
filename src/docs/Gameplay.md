@@ -126,7 +126,27 @@ This document outlines the core gameplay loop and dynamics for Klunkstr, focusin
 This document outlines the core gameplay loop and dynamics for **Klunkstr**.
 **Note:** The initial development phase focuses on first replicating the simpler core mechanics of the *original* Slingshot game (attraction gravity based on planet size, projectiles destroyed on planet impact, no aiming preview, short projectile lifespan) using the modern tech stack. The specific Klunkstr rules detailed below (HP system, abilities, Vulnerability, Sudden Death, etc.) will be layered on top of this foundation.
 
-**Current Status (Implementation):** Basic UI structure exists (`GameScreen`, `PlayerHUD`, `AimingInterface`, `ActionButtons`). `matter-js` engine initialized in `GameRenderer` with random positioning. Ship rotation/aiming/firing functional. Custom planetary gravity, basic projectile-planet collisions, projectile timeout, dynamic camera zoom, NIP-07 login, and `LobbyScreen`/`ChallengeHandler` are functional. Aiming state synchronization across turns implemented. **HP system implemented as a resource for abilities (`GameScreen.tsx`). Ability selection logic, HP cost (25 HP), usage limits (max 3 total, 1 per type), and Vulnerability state tracking implemented (`GameScreen.tsx`, `ActionButtons.tsx`).** Basic round win detection for standard projectile hits implemented (`GameRenderer.tsx` -> `GameScreen.tsx`). Active/historical shot traces functional (`useShotTracers`). **Ability effects in physics, full win conditions for abilities, turns, full asset rendering, and practice mode logic are not yet implemented.**
+**Current Status (Implementation):**
+*   Basic UI structure exists (`LobbyScreen`, `GameScreen`, `PlayerHUD`, `AimingInterface`, `ActionButtons`).
+*   `LobbyScreen` now hosts `LobbyPlayground`, providing an interactive single-player simulation based on the current simplified gameplay.
+*   `matter-js` engine initialized in `GameRenderer` and `useMatterPhysics` with random positioning.
+*   Ship rotation/aiming/firing functional in both `LobbyPlayground` and `GameScreen`.
+*   Custom planetary gravity, basic projectile-planet/boundary collisions, projectile timeout, dynamic camera zoom are functional (`useMatterPhysics`).
+*   NIP-07 login integrated.
+*   `ChallengeHandler` handles basic DM challenges.
+*   Active/historical shot traces functional (`useShotTracers`).
+*   **Klunkstr Rules Progress:**
+    *   HP system implemented as a resource for abilities (`GameScreen.tsx`).
+    *   Ability selection logic, HP cost (25 HP), usage limits (max 3 total, 1 per type), and Vulnerability state tracking implemented (`GameScreen.tsx`, `ActionButtons.tsx`).
+    *   Round win condition logic refactored in `GameScreen.tsx` to handle projectile types, vulnerability, and self-hits correctly based on rules. `onPlayerHit` callback signature updated through `GameRenderer` and `useMatterPhysics`.
+*   **Remaining Implementation:**
+    *   Physics effects for specific abilities (Explosive proximity/AoE, Triple Shot spread, Lead gravity) in `useMatterPhysics`.
+    *   Full match structure (Best of 3 rounds, turn limits).
+    *   Sudden Death phase mechanics.
+    *   Full asset rendering (using sprites/better visuals instead of basic shapes).
+    *   Practice mode button functionality.
+    *   Nostr integration for game state synchronization (`kind:30079` moves) and the public lobby/payment flow (Section 9).
+    *   NUT-18 wagering integration.
 
 **1. Core Concept (Klunkstr Target):**
    - A 2-player, turn-based space artillery game with **2D physics-based projectiles** affected by planet gravity.

@@ -13,9 +13,10 @@ src/
 │   ├── ChallengeHandler.tsx # Handles Nostr DM challenge logic (Receiving, Accepting - WIP)
 │   ├── game/
 │   │   ├── GameRenderer.tsx # Renders the game state onto HTML Canvas (Physics, Drawing - Large file, target for refactoring)
-│   │   └── GameScreen.tsx   # Main game view container, integrates Renderer and UI Overlays
+│   │   └── GameScreen.tsx   # Main PvP game view container, integrates Renderer and UI Overlays (for actual match)
 │   ├── lobby/
-│   │   └── LobbyScreen.tsx  # Screen shown after login, before game start (Challenge list, Practice entry)
+│   │   ├── LobbyScreen.tsx  # Screen shown after login, hosts LobbyPlayground, Challenge list, etc.
+│   │   └── LobbyPlayground.tsx # Renders an interactive single-player game simulation for the lobby/waiting room
 │   └── ui_overlays/
 │       ├── ActionButtons.tsx # Fire button, Ability buttons
 │       ├── AimingInterface.tsx # Joystick, Power slider
@@ -56,15 +57,17 @@ src/
     *   Renders the root `App` component.
 *   **`LobbyScreen.tsx`**:
     *   Displayed after successful login.
-    *   Will contain the `ChallengeHandler` component.
-    *   Entry point for initiating challenges or practice mode.
+    *   Hosts the `LobbyPlayground` component for an interactive waiting experience.
+    *   Contains the `ChallengeHandler` component for managing Nostr challenges.
+    *   Entry point for initiating challenges or practice mode (practice TBD).
+*   **`LobbyPlayground.tsx`**:
+    *   Provides an interactive, single-player version of the core game mechanics (aiming, firing, basic physics).
+    *   Displayed within the `LobbyScreen` as a dynamic waiting room element.
+    *   Uses `GameRenderer` and associated hooks, simplified for single-player interaction.
 *   **`GameScreen.tsx`**:
-    *   Container for the active game session.
-    *   Integrates `GameRenderer` (canvas) and UI overlay components (`PlayerHUD`, `AimingInterface`, `ActionButtons`).
-    *   Manages game-related UI state (aiming angle, power).
-    *   Manages core player state (HP, used abilities, vulnerability).
-    *   Connects UI actions (fire, aim, select ability) to component logic and `GameRenderer` methods via refs/callbacks.
-    *   Handles round win callbacks from `GameRenderer` (*Needs full win condition implementation*).
+    *   Container for the active **PvP game match** (distinct from the lobby playground).
+    *   Integrates `GameRenderer` and UI overlay components (`PlayerHUD`, `AimingInterface`, `ActionButtons`).
+    *   Manages full game state for two players, including HP (as resource), abilities, vulnerability, turns.
 *   **`GameRenderer.tsx`**:
     *   The core canvas rendering component.
     *   Initializes and runs the Matter.js physics simulation (*Target for `useMatterPhysics`*).
@@ -75,6 +78,7 @@ src/
     *   Uses `useShotTracers` hook (*Tracer rendering requires further debugging*).
     *   Exposes control methods (`fireProjectile`, `setShipAim`) via `useImperativeHandle`.
 *   **`ChallengeHandler.tsx`**:
+    *   Located directly in `src/components/`.
     *   Responsible for sending/receiving Nostr DMs (`kind:4`) for game challenges.
     *   Subscribes to relevant Nostr events (*Potential target for `useChallengeHandler` hook*).
 *   **UI Overlay Components (`PlayerHUD`, `AimingInterface`, etc.)**:

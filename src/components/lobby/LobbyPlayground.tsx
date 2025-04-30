@@ -113,7 +113,7 @@ const LobbyPlayground = () => {
           currentAngle={currentAim.angle}
         />
       </div>
-      <div className="absolute bottom-4 right-4 z-10">
+      <div className="absolute bottom-1 right-1 z-10">
         <ActionButtons
           onFire={handleFire}
           // Dummy props for abilities - not used in simple lobby
