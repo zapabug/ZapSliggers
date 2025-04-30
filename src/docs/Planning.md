@@ -161,3 +161,19 @@
     6. Resolved stale state issue by using a ref (`latestTracesRef`) updated via `useEffect` to provide `renderLoop` access to the latest historical trace data.
 **Decisions:** Active trails are solid lines (for now). Historical traces show the last 10 shots per player as dashed lines. Logic encapsulated in `useShotTracers`. `GameRenderer` uses ref-based access for historical trace state in `renderLoop`.
 **Steps Explained:** Created hook, modified `GameRenderer` to use hook, implemented drawing logic for both trail types, diagnosed and fixed the state closure issue with the ref pattern.
+
+## Interaction 22: HP Resource & Ability Selection Logic (Placeholder Date)
+**User Input:** Implement HP system based on Klunkstr rules (HP as resource), ability selection UI/logic, and basic round win condition.
+**VibeStorm Response:**
+    1. Confirmed Klunkstr rules: HP is only for abilities, standard hits win round.
+    2. Refactored state in `GameScreen.tsx` to manage HP (starting 100), used abilities (Set), and vulnerability per player.
+    3. Implemented `handleSelectAbility` in `GameScreen.tsx` to check cost (25 HP), max uses (3 total, 1 per type), update player state, set vulnerability (>=2 uses), and manage `selectedAbility` state.
+    4. Updated `ActionButtons.tsx` to receive new props (`selectedAbility`, `usedAbilities`, `currentHp`, `abilityCost`) and provide visual feedback (highlight selection, disable based on cost/limits).
+    5. Added `onRoundWin` callback prop to `GameRenderer.tsx`.
+    6. Modified `handleCollisions` in `GameRenderer.tsx` to call `onRoundWin` when a standard projectile hits an opponent ship, passing the firing player's index.
+    7. Added `handleRoundWin` callback handler in `GameScreen.tsx` (currently logs winner).
+    8. Updated `fireProjectile` (in `GameRenderer`) and its interface/call in `GameScreen` to accept `abilityType: AbilityType | null`.
+    9. Stored the `abilityType` on `projectile.custom`.
+    10. Updated `ProjectileBody` interface in `useShotTracers.ts` to include `abilityType`.
+**Decisions:** HP implemented solely as a resource for abilities (cost 25). Ability selection logic and state management handled in `GameScreen`. UI feedback provided by `ActionButtons`. Standard hits trigger round win via callback. Ability type is now passed down to physics engine and stored on projectile. Vulnerability state tracked. 
+**Steps Explained:** Detailed the state refactoring in `GameScreen`, the logic implementation in `handleSelectAbility`, UI updates in `ActionButtons`, callback implementation (`onRoundWin`) between `GameRenderer` and `GameScreen`, and signature/type updates for passing `abilityType`.

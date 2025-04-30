@@ -1,14 +1,14 @@
-import { useRef, useCallback, useState } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import Matter from 'matter-js';
+import { AbilityType } from '../components/ui_overlays/ActionButtons'; // Import AbilityType
 
-// Assuming ProjectileBody interface is defined elsewhere and imported,
-// or defined here if not shared.
-// For now, let's define it here for clarity, ensure it matches GameRenderer.
-interface ProjectileBody extends Matter.Body {
+// Make sure ProjectileBody is exported
+export interface ProjectileBody extends Matter.Body {
   custom: {
     createdAt: number;
     firedByPlayerIndex: 0 | 1;
     ownerShipLabel: string;
+    abilityType: AbilityType | null; // Add optional ability type
   };
   // Trail storage must be on the body for the update loop to easily access it
   trail?: Matter.Vector[];

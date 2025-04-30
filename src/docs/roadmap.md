@@ -27,12 +27,17 @@ Okay, here is a concise roadmap focused on replicating the original Slingshot ga
 
 *   **Goal:** Layer the specific Klunkstr gameplay mechanics onto the replica foundation.
 *   **Key Steps:**
-    1.  **HP System:** Implement HP as a resource for abilities.
+    1.  **HP System:** Implement HP as a resource for abilities. *(Partially Done: State managed in `GameScreen`, used as resource)*
     2.  **Abilities:** Implement Triple Shot, Explosive Arrow, Lead Tipped (cost, effects, usage limits).
-    3.  **Vulnerability:** Implement the mechanic based on ability usage.
+        - Implement ability selection UI/logic. *(Done: `ActionButtons`/`GameScreen` handle selection, cost, limits)*
+        - Implement ability effects in physics engine. *(Todo)*
+    3.  **Vulnerability:** Implement the mechanic based on ability usage. *(Partially Done: State tracking in `GameScreen`)*
     4.  **Game Flow:** Implement turn structure (timer, state), round structure (Best of 3, 5 turns), Sudden Death, Klunkstr win conditions.
-    5.  **Advanced Levels:** Add Gas Giants, moving planets, level visualization.
-    6.  **PWA Setup:** Configure `vite-plugin-pwa` and add icons. - *Configured (Needs Icons)*
+        - Implement basic round win detection for standard hits. *(Done: `onRoundWin` callback)*
+        - Implement full round/match win conditions (incl. ability hits, turn limits, Sudden Death). *(Todo)*
+        - Implement turn timer logic. *(Todo)*
+    5.  **Advanced Levels:** Add Gas Giants, moving planets, level visualization. *(Todo)*
+    6.  **PWA Setup:** Configure `vite-plugin-pwa` and add icons. *(Configured - Needs Icons)*
 
 **Phase 2: Nostr Multiplayer & Wagering Integration**
 

@@ -126,7 +126,7 @@ This document outlines the core gameplay loop and dynamics for Klunkstr, focusin
 This document outlines the core gameplay loop and dynamics for **Klunkstr**.
 **Note:** The initial development phase focuses on first replicating the simpler core mechanics of the *original* Slingshot game (attraction gravity based on planet size, projectiles destroyed on planet impact, no aiming preview, short projectile lifespan) using the modern tech stack. The specific Klunkstr rules detailed below (HP system, abilities, Vulnerability, Sudden Death, etc.) will be layered on top of this foundation.
 
-**Current Status (Implementation):** Basic UI structure exists (`GameScreen`, `PlayerHUD`, `AimingInterface`, `ActionButtons`). `matter-js` engine initialized in `GameRenderer` with random positioning. **Ship rotation via keyboard (Arrow Up/Down) and joystick (touch/mouse drag) controls aiming angle.** **Power adjustment via keyboard (Arrow Left/Right) and slider.** **Projectile firing (Spacebar/Button) implemented, launching straight from the ship's current orientation.** Custom planetary gravity, basic collisions, projectile timeout, dynamic camera zoom, NIP-07 login, and `LobbyScreen`/`ChallengeHandler` are functional. **Aiming state synchronization across turns implemented.** Klunkstr rules (HP, abilities, etc.), turns, full asset rendering, and practice mode logic are **not yet implemented.**
+**Current Status (Implementation):** Basic UI structure exists (`GameScreen`, `PlayerHUD`, `AimingInterface`, `ActionButtons`). `matter-js` engine initialized in `GameRenderer` with random positioning. Ship rotation/aiming/firing functional. Custom planetary gravity, basic projectile-planet collisions, projectile timeout, dynamic camera zoom, NIP-07 login, and `LobbyScreen`/`ChallengeHandler` are functional. Aiming state synchronization across turns implemented. **HP system implemented as a resource for abilities (`GameScreen.tsx`). Ability selection logic, HP cost (25 HP), usage limits (max 3 total, 1 per type), and Vulnerability state tracking implemented (`GameScreen.tsx`, `ActionButtons.tsx`).** Basic round win detection for standard projectile hits implemented (`GameRenderer.tsx` -> `GameScreen.tsx`). Active/historical shot traces functional (`useShotTracers`). **Ability effects in physics, full win conditions for abilities, turns, full asset rendering, and practice mode logic are not yet implemented.**
 
 **1. Core Concept (Klunkstr Target):**
    - A 2-player, turn-based space artillery game with **2D physics-based projectiles** affected by planet gravity.
@@ -160,19 +160,19 @@ This document outlines the core gameplay loop and dynamics for **Klunkstr**.
        - **Active Trail:** A solid colored line follows the projectile as it flies. *(Goal: Change to particle/smoke effect)*.
      - **Simulation:** The physics engine runs, calculating projectile paths under the influence of planetary gravity (acting towards planet centers, strength based on size).
      - **Collision Detection:**
-       - **Player Hit (Standard Projectile / Lead Tipped):** Direct hit on opponent's ship **instantly wins the round** (Currently removes projectile, win logic TBD).
+       - **Player Hit (Standard Projectile / Lead Tipped):** Direct hit on opponent's ship **instantly wins the round**. *(Round win detection via `onRoundWin` callback implemented)*.
        - **Player Hit (Triple Shot / Explosive Arrow - Direct/AoE):**
-         - If the opponent is **Vulnerable** (see Section 5): Direct hit/AoE hit **instantly wins the round**.
-         - If the opponent is **NOT Vulnerable**: Hit deals "half damage" (effectively no immediate game state change).
-       - **Planet Hit (Standard Planet / Gas Giant Core):** Projectile is destroyed and removed.
-       - **Planet Hit (Gas Giant Outer Layers):** Projectile passes through, path still affected by gravity.
-       - **Off-Screen / Timeout:** Projectile is removed after 45 seconds or if it leaves a very large boundary (implicitly handled by zoom limits).
+         - If the opponent is **Vulnerable** (see Section 5): Direct hit/AoE hit **instantly wins the round**. *(Win logic TBD)*.
+         - If the opponent is **NOT Vulnerable**: Hit deals "half damage" (effectively no immediate game state change). *(Collision logic TBD)*.
+       - **Planet Hit (Standard Planet / Gas Giant Core):** Projectile is destroyed and removed. *(Implemented)*.
+       - **Planet Hit (Gas Giant Outer Layers):** Projectile passes through, path still affected by gravity. *(Logic TBD)*.
+       - **Off-Screen / Timeout:** Projectile is removed after 45 seconds or if it leaves a very large boundary. *(Implemented)*.
        - **Projectile-Projectile:** Default pass-through.
      - **Path Recording:** The sequence of positions for each projectile during this phase is recorded *(handled by `useShotTracers` hook)*.
      - **World Update:** Any moving planets update their positions.
    - **C. Post-Resolution / Next Turn Prep:**
      - **Last Shot Trace:** The recorded paths from the **last 10 completed shots for each player** are rendered as static, dashed visual traces on the **2D canvas**. These traces persist across turns, serving as an aiming guide. *(Implementation uses `useShotTracers` hook and state management)*.
-     - **Round/Game State Check:** Determine if the round or match has ended based on win conditions. If Turn 5 ends with no winner, proceed to Sudden Death (Section 3.D). Otherwise, start the next Aiming Phase.
+     - **Round/Game State Check:** Determine if the round or match has ended based on win conditions (standard hit detected). If Turn 5 ends with no winner, proceed to Sudden Death. Otherwise, start the next Aiming Phase. *(Basic win detection implemented, full state check TBD)*.
    - **D. Sudden Death Phase (End of Round 5 if no winner):**
      - **Activation:** Occurs automatically after the 5th turn's resolution if no player won.
      - **Projectile Behavior (5th Turn Projectiles Only):**
@@ -191,19 +191,19 @@ This document outlines the core gameplay loop and dynamics for **Klunkstr**.
    - **Sudden Death:** Creates a chaotic end-phase for drawn rounds.
 
 **5. Power-ups & Special Mechanics:**
-   - **Health Points (HP):** Players start each **match** with 100 HP. This is used *only* as a resource to activate abilities. It does not track damage taken during a round.
-   - **Ability Activation Cost:** Activating *any* ability costs **25 HP**.
-   - **Usage Limits:** Max **3** ability uses total per player per **match**. Each specific ability type usable only **once** per player per match.
-   - **Vulnerability:** A player becomes **Vulnerable** if they have activated **two or more** abilities during the match (i.e., spent >= 50 HP). Vulnerable players can be defeated in one hit by Triple Shot or Explosive Arrow impacts.
+   - **Health Points (HP):** Players start each **match** with 100 HP. This is used *only* as a resource to activate abilities. It does not track damage taken during a round. *(HP state managed in `GameScreen.tsx`)*.
+   - **Ability Activation Cost:** Activating *any* ability costs **25 HP**. *(Implemented in `GameScreen.tsx`)*.
+   - **Usage Limits:** Max **3** ability uses total per player per **match**. Each specific ability type usable only **once** per player per match. *(Limits checked in `GameScreen.tsx`, reflected in `ActionButtons.tsx`)*.
+   - **Vulnerability:** A player becomes **Vulnerable** if they have activated **two or more** abilities during the match (i.e., spent >= 50 HP). Vulnerable players can be defeated in one hit by Triple Shot or Explosive Arrow impacts. *(Vulnerability state tracked in `GameScreen.tsx`)*.
    - **Projectile Collision Default:** Projectiles pass through each other.
-   - **Available Abilities (Cost 25 HP Each):**
-     - **1. Triple Shot Arrow:** Fires three projectiles in a narrow spread. Each deals "half damage" (instantly wins round *only* if opponent is Vulnerable).
-     - **2. Explosive Arrow:** Creates AoE explosion on impact. Direct hit and AoE deal "half damage" (instantly wins round *only* if opponent is Vulnerable).
-     - **3. Lead Tipped Arrow:** Projectile significantly more affected by gravity. Standard damage (instantly wins round).
+   - **Available Abilities (Cost 25 HP Each):** *(Selection logic in `GameScreen.tsx`, UI in `ActionButtons.tsx`)*
+     - **1. Triple Shot Arrow:** Fires three projectiles in a narrow spread. Each deals "half damage" (instantly wins round *only* if opponent is Vulnerable). *(Physics effect TBD)*.
+     - **2. Explosive Arrow:** Creates AoE explosion on impact. Direct hit and AoE deal "half damage" (instantly wins round *only* if opponent is Vulnerable). *(Physics effect TBD)*.
+     - **3. Lead Tipped Arrow:** Projectile significantly more affected by gravity. Standard damage (instantly wins round). *(Physics effect TBD)*.
 
 **6. Specific Interactions:**
-   - **Standard Arrow / Lead Tipped vs. Player:** Instantly wins round.
-   - **Triple/Explosive vs. Player:** Instantly wins round *only* if target is Vulnerable.
+   - **Standard Arrow / Lead Tipped vs. Player:** Instantly wins round. *(Basic detection implemented)*.
+   - **Triple/Explosive vs. Player:** Instantly wins round *only* if target is Vulnerable. *(Logic TBD)*.
 
 **7. Visual Presentation & Camera:**
    - **Rendering:** 2D physics/logic, rendered directly onto an **HTML Canvas using 2D drawing APIs**. We will use sprites or simple shapes for planets, launchers, and projectiles. The virtual coordinate system uses a wider aspect ratio (2400x1200).
