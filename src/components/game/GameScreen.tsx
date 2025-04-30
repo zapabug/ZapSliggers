@@ -4,6 +4,8 @@ import GameRenderer, { GameRendererRef } from './GameRenderer';
 import AimingInterface from '../ui_overlays/AimingInterface';
 import { PlayerHUD } from '../ui_overlays/PlayerHUD';
 import ActionButtons, { AbilityType } from '../ui_overlays/ActionButtons'; // Import AbilityType
+// Import level generation function
+import { generateInitialPositions, InitialGamePositions } from '../../hooks/useGameInitialization';
 
 // Define props expected by GameScreen
 interface GameScreenProps {
@@ -29,6 +31,12 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
   // Ref for accessing GameRenderer methods
   const gameRendererRef = useRef<GameRendererRef>(null);
 
+  // --- Level Data State ---
+  // Remove setLevelData as it's unused. Reset happens via gameRendererRef.current.resetGame()
+  const [levelData] = useState<InitialGamePositions>(() => 
+    generateInitialPositions(2400, 1200) 
+  );
+
   // Component State for aiming values (angle in degrees, power unitless)
   // Angle: Assuming 0 is right, positive clockwise (adjust if UI gives different)
   // Power: Assuming 0-100 from UI, needs scaling before passing to fireProjectile
@@ -37,10 +45,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
   // Other Component State
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [turnTimer, setTurnTimer] = useState(60); // Example timer - Drive from game state later
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [abilityUsesLeft, setAbilityUsesLeft] = useState(3); // Example - Drive from game state later
-
-  // --- Game State Management --- 
+  // Removed abilityUsesLeft state as it's derived
   const [currentPlayerIndex, setCurrentPlayerIndex] = useState<0 | 1>(0);
   const [playerStates, setPlayerStates] = useState<[PlayerState, PlayerState]>([
     { hp: MAX_HP, usedAbilities: new Set(), isVulnerable: false }, // Player 0
@@ -58,8 +63,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
   const localPlayerCurrentHp = localPlayerState.hp;
   const opponentCurrentHp = opponentPlayerState.hp;
   
-  // Calculate ability uses left for the *current* player for ActionButtons prop
-  const currentAbilityUsesLeft = MAX_ABILITY_USES - playerStates[currentPlayerIndex].usedAbilities.size;
+  // Deriving this here instead of state
+  // const currentAbilityUsesLeft = MAX_ABILITY_USES - playerStates[currentPlayerIndex].usedAbilities.size;
 
   // --- Effect to Sync Aim State on Turn Change ---
   useEffect(() => {
@@ -86,6 +91,30 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
     setSelectedAbility(null); 
 
   }, [currentPlayerIndex]);
+
+  // --- NEW: Handle Player Hit Callback ---
+  const handlePlayerHit = useCallback((hitPlayerIndex: 0 | 1, damage: number) => {
+      console.log(`[GameScreen] handlePlayerHit called for Player ${hitPlayerIndex}, Damage: ${damage}`);
+      setPlayerStates(currentStates => {
+          const newStates: [PlayerState, PlayerState] = [
+              { ...currentStates[0], usedAbilities: new Set(currentStates[0].usedAbilities) }, 
+              { ...currentStates[1], usedAbilities: new Set(currentStates[1].usedAbilities) }
+          ];
+          const newState = newStates[hitPlayerIndex];
+          newState.hp = Math.max(0, newState.hp - damage);
+          console.log(`[GameScreen HP Update] P${hitPlayerIndex} HP: ${currentStates[hitPlayerIndex].hp} -> ${newState.hp}`);
+
+          // Check for win condition after HP update
+          if (newState.hp <= 0) {
+              const winnerIndex = hitPlayerIndex === 0 ? 1 : 0; // The other player wins
+              console.log(`!!! Player ${hitPlayerIndex} defeated! Player ${winnerIndex} wins the round! !!!`);
+              // Trigger round win logic here (e.g., show win screen, update score)
+              handleRoundWin(winnerIndex);
+          }
+
+          return newStates;
+      });
+  }, []); // No dependencies needed if it only calls setters
 
   // TODO: Replace mock state with actual game state management (e.g., Zustand, props)
   // TODO: Fetch profile data for HUDs if needed beyond pubkey (useProfile hook?)
@@ -244,19 +273,13 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
   }, [handleFire, currentAim.angle, currentAim.power, currentPlayerIndex]); // Update dependencies
   // --- End Keyboard Controls ---
 
-  // Callback function to handle round win event from GameRenderer
+  // Callback function to handle round win detection (now called by handlePlayerHit)
   const handleRoundWin = useCallback((winningPlayerIndex: 0 | 1) => {
     console.log(`!!! Round Win detected for Player ${winningPlayerIndex} !!!`);
-    // TODO: Implement actual round end logic:
-    // - Update overall game score (e.g., player 1 wins: 1, player 2 wins: 0)
-    // - Display round winner message overlay
-    // - Potentially pause physics/input
-    // - Set up for next round (reset positions, maybe timer) or end match
-    setCurrentPlayerIndex(winningPlayerIndex); // Optional: Set current player to winner for next turn (if needed)
-  }, []); // No dependencies needed for now, add game state setters later
-
-  // Remove unused PhysicsUpdater component
-  // const PhysicsUpdater = () => { ... };
+    // TODO: Implement actual round end logic (show modal, update scores etc)
+    // Maybe reset for a new round?
+    // handleNewRound(); // Example call
+  }, []);
 
   return (
     // Main container: Remove flex centering
@@ -285,14 +308,15 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
 
       {/* Game Canvas Container - Set to fill parent */}
       <div className="relative z-0 w-full h-full">
-        <GameRenderer
-          ref={gameRendererRef} // Pass the ref here
-          // TODO: Pass actual player positions if they change
-          player1Pos={{ x: 100, y: 500 }} // Example static positions
-          player2Pos={{ x: 700, y: 500 }}
-          // TODO: Pass necessary game state for rendering (planets, traces)
-          onRoundWin={handleRoundWin} // Pass the callback here
-        />
+        {/* Conditionally render GameRenderer only if levelData is available */} 
+        {levelData && (
+          <GameRenderer
+            ref={gameRendererRef} // Pass the ref here
+            levelData={levelData} // Pass level data state
+            onPlayerHit={handlePlayerHit} // Pass hit handler
+            onLevelReset={() => console.log("[GameScreen] Received level reset confirmation.")}
+          />
+        )}
       </div>
 
       {/* Bottom Control Area - Positioned absolutely near corners */}
@@ -304,17 +328,18 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
         />
       </div>
 
-      <div className="absolute bottom-4 right-4 z-10 pointer-events-auto flex flex-col items-end max-w-xs">
-          <ActionButtons 
-            onFire={handleFire}
-            onSelectAbility={handleSelectAbility} // Use the new handler
-            // Pass ability data for the CURRENT player
-            selectedAbility={currentPlayerIndex === localPlayerIndex ? selectedAbility : null} // Only show selection for current player
-            usedAbilities={playerStates[currentPlayerIndex].usedAbilities}
-            abilityUsesLeft={currentAbilityUsesLeft} // Pass calculated uses left
-            currentHp={playerStates[currentPlayerIndex].hp} // Pass current HP for potential display/checks
-            abilityCost={ABILITY_COST}
-          />
+      <div className="absolute bottom-16 right-8 z-10">
+        <ActionButtons 
+          onFire={handleFire}
+          onAbilitySelect={handleSelectAbility} // CORRECTED Prop name
+          selectedAbility={selectedAbility}
+          // Pass state directly from playerStates for the current player
+          usedAbilities={playerStates[currentPlayerIndex].usedAbilities}
+          currentHp={playerStates[currentPlayerIndex].hp}
+          abilityCost={ABILITY_COST}
+          maxAbilityUses={MAX_ABILITY_USES} 
+          disabled={currentPlayerIndex !== localPlayerIndex} 
+        />
       </div>
 
     </div>
