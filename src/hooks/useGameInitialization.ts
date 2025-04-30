@@ -6,16 +6,16 @@ const { Bodies } = Matter;
 
 // --- Constants (Consider moving to a shared constants file later) ---
 const VIRTUAL_WIDTH = 2400;
-const VIRTUAL_HEIGHT = 1200;
-const MIN_SHIP_SEPARATION_FACTOR = 0.4; // Minimum 40% of width apart
-const MIN_PLANET_SHIP_DISTANCE = 150; // Min distance between planet center and ship center
+const VIRTUAL_HEIGHT = 1400;
+const MIN_SHIP_SEPARATION_FACTOR = 0.3; // Minimum 30% of width apart
+const MIN_PLANET_SHIP_DISTANCE = 250; // Min distance between planet center and ship center
 const MIN_PLANET_PLANET_DISTANCE = 50; // Min distance between planet edges
-const SHIP_START_AREA_WIDTH_FACTOR = 0.25; // Ships spawn in the outer 25% on each side
+const SHIP_START_AREA_WIDTH_FACTOR = 0.20; // Ships spawn in the outer 20% on each side
 const NUM_PLANETS = 3; // Number of planets to generate
 const SHIP_RADIUS = 25; // Visual/Physics radius of ships
-const PLANET_MIN_RADIUS = 30;
+const PLANET_MIN_RADIUS = 60;
 const PLANET_MAX_RADIUS = 180;
-const EDGE_PADDING = 50; // Keep entities away from screen edges
+const EDGE_PADDING = 20; // Keep entities away from screen edges
 const PLANET_SPAWN_AREA_FACTOR = 0.8; // Planets spawn in the central 80%
 
 // --- Helper Function: Calculate distance ---
@@ -109,8 +109,8 @@ export function useGameInitialization() {
             }
 
             if (validPosition) {
-                // Generate a random LIGHT GRAY color for the planet
-                const grayValue = Math.floor(Math.random() * (255 - 100 + 1)) + 100; // Random int between 100 and 255
+                // Generate a random DARKER GRAY color for the planet
+                const grayValue = Math.floor(Math.random() * (160 - 80 + 1)) + 80; // Random int between 80 (#50) and 160 (#A0)
                 const grayHex = grayValue.toString(16).padStart(2, '0'); // Convert to 2-digit hex
                 const grayColor = `#${grayHex}${grayHex}${grayHex}`; // Form the #rrggbb color
 

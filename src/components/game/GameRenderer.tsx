@@ -10,7 +10,7 @@ const { Engine, Runner, Bodies, World, Composite, Vector, Body, Events } = Matte
 // --- Constants (Keep only those used directly in this file) ---
 const VIRTUAL_WIDTH = 2400;
 const VIRTUAL_HEIGHT = 1200;
-const SHIP_RADIUS = 25;
+const SHIP_RADIUS = 63;
 const PLANET_MIN_RADIUS = 30; // Used as fallback
 const GRAVITY_CONSTANT = 0.5;
 const GRAVITY_AOE_BONUS_FACTOR = 0.1;
@@ -64,6 +64,7 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>((props: Game
   const targetCenterXRef = useRef(VIRTUAL_WIDTH / 2);
   const targetCenterYRef = useRef(VIRTUAL_HEIGHT / 2);
   const MAX_ZOOM_FACTOR = 2; // MODIFIED: Max zoom in is now 2x (shows 50% of virtual space)
+  const MAX_VIEW_FACTOR = 1.5; // NEW: Allow zooming out to show 1.5x the virtual area
   const VIEWPORT_PADDING = 100; // Pixels to keep around edges
   const ZOOM_LERP_FACTOR = 0.08; // How fast to zoom/pan (0-1)
 
@@ -201,18 +202,18 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>((props: Game
     shipBodiesRef.current = [ship1Body, ship2Body];
 
     // --- Create Static Boundary Walls (Extended) ---
-    const wallThickness = 50; // Thickness of the boundary walls 
+    const wallThickness = 50; // Thickness of the boundary walls
     const extendedWidth = VIRTUAL_WIDTH * 2; // Total width of the boundary box
-    const extendedHeight = VIRTUAL_HEIGHT * 2; // Total height of the boundary box
+    const extendedHeight = VIRTUAL_HEIGHT * 3; // MODIFIED: Total height of the boundary box
 
     const boundaries = [
-        // Top wall (Center Y = -VIRTUAL_HEIGHT / 2)
-        Bodies.rectangle(VIRTUAL_WIDTH / 2, -VIRTUAL_HEIGHT / 2, extendedWidth, wallThickness, { isStatic: true, label: 'boundary' }),
-        // Bottom wall (Center Y = VIRTUAL_HEIGHT * 1.5)
-        Bodies.rectangle(VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT * 1.5, extendedWidth, wallThickness, { isStatic: true, label: 'boundary' }),
-        // Left wall (Center X = -VIRTUAL_WIDTH / 2)
+        // Top wall (Center Y = -VIRTUAL_HEIGHT) - MODIFIED
+        Bodies.rectangle(VIRTUAL_WIDTH / 2, -VIRTUAL_HEIGHT, extendedWidth, wallThickness, { isStatic: true, label: 'boundary' }),
+        // Bottom wall (Center Y = VIRTUAL_HEIGHT * 2) - MODIFIED
+        Bodies.rectangle(VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT * 2, extendedWidth, wallThickness, { isStatic: true, label: 'boundary' }),
+        // Left wall (Center X = -VIRTUAL_WIDTH / 2) - Uses updated extendedHeight
         Bodies.rectangle(-VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT / 2, wallThickness, extendedHeight, { isStatic: true, label: 'boundary' }),
-        // Right wall (Center X = VIRTUAL_WIDTH * 1.5)
+        // Right wall (Center X = VIRTUAL_WIDTH * 1.5) - Uses updated extendedHeight
         Bodies.rectangle(VIRTUAL_WIDTH * 1.5, VIRTUAL_HEIGHT / 2, wallThickness, extendedHeight, { isStatic: true, label: 'boundary' })
     ];
     // --- End Boundary Walls ---
@@ -319,11 +320,14 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>((props: Game
       } else {
         requiredWidth = requiredHeight * DESIGN_ASPECT_RATIO;
       }
-      // Clamp zoom (using outer scope constants)
+      // Clamp zoom
+      // Max zoom in (minimum view size)
       requiredWidth = Math.max(requiredWidth, VIRTUAL_WIDTH / MAX_ZOOM_FACTOR);
       requiredHeight = Math.max(requiredHeight, VIRTUAL_HEIGHT / MAX_ZOOM_FACTOR);
-      requiredWidth = Math.min(requiredWidth, VIRTUAL_WIDTH);
-      requiredHeight = Math.min(requiredHeight, VIRTUAL_HEIGHT);
+      // Max zoom out (maximum view size) - MODIFIED
+      requiredWidth = Math.min(requiredWidth, VIRTUAL_WIDTH * MAX_VIEW_FACTOR);
+      requiredHeight = Math.min(requiredHeight, VIRTUAL_HEIGHT * MAX_VIEW_FACTOR);
+      
       // Set target refs directly (lerping happens in render loop update)
       targetVirtualWidthRef.current = requiredWidth;
       targetVirtualHeightRef.current = requiredHeight;
@@ -412,9 +416,9 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>((props: Game
 
       // --- Draw Background (Stretched to Extended Boundaries) ---
       const bgX = -VIRTUAL_WIDTH / 2;
-      const bgY = -VIRTUAL_HEIGHT / 2;
+      const bgY = -VIRTUAL_HEIGHT;
       const bgWidth = VIRTUAL_WIDTH * 2;
-      const bgHeight = VIRTUAL_HEIGHT * 2;
+      const bgHeight = VIRTUAL_HEIGHT * 3;
       if (backgroundImage) {
           ctx.drawImage(backgroundImage, bgX, bgY, bgWidth, bgHeight);
       } else {
@@ -427,9 +431,9 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>((props: Game
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'; // Semi-transparent white
       ctx.lineWidth = 4; // Adjust thickness as needed
       const borderX = -VIRTUAL_WIDTH / 2;
-      const borderY = -VIRTUAL_HEIGHT / 2;
+      const borderY = -VIRTUAL_HEIGHT;
       const borderWidth = VIRTUAL_WIDTH * 2;
-      const borderHeight = VIRTUAL_HEIGHT * 2;
+      const borderHeight = VIRTUAL_HEIGHT * 3;
       ctx.strokeRect(borderX, borderY, borderWidth, borderHeight);
       // --- End Game Field Border ---
 
@@ -472,8 +476,12 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>((props: Game
       });
 
       // --- Draw Active Projectile Trails ---
-      Object.values(projectileTrails).forEach(trailData => {
-          if (trailData.trail.length < 2) return;
+      projectileTrails.forEach((trailData) => {
+          if (trailData.trail.length < 2) {
+            // console.log(`[Render DEBUG] Skipping short active trail for ${projectileId}`);
+            return;
+          }
+          // console.log(`[Render DEBUG] Drawing active trail for ${projectileId}, length: ${trailData.trail.length}`);
           ctx.beginPath();
           ctx.moveTo(trailData.trail[0].x, trailData.trail[0].y);
           for (let i = 1; i < trailData.trail.length; i++) {
@@ -541,8 +549,11 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>((props: Game
         // Reset shot tracer state on cleanup
         resetTraces();
     };
-  // Add dependencies for the main useEffect
-  }, [initialPositions, resetTraces, handleProjectileFired, handleProjectileUpdate, handleProjectileRemoved, props.onRoundWin]);
+  // Dependencies for the main setup/cleanup useEffect:
+  // - initialPositions: Rerun if the level layout changes.
+  // - resetTraces: Stable callback from useShotTracers, needed for cleanup.
+  // - props.onRoundWin: Rerun if the win callback function changes.
+  }, [initialPositions, resetTraces, props.onRoundWin]);
 
   // ... (Keep Handle Resize useEffect)
   useEffect(() => {

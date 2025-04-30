@@ -38,36 +38,70 @@ export function useShotTracers() {
         }); 
         return newTrails; // Return the new map
     });
-    console.log(`[useShotTracers] Started tracking trail for projectile ${projectile.id}`);
+    // DEBUG LOG
+    console.log(`[useShotTracers DEBUG] Started tracking trail for projectile ${projectile.id}. Initial trail length: ${projectile.trail?.length ?? 0}`);
   }, []);
 
   const handleProjectileUpdate = useCallback((projectile: ProjectileBody) => {
-    // Update the trail directly on the projectile body
-    // This doesn't require a state update here, as the trail array itself is mutated
-    // and the render loop reads the latest trail data via projectileTrails state.
-    if (!projectile.trail) return; // Should not happen if fired correctly
+    // DEBUG LOG
+    // const currentPosition = Matter.Vector.clone(projectile.position); // COMMENTED OUT - For verbose log below
 
+    // MODIFICATION START: Update state immutably
+    setProjectileTrails(prevTrails => {
+        const currentTrailData = prevTrails.get(projectile.id);
+        if (!currentTrailData) {
+            // If the trail isn't in the map (e.g., removed just before update), do nothing
+            console.warn(`[useShotTracers Update] Trail for ${projectile.id} not found in state map.`);
+            return prevTrails; 
+        }
+
+        // Create a *new* trail array with the new point
+        const newTrail = [...currentTrailData.trail, Matter.Vector.clone(projectile.position)];
+
+        // Trim the new array if necessary
+        if (newTrail.length > MAX_TRAIL_LENGTH) {
+            newTrail.shift();
+        }
+
+        // Create a new map with the updated trail data
+        const newTrails = new Map(prevTrails);
+        newTrails.set(projectile.id, { 
+            ...currentTrailData, // Keep ownerIndex
+            trail: newTrail 
+        });
+        
+        // DEBUG LOG - COMMENTED OUT FOR LESS NOISE
+        // console.log(`[useShotTracers DEBUG] Update state for ${projectile.id}. Prev length: ${currentTrailData.trail.length}, New length: ${newTrail.length}. Position: (${currentPosition.x.toFixed(1)}, ${currentPosition.y.toFixed(1)})`);
+
+        return newTrails; // Return the updated map
+    });
+    // MODIFICATION END
+
+    // --- Keep the original trail update on the body itself? ---
+    // This might still be needed if other physics logic relies on it,
+    // but the rendering should now solely rely on the state map.
+    // Let's keep it for now to minimize potential side effects.
+    if (!projectile.trail) { projectile.trail = []; }
     projectile.trail.push(Matter.Vector.clone(projectile.position));
     if (projectile.trail.length > MAX_TRAIL_LENGTH) {
-      projectile.trail.shift(); 
+        projectile.trail.shift();
     }
-    
-    // We need to trigger a re-render so the renderLoop reads the updated trail length
-    // We can do this by updating the state map with the *same* object reference,
-    // but because we set the state, React knows to re-render.
-    setProjectileTrails(prevTrails => {
-        // Only update if the trail is actually being tracked
-        if (prevTrails.has(projectile.id)) {
-            // No need to create a new Map, just trigger the update
-            return new Map(prevTrails); 
-        }
-        return prevTrails; // No change if not tracked
-    });
+    // --- End keep original trail update ---
 
-  }, []);
+    // DEBUG LOG
+    // const bodyTrailLengthAfterUpdate = projectile.trail?.length ?? -1; // COMMENTED OUT - Unused after removing log
+    // REMOVED Check using stateTrailLengthBeforeUpdate
+    // console.log(`[useShotTracers DEBUG] Updated body trail for ${projectile.id}. Body trail length: ${bodyTrailLengthAfterUpdate}.`);
+    
+
+  }, []); // REMOVED projectileTrails dependency
 
   const handleProjectileRemoved = useCallback((projectile: ProjectileBody) => {
     let traceStored = false; 
+    const trailLengthOnRemove = projectile.trail?.length ?? 0;
+    // DEBUG LOG
+    console.log(`[useShotTracers DEBUG] Attempting remove for ${projectile.id}. Trail length on body: ${trailLengthOnRemove}`);
+
     if (projectile.trail && projectile.trail.length > 1) {
       const playerIndex = projectile.custom.firedByPlayerIndex;
       const newTrace = [...projectile.trail]; 
@@ -91,9 +125,15 @@ export function useShotTracers() {
 
     // --- Update Active Trails State (Remove) ---
     setProjectileTrails(prevTrails => {
+        // DEBUG LOG
+        const trailExistsBeforeDelete = prevTrails.has(projectile.id);
+        const stateTrailLengthBeforeDelete = prevTrails.get(projectile.id)?.trail.length ?? -1;
+
         const newTrails = new Map(prevTrails);
         const deleted = newTrails.delete(projectile.id);
-        console.log(`[useShotTracers] Stopped tracking active trail for projectile ${projectile.id}. Existed in map: ${deleted}. Trace stored: ${traceStored}`);
+        // DEBUG LOG
+        console.log(`[useShotTracers DEBUG] Stopped tracking active trail for projectile ${projectile.id}. Existed in map: ${trailExistsBeforeDelete} -> ${deleted}. State trail length: ${stateTrailLengthBeforeDelete}. Trace stored: ${traceStored}`);
+
         // Only return new map if deletion actually happened
         return deleted ? newTrails : prevTrails; 
     });
