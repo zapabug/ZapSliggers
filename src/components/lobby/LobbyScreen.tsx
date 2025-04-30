@@ -1,6 +1,7 @@
 import React from 'react';
 import NDK from '@nostr-dev-kit/ndk';
-import { ChallengeHandler } from 'src/components/dms/ChallengeHandler'; // Try path from src root
+import { ChallengeHandler } from '../ChallengeHandler'; // Corrected path again
+import LobbyPlayground from './LobbyPlayground'; // Import the new component
 
 interface LobbyScreenProps {
     loggedInPubkey: string;
@@ -21,9 +22,13 @@ const LobbyScreen: React.FC<LobbyScreenProps> = ({
     };
 
     return (
-        <div className="w-full h-full flex flex-col items-center justify-center text-center p-4 text-white bg-gray-800">
-            <h1 className="text-3xl font-bold mb-4">Klunkstr Lobby</h1>
-            
+        <div className="w-full h-full flex flex-col items-center justify-start pt-10 p-4 text-white bg-gray-800 overflow-y-auto">
+            <h1 className="text-3xl font-bold mb-6">Klunkstr Lobby</h1>
+
+            <div className="w-full max-w-4xl h-96 mb-6">
+                <LobbyPlayground />
+            </div>
+
             <div className="mb-6 p-4 bg-gray-700 rounded-lg shadow-md w-full max-w-md">
                  <p className="text-lg text-gray-300 mb-1">
                     Logged In As:

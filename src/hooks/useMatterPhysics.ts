@@ -19,6 +19,7 @@ const SHIP_RADIUS = 63;
 const PLANET_MIN_RADIUS = 30;
 const GRAVITY_CONSTANT = 0.5;
 const GRAVITY_AOE_BONUS_FACTOR = 0.1;
+const PROJECTILE_DAMAGE = 25; // Example damage value
 
 interface UseMatterPhysicsProps {
   levelData: InitialGamePositions;
@@ -259,24 +260,19 @@ export const useMatterPhysics = ({
     const startOffset = Vector.mult(Vector.rotate({ x: 1, y: 0 }, angle), SHIP_RADIUS * 1.1);
     const startPosition = Vector.add(shipBody.position, startOffset);
 
-    // Create body without custom initially to satisfy types
     const projectile: ProjectileBody = Bodies.circle(startPosition.x, startPosition.y, 5, {
         label: `projectile-${playerIndex}-${Date.now()}`,
-        frictionAir: 0.01, 
-        restitution: 0.6, 
-        density: 0.01, 
+        frictionAir: 0.01, // Low air friction
+        restitution: 0.6, // Slightly bouncy
+        density: 0.01, // Adjust density as needed
         plugin: {},
-        // custom property removed from initial definition
+        custom: { // Add custom data block
+            firedByPlayerIndex: playerIndex,
+            abilityType: abilityType || 'standard', // Store ability type or 'standard'
+            createdAt: Date.now()
+        },
+        trail: [Vector.clone(startPosition)], // Initialize trail
     }) as ProjectileBody;
-
-    // Attach custom data and trail AFTER creation
-    projectile.custom = { 
-        firedByPlayerIndex: playerIndex,
-        ownerShipLabel: shipBody.label,
-        abilityType: abilityType || 'standard', 
-        createdAt: Date.now()
-    };
-    projectile.trail = [Vector.clone(startPosition)];
 
     // Set initial velocity
     Body.setVelocity(projectile, velocity);
@@ -285,7 +281,7 @@ export const useMatterPhysics = ({
     shotTracerHandlers.handleProjectileFired(projectile);
     console.log(`[Physics] Fired projectile ${projectile.id} by P${playerIndex}, Power: ${power}, Ability: ${abilityType || 'None'}`);
 
-  }, [shotTracerHandlers]);
+  }, [shotTracerHandlers]); // Removed engine from deps, using ref
 
   const setShipAim = useCallback((playerIndex: 0 | 1, angleDegrees: number) => {
     const shipBody = shipBodiesRef.current[playerIndex];
