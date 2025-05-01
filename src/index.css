@@ -2,30 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Suggest landscape mode on portrait orientation */
+/* Suggest landscape mode on portrait orientation - REMOVED */
+/*
 @media (orientation: portrait) {
   body::before {
     content: "Please rotate your device to landscape mode for the best experience.";
     position: fixed;
-    inset: 0; /* Equivalent to top: 0; left: 0; right: 0; bottom: 0; */
-    background-color: rgba(17, 24, 39, 0.95); /* bg-gray-900 with opacity */
+    inset: 0; 
+    background-color: rgba(17, 24, 39, 0.95); 
     color: white;
     display: flex;
     justify-content: center;
     align-items: center;
     text-align: center;
-    padding: 2rem; /* p-8 */
-    z-index: 50; /* Ensure it's above other content */
-    font-size: 1.25rem; /* text-xl */
-    line-height: 1.75rem; /* leading-7 */
+    padding: 2rem; 
+    z-index: 50; 
+    font-size: 1.25rem; 
+    line-height: 1.75rem; 
   }
 
-  /* Optionally hide the main app content in portrait to prevent interaction */
-  /* Adjust the selector if your main app container has a different ID or class */
+  
   #root > div.App {
     display: none;
   }
 }
+*/
 
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;

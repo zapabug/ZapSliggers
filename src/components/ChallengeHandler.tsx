@@ -1,151 +1,238 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import NDK, { NDKEvent, NDKKind, NDKFilter, NDKSubscription } from '@nostr-dev-kit/ndk';
+import { nip19 } from 'nostr-tools';
+import NDK, { NDKEvent, NDKKind, NDKFilter, NDKSubscription, NDKUser } from '@nostr-dev-kit/ndk';
 
 interface ChallengePayload {
     type: 'challenge';
 }
 
+interface AcceptPayload {
+    type: 'accept';
+}
+
 interface ChallengeHandlerProps {
     loggedInPubkey: string | null;
     ndk: NDK;
-    onChallengeAccepted?: (opponentPubkey: string) => void;
+    onChallengeAccepted: (opponentPubkey: string, matchId: string) => void;
 }
 
 export function ChallengeHandler({ loggedInPubkey, ndk, onChallengeAccepted }: ChallengeHandlerProps) {
-    const [recipientPubkey, setRecipientPubkey] = useState('');
+    const [recipientNpubOrHex, setRecipientNpubOrHex] = useState('');
     const [error, setError] = useState<string | null>(null);
-    const [sentChallengeId, setSentChallengeId] = useState<string | null>(null);
-    const [incomingChallenges, setIncomingChallenges] = useState<NDKEvent[]>([]);
+    const [activeSentChallenge, setActiveSentChallenge] = useState<{ opponentPubkey: string, eventId: string } | null>(null);
+    const [activeReceivedChallenge, setActiveReceivedChallenge] = useState<{ challengerPubkey: string, eventId: string } | null>(null);
 
     useEffect(() => {
         if (!loggedInPubkey || !ndk) {
-            setIncomingChallenges([]);
+            setActiveReceivedChallenge(null);
             return;
         }
 
         const challengeFilter: NDKFilter = {
             kinds: [NDKKind.EncryptedDirectMessage],
             '#p': [loggedInPubkey],
+            since: Math.floor(Date.now() / 1000) - 3600
         };
 
         console.log('[ChallengeHandler] Subscribing to DMs with filter:', challengeFilter);
         const sub: NDKSubscription = ndk.subscribe([challengeFilter], { closeOnEose: false });
 
-        sub.on('event', (event: NDKEvent) => {
+        sub.on('event', async (event: NDKEvent) => {
+            if (event.pubkey === loggedInPubkey) return;
+
             console.log('[ChallengeHandler] Received potential DM event:', event.encode());
-            event.decrypt().then(() => {
-                try {
-                    const payload: ChallengePayload = JSON.parse(event.content);
-                    if (payload.type === 'challenge') {
-                        console.log(`[ChallengeHandler] Valid challenge ${event.encode()} from ${event.pubkey} received:`, payload);
-                        setIncomingChallenges(prevChallenges => {
-                            if (prevChallenges.some(c => c.encode() === event.encode())) {
-                                return prevChallenges;
-                            }
-                            return [...prevChallenges, event];
-                        });
-                    } else {
-                        console.log(`[ChallengeHandler] DM ${event.encode()} is not a challenge:`, payload);
+            try {
+                await event.decrypt();
+                const content = event.content.trim();
+                let payload: ChallengePayload | AcceptPayload | null = null;
+                try { payload = JSON.parse(content); } catch { /* Ignore if not JSON */ }
+
+                const challengeTag = event.tags.find(t => t[0] === 't');
+
+                if (activeSentChallenge && event.pubkey === activeSentChallenge.opponentPubkey && challengeTag && challengeTag[1] === activeSentChallenge.eventId) {
+                    const isAcceptMessage = (payload && payload.type === 'accept') || content.toLowerCase() === 'accept';
+                    if (isAcceptMessage) {
+                        console.log(`[ChallengeHandler] Received ACCEPTANCE ${event.encode()} for our challenge ${activeSentChallenge.eventId} from ${event.pubkey}`);
+                        const opponentPubkey = activeSentChallenge.opponentPubkey;
+                        const matchIdentifier = activeSentChallenge.eventId;
+                        setActiveSentChallenge(null);
+                        onChallengeAccepted(opponentPubkey, matchIdentifier);
+                        return;
                     }
-                } catch {
-                    console.log(`[ChallengeHandler] DM ${event.encode()} content not valid JSON or not challenge payload.`);
                 }
-            }).catch(err => {
-                console.error(`[ChallengeHandler] Failed to decrypt DM ${event.encode()}:`, err);
-            });
+
+                const isChallengeMessage = (payload && payload.type === 'challenge') || content.toLowerCase() === 'challenge';
+                if (isChallengeMessage && !challengeTag) {
+                    if (!activeSentChallenge && !activeReceivedChallenge) {
+                         console.log(`[ChallengeHandler] Received new CHALLENGE ${event.encode()} from ${event.pubkey}`);
+                         setActiveReceivedChallenge({ challengerPubkey: event.pubkey, eventId: event.encode() });
+                    } else {
+                         console.log(`[ChallengeHandler] Ignoring new challenge ${event.encode()} while already in an active challenge state.`);
+                    }
+                    return;
+                }
+
+            } catch (err) {
+                console.error(`[ChallengeHandler] Failed to process DM ${event.encode()}:`, err);
+            }
         });
 
         sub.on('eose', () => {
              console.log('[ChallengeHandler] DM subscription EOSE received.');
         });
 
-        sub.start();
-        console.log('[ChallengeHandler] DM subscription started.');
+        console.log('[ChallengeHandler] DM subscription created.');
 
         return () => {
             console.log('[ChallengeHandler] Stopping DM subscription.');
             sub.stop();
-            setIncomingChallenges([]);
+            setActiveSentChallenge(null);
+            setActiveReceivedChallenge(null);
         };
 
-    }, [ndk, loggedInPubkey]);
+    }, [ndk, loggedInPubkey, activeSentChallenge, onChallengeAccepted]);
 
     const handleSendChallenge = useCallback(async () => {
-        if (!ndk || !loggedInPubkey) {
-            setError("NDK not ready or user not logged in.");
-            return;
-        }
-        if (!recipientPubkey) {
-            setError("Recipient pubkey is required.");
-            return;
-        }
+        if (!ndk || !loggedInPubkey) { setError("NDK not ready or user not logged in."); return; }
+        if (!recipientNpubOrHex) { setError("Recipient pubkey is required."); return; }
+        if (activeSentChallenge || activeReceivedChallenge) { setError("Already in an active challenge process."); return; }
 
         setError(null);
-        setSentChallengeId(null);
+        setActiveSentChallenge(null);
+        setActiveReceivedChallenge(null);
+
+        let recipientHexPubkey: string;
 
         try {
+            if (recipientNpubOrHex.startsWith('npub1')) {
+                const decoded = nip19.decode(recipientNpubOrHex);
+                if (decoded.type !== 'npub') throw new Error("Invalid npub format.");
+                recipientHexPubkey = decoded.data;
+            } else if (/^[0-9a-f]{64}$/i.test(recipientNpubOrHex)) {
+                recipientHexPubkey = recipientNpubOrHex;
+            } else {
+                throw new Error("Invalid recipient pubkey format. Use npub or hex.");
+            }
+
+            if (recipientHexPubkey === loggedInPubkey) {
+                 throw new Error("Cannot challenge yourself.");
+            }
+
             const challengePayload: ChallengePayload = { type: 'challenge' };
             const event = new NDKEvent(ndk);
             event.kind = NDKKind.EncryptedDirectMessage;
             event.content = JSON.stringify(challengePayload);
-            event.tags = [['p', recipientPubkey]];
+            event.tags = [['p', recipientHexPubkey]];
 
-            await event.encrypt(ndk.getUser({hexpubkey: recipientPubkey}));
+            const recipientUser: NDKUser | undefined = ndk.getUser({ hexpubkey: recipientHexPubkey });
+             if (!recipientUser) {
+                 console.warn("Could not immediately get recipient user object, proceeding with hexpubkey.");
+             }
+
+            await event.encrypt(recipientUser);
             await event.publish();
+            const sentEventId = event.encode();
 
-            console.log("Challenge sent, event ID:", event.encode());
-            setSentChallengeId(event.encode());
+            console.log(`Challenge sent to ${recipientHexPubkey}, event ID: ${sentEventId}`);
+            setActiveSentChallenge({ opponentPubkey: recipientHexPubkey, eventId: sentEventId });
+            setRecipientNpubOrHex('');
+
         } catch (e) {
             console.error("Failed to send challenge:", e);
             setError(`Failed to send challenge: ${e instanceof Error ? e.message : String(e)}`);
+            setActiveSentChallenge(null);
         }
-    }, [ndk, loggedInPubkey, recipientPubkey]);
+    }, [ndk, loggedInPubkey, recipientNpubOrHex, activeSentChallenge, activeReceivedChallenge]);
+
+    const handleAcceptChallenge = useCallback(async () => {
+        if (!ndk || !loggedInPubkey || !activeReceivedChallenge) {
+            setError("Cannot accept challenge: Invalid state.");
+            return;
+        }
+
+        const { challengerPubkey, eventId: originalChallengeId } = activeReceivedChallenge;
+        setError(null);
+
+        try {
+            const acceptPayload: AcceptPayload = { type: 'accept' };
+            const event = new NDKEvent(ndk);
+            event.kind = NDKKind.EncryptedDirectMessage;
+            event.content = JSON.stringify(acceptPayload);
+            event.tags = [
+                ['p', challengerPubkey],
+                ['t', originalChallengeId]
+            ];
+
+            const challengerUser = ndk.getUser({ hexpubkey: challengerPubkey });
+
+            await event.encrypt(challengerUser);
+            await event.publish();
+            const acceptanceEventId = event.encode();
+            console.log(`Acceptance sent to ${challengerPubkey} for challenge ${originalChallengeId}. Acceptance event ID: ${acceptanceEventId}`);
+
+            const matchIdentifier = originalChallengeId;
+            const opponent = challengerPubkey;
+            setActiveReceivedChallenge(null);
+            onChallengeAccepted(opponent, matchIdentifier);
+
+        } catch (e) {
+            console.error("Failed to send acceptance:", e);
+            setError(`Failed to send acceptance: ${e instanceof Error ? e.message : String(e)}`);
+        }
+    }, [ndk, loggedInPubkey, activeReceivedChallenge, onChallengeAccepted]);
+
+    const canInteract = loggedInPubkey && !activeSentChallenge && !activeReceivedChallenge;
+    const isWaitingForAcceptance = !!activeSentChallenge;
+    const hasIncomingChallenge = !!activeReceivedChallenge;
 
     return (
-        <div>
-            <h2>Challenge a Player</h2>
-            <input
-                type="text"
-                value={recipientPubkey}
-                onChange={(e) => setRecipientPubkey(e.target.value)}
-                placeholder="Enter opponent's npub or hex pubkey"
-                className="text-black p-1 mr-2"
-            />
-            <button onClick={handleSendChallenge} disabled={!recipientPubkey || !loggedInPubkey} className="px-3 py-1 bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50">
-                Send Challenge
-            </button>
-            {error && <p className="text-red-500 mt-1">Error: {error}</p>}
-            {sentChallengeId && <p className="text-green-500 mt-1">Challenge sent! Event ID: {sentChallengeId}</p>}
+        <div className="p-4 border rounded border-gray-600">
+            <h2 className="text-xl font-semibold mb-3">Challenge a Player</h2>
 
-            <h2 className="mt-4">Incoming Challenges</h2>
-            {loggedInPubkey ? (
-                incomingChallenges.length > 0 ? (
-                    <ul className="list-disc pl-5 mt-2">
-                        {incomingChallenges.map(event => (
-                            <li key={event.encode()} className="text-sm mb-1 flex justify-between items-center">
-                                <span>
-                                    Challenge from: {event.pubkey} 
-                                    {/* <span className="text-xs text-gray-500">(ID: {event.id})</span> */}
-                                </span>
-                                <button 
-                                    onClick={() => {
-                                        console.log(`Accepting challenge from ${event.pubkey}`);
-                                        // Call the callback if it exists
-                                        onChallengeAccepted?.(event.pubkey);
-                                    }}
-                                    className="ml-2 px-2 py-0.5 bg-green-600 rounded hover:bg-green-700 text-xs disabled:opacity-50"
-                                    disabled={!onChallengeAccepted} // Disable if callback not provided
-                                >
-                                    Accept
-                                </button>
-                            </li>
-                        ))}
-                    </ul>
-                ) : (
-                    <p className="text-gray-400 mt-2">No incoming challenges.</p>
-                )
-            ) : (
-                 <p className="text-gray-400 mt-2">Log in to see incoming challenges.</p>
+            {canInteract && (
+                <div className="flex items-center space-x-2 mb-2">
+                    <input
+                        type="text"
+                        value={recipientNpubOrHex}
+                        onChange={(e) => setRecipientNpubOrHex(e.target.value)}
+                        placeholder="Enter opponent's npub or hex pubkey"
+                        className="flex-grow text-black p-2 border rounded"
+                        disabled={!loggedInPubkey}
+                    />
+                    <button
+                        onClick={handleSendChallenge}
+                        disabled={!recipientNpubOrHex || !loggedInPubkey}
+                        className="px-4 py-2 bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        Send Challenge
+                    </button>
+                </div>
+            )}
+
+            {error && <p className="text-red-500 mt-1 text-sm">Error: {error}</p>}
+
+            {isWaitingForAcceptance && (
+                <p className="text-yellow-400 mt-2">
+                    Challenge sent to {nip19.npubEncode(activeSentChallenge.opponentPubkey).substring(0, 12)}... Waiting for acceptance.
+                </p>
+            )}
+
+            {hasIncomingChallenge && (
+                 <div className="mt-4 p-3 bg-gray-700 rounded">
+                     <p className="text-green-400 font-medium">
+                         Incoming challenge from: {nip19.npubEncode(activeReceivedChallenge.challengerPubkey).substring(0, 12)}...
+                     </p>
+                     <button
+                         onClick={handleAcceptChallenge}
+                         className="mt-2 px-3 py-1 bg-green-600 rounded hover:bg-green-700 text-sm disabled:opacity-50"
+                     >
+                         Accept Challenge
+                     </button>
+                 </div>
+            )}
+
+            {!loggedInPubkey && (
+                 <p className="text-gray-400 mt-2">Log in to send or receive challenges.</p>
             )}
         </div>
     );

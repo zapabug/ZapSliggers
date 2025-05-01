@@ -1,11 +1,12 @@
 import React from 'react';
 import NDK, { NDKUser } from '@nostr-dev-kit/ndk';
 import { ChallengeHandler } from '../ChallengeHandler';
+import { QRCodeCanvas } from 'qrcode.react';
 
 interface LobbyScreenProps {
     ndk: NDK;
     currentUser: NDKUser;
-    onChallengeAccepted: (opponentPubkey: string) => void;
+    onChallengeAccepted: (opponentPubkey: string, matchId: string) => void;
     onBackToMenu: () => void;
 }
 
@@ -15,6 +16,8 @@ const LobbyScreen: React.FC<LobbyScreenProps> = ({
     onChallengeAccepted, 
     onBackToMenu
 }) => {
+    const userNpub = currentUser.npub;
+    const nostrUri = userNpub ? `nostr:${userNpub}` : '';
     
     return (
         <div className="w-full h-full flex flex-col items-center justify-start pt-4 p-4 text-white bg-gray-800 overflow-y-auto">
@@ -29,13 +32,22 @@ const LobbyScreen: React.FC<LobbyScreenProps> = ({
 
             <h1 className="text-3xl font-bold mb-6">Multiplayer Lobby</h1>
 
-            <div className="mb-6 p-4 bg-gray-700 rounded-lg shadow-md w-full max-w-md">
-                 <p className="text-lg text-gray-300 mb-1">
-                    Logged In As:
+            <div className="mb-6 p-4 bg-gray-700 rounded-lg shadow-md w-full max-w-md text-center">
+                 <p className="text-lg text-gray-300 mb-2">
+                    Your Nostr ID (Share this!)
                  </p>
-                 <p className="text-sm font-mono text-purple-300 break-all">
-                    {currentUser.pubkey}
+                 <p className="text-sm font-mono text-purple-300 break-all mb-4 select-all" title="Click to select">
+                    {userNpub || 'Could not get npub'}
                  </p>
+                 <div className="flex justify-center">
+                    <div className="bg-white p-2 rounded-md inline-block">
+                        {nostrUri ? (
+                             <QRCodeCanvas value={nostrUri} size={128} />
+                        ) : (
+                            <p className="text-red-500 text-xs">Could not generate QR code</p> 
+                        )}
+                    </div>
+                 </div>
             </div>
 
             <div className="w-full max-w-lg p-4 bg-gray-700 rounded-lg shadow-md">

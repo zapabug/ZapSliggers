@@ -7,6 +7,7 @@ import { useNDKInit } from './useNDKInit'; // Import the custom NDK init hook
 
 // Define constants (similar to App.tsx)
 // NSEC_APP_HEX_PUBKEY removed as it's no longer used as a default
+const DEFAULT_NIP46_BUNKER_NPUB = 'npub10nxjs7e4vh7a05a0qz8u7x4kdtlq6nk5lugeczddk5l40x5kdysqt2e96x';
 const NIP46_CONNECT_TIMEOUT = 75000; // 75 seconds
 
 export type LoginMethod = 'none' | 'nip07' | 'nip46';
@@ -125,8 +126,13 @@ export const useAuth = (): UseAuthReturn => {
         setNip46Status('connecting');
         setAuthError(null);
 
+        // Determine the actual identifier to use
+        const targetIdentifier = bunkerIdentifier.trim() || DEFAULT_NIP46_BUNKER_NPUB;
+        console.log(`[useAuth] NIP-46 Target Identifier: ${targetIdentifier}`);
+
         try {
-            const signer = new NDKNip46Signer(ndk, bunkerIdentifier);
+            // Use the targetIdentifier (either provided or the default npub)
+            const signer = new NDKNip46Signer(ndk, targetIdentifier);
             nip46SignerRef.current = signer; // Store ref
 
             signer.on("authUrl", (url) => {

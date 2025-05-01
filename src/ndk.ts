@@ -6,6 +6,7 @@ export const explicitRelayUrls = [
   'wss://nos.lol',
   'wss://relay.primal.net',
   'wss://relay.nsec.app',
+  'wss://relay.nostrcheck.me',
 ];
 
 // Instantiate the NDK singleton

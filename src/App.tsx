@@ -23,9 +23,9 @@ import { QRCodeCanvas } from 'qrcode.react';
 // import { ChallengeHandler } from './components/ChallengeHandler'; 
 // Import LobbyScreen
 import LobbyScreen from './components/lobby/LobbyScreen';
-// Import the new screen components
-import MainMenuScreen from './components/screens/MainMenuScreen';
-import PracticeScreen from './components/screens/PracticeScreen';
+// Import the new screen components from the correct location
+// import MainMenuScreen from './components/MainMenuScreen'; // Commented out - File missing
+import PracticeScreen from './components/screens/PracticeScreen'; // Corrected import path
 
 // Remove local relay definition
 // const explicitRelayUrls = [...] 
@@ -72,34 +72,49 @@ function App() {
 
   // State for the current view
   const [currentView, setCurrentView] = useState<AppView>('connecting_ndk'); 
-  // State for NIP-46 input
-  const [bunkerUriInput, setBunkerUriInput] = useState('');
+  // State for NIP-46 input - REMOVED as we trigger QR flow directly
+  // const [bunkerUriInput, setBunkerUriInput] = useState('');
   // State for opponent pubkey when game starts
-  const [opponentPubkey, setOpponentPubkey] = useState<string | null>(null); 
+  const [opponentPubkey, setOpponentPubkey] = useState<string | null>(null);
+  // State for the unique identifier of the match (derived from the challenge event)
+  const [matchId, setMatchId] = useState<string | null>(null);
 
   // --- Effects to manage view transitions based on NDK and Auth state --- 
   useEffect(() => {
+    console.log(`[View Effect Check] NDK Ready: ${isNdkReady}, Logged In: ${isLoggedIn}, Current View: ${currentView}`);
     if (!isNdkReady) {
-      setCurrentView('connecting_ndk');
+      // Always show connecting if NDK isn't ready
+      if (currentView !== 'connecting_ndk') {
+        console.log('[View Effect] NDK not ready, setting view to connecting_ndk');
+        setCurrentView('connecting_ndk');
+      }
     } else if (!isLoggedIn) {
-      // NDK is ready, but user not logged in -> show login options
-      setCurrentView('login');
-    } else if (isLoggedIn && currentView === 'login') {
-      // Just logged in -> go to menu
-      setCurrentView('menu');
-    } else if (!isLoggedIn && currentView !== 'login' && currentView !== 'connecting_ndk') {
-      // Logged out from somewhere else? -> Force back to login
-      setCurrentView('login');
+      // NDK is ready, but user not logged in -> ensure login view
+      if (currentView !== 'login') {
+        console.log('[View Effect] NDK ready, not logged in, setting view to login');
+        setCurrentView('login');
+      }
+    } else { // NDK is ready AND user is logged in
+      // If we were previously connecting or logging in, move to menu
+      if (currentView === 'connecting_ndk' || currentView === 'login') {
+          console.log(`[View Effect] Logged in and NDK ready (from ${currentView}), setting view to menu`);
+          setCurrentView('menu');
+      } 
+      // Otherwise, stay in the current logged-in view (menu, practice, lobby, game)
+      // This else block handles the case where we are already logged in and in a valid state.
+      // It prevents resetting the view to 'menu' unnecessarily if the effect re-runs.
+       else {
+           console.log(`[View Effect] Logged in and NDK ready, staying in current view: ${currentView}`);
+       }
     }
-    // Add dependencies? Needs careful thought to avoid loops.
-    // Maybe only trigger on isNdkReady and isLoggedIn changes?
-  }, [isNdkReady, isLoggedIn, currentView]);
+  }, [isNdkReady, isLoggedIn, currentView]); // Dependencies seem correct now
 
   // --- Event Handlers for Navigation/Login --- 
-  const handleNip46Login = () => {
-      if (!bunkerUriInput.trim()) return;
-      initiateNip46Login(bunkerUriInput.trim());
-  };
+  // REMOVED handleNip46Login as the button now directly calls initiateNip46Login
+  // const handleNip46Login = () => {
+  //     if (!bunkerUriInput.trim()) return;
+  //     initiateNip46Login(bunkerUriInput.trim());
+  // };
 
   const handleSelectPractice = () => {
       if (isLoggedIn) setCurrentView('practice');
@@ -111,18 +126,22 @@ function App() {
 
   const handleBackToMenu = () => {
       setCurrentView('menu');
+      setOpponentPubkey(null); // Clear opponent on back
+      setMatchId(null);      // Clear match ID on back
   };
 
-  const handleChallengeAccepted = (opponent: string) => {
-      console.log(`[App] Starting multiplayer game against: ${opponent}`);
+  const handleChallengeAccepted = (opponent: string, confirmedMatchId: string) => {
+      console.log(`[App] Starting multiplayer game against: ${opponent}, Match ID: ${confirmedMatchId}`);
       setOpponentPubkey(opponent);
+      setMatchId(confirmedMatchId); // Store the match ID
       setCurrentView('game');
   };
 
   const handleGameEnd = () => {
       console.log("[App] Multiplayer game ended, returning to menu."); // Go back to menu after game
       setOpponentPubkey(null);
-      setCurrentView('menu'); 
+      setMatchId(null); // Clear match ID on game end
+      setCurrentView('menu');
   };
 
   // --- Render Logic --- 
@@ -142,45 +161,99 @@ function App() {
 
     // 2. Login View (Handles NIP-07 button, NIP-46 input/QR/Connecting)
     if (currentView === 'login') {
-        // Reordered NIP-46 state checks slightly to potentially help linter
+        // --- NIP-46 Flow States ---
 
-        // NIP-46 Connecting state
+        // NIP-46 Connecting state (After scan approval)
         if (loginMethod === 'nip46' && nip46Status === 'connecting') {
             return (
-                <div className="w-full h-full flex flex-col items-center justify-center">
+                <div className="w-full h-full flex flex-col items-center justify-center p-4">
                     <p className="text-xl text-gray-400">Connecting via NIP-46...</p>
                     {authError && <p className="text-red-500 text-xs mt-2">{authError.message}</p>}
                 </div>
             );
         }
-        // NIP-46 QR Code / Waiting state
+        // NIP-46 QR Code / Waiting state (After clicking 'Connect with Mobile')
         else if (loginMethod === 'nip46' && nip46Status === 'waiting' && nip46AuthUrl) {
              return (
-                <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center">
-                    <p className="mb-4 text-lg">Scan with your Nostr app or copy:</p>
-                    <div className="bg-white p-4 rounded-lg mb-4"><QRCodeCanvas value={nip46AuthUrl} size={256} /></div>
-                    <input type="text" readOnly value={nip46AuthUrl} className="w-full max-w-md p-2 border border-gray-600 rounded bg-gray-800 text-white text-xs mb-2 break-all" onClick={(e) => (e.target as HTMLInputElement).select()} />
-                    <button onClick={() => navigator.clipboard.writeText(nip46AuthUrl!)} className="px-4 py-2 rounded font-semibold text-white transition-colors bg-blue-600 hover:bg-blue-700 mb-4">Copy Code</button>
-                    <p className="text-gray-400">Waiting for connection...</p>
+                // Center content, add padding for mobile
+                <div className="w-full h-full flex flex-col items-center justify-center p-4 sm:p-6 text-center">
+                    <p className="mb-4 text-lg">Scan with your Nostr mobile app (like Amber, Nostore, etc.):</p>
+                    {/* QR Code display with white background */}
+                    <div className="bg-white p-3 sm:p-4 rounded-lg mb-4 inline-block">
+                        <QRCodeCanvas value={nip46AuthUrl} size={200} className="sm:w-64 sm:h-64 w-48 h-48" /> { /* Responsive size */}
+                    </div>
+                     {/* Input to show/copy the URL - make it smaller on mobile */}
+                    <input 
+                        type="text" 
+                        readOnly 
+                        value={nip46AuthUrl} 
+                        className="w-full max-w-xs sm:max-w-md p-2 border border-gray-600 rounded bg-gray-800 text-white text-[10px] sm:text-xs mb-2 break-all" 
+                        onClick={(e) => (e.target as HTMLInputElement).select()} 
+                        title="Click to select URI"
+                    />
+                    {/* Copy Button */} 
+                    <button 
+                        onClick={() => navigator.clipboard.writeText(nip46AuthUrl!)} 
+                        className="px-4 py-2 rounded font-semibold text-white transition-colors bg-blue-600 hover:bg-blue-700 mb-4 text-sm sm:text-base"
+                    >
+                        Copy URI
+                    </button>
+                    <p className="text-gray-400 text-sm">Waiting for connection...</p>
                     {authError && <p className="text-red-500 text-xs mt-2">{authError.message}</p>}
                 </div>
             );
         }
-        // Default Login Options (NIP-07 / NIP-46 Input)
+        // --- Default Login Options Screen ---
         else {
             return (
-                <div className="flex flex-col items-center justify-center p-8 bg-gray-800 rounded-lg shadow-xl space-y-6 w-full max-w-md">
-                    <h1 className="text-3xl font-bold text-purple-400 mb-4">Klunkstr Login</h1>
-                    {window.nostr ? (
-                        <button onClick={loginWithNip07} className="w-full px-6 py-3 rounded font-semibold text-white transition-colors bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">Login with Extension (NIP-07)</button>
-                    ) : (
-                        <p className="text-sm text-gray-400 text-center">Nostr extension not detected. Use NIP-46 below.</p>
-                    )}
-                    <div className="w-full border-t border-gray-600 my-4"></div>
-                    <p className="text-center text-gray-300">Or connect with a remote signer (NIP-46):</p>
-                    <input type="text" placeholder="Paste your bunker://... URI here" value={bunkerUriInput} onChange={(e) => setBunkerUriInput(e.target.value)} className="w-full p-3 border border-gray-600 rounded bg-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                    <button onClick={handleNip46Login} disabled={!bunkerUriInput.trim() || nip46Status === 'connecting' || nip46Status === 'waiting'} className="w-full px-6 py-3 rounded font-semibold text-white transition-colors bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">Connect with Bunker URI</button>
-                    {authError && <p className="text-red-500 text-sm mt-4 text-center">Login Failed: {authError.message}</p>}
+                // Center the login box, responsive padding and width. Use flex-col on small screens.
+                <div className="w-full min-h-screen flex flex-col sm:flex-row items-center justify-center p-4"> {/* Changed to min-h-screen, flex-col default */}
+                    <div className="flex flex-col items-center justify-center p-6 sm:p-8 bg-gray-800 rounded-lg shadow-xl space-y-4 sm:space-y-6 w-full max-w-md"> {/* Adjusted max-w, consistent padding */}
+                        <h1 className="text-2xl sm:text-3xl font-bold text-purple-400 mb-4 text-center">Klunkstr Login</h1>
+                        
+                        {/* NIP-07 Section - Explain if unavailable */} 
+                        {window.nostr ? (
+                            <button 
+                                onClick={loginWithNip07} 
+                                className="w-full px-6 py-3 rounded font-semibold text-white transition-colors bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
+                            >
+                                Login with Browser Extension (NIP-07)
+                            </button>
+                        ) : (
+                            <div className="text-center w-full p-3 bg-gray-700 rounded">
+                                 <p className="text-sm text-gray-400">
+                                    Nostr Browser Extension (NIP-07) not detected.
+                                 </p>
+                                 <p className="text-xs text-gray-500 mt-1">
+                                    (Mobile browsers usually don't support extensions. Use NIP-46 below.)
+                                 </p>
+                             </div>
+                        )}
+                        
+                        {/* Separator */} 
+                        <div className="w-full border-t border-gray-600 my-2"></div>
+                        
+                        {/* NIP-46 Section - Simplified Button */} 
+                        <p className="text-center text-gray-300 text-sm sm:text-base"> {/* Adjusted text size */}
+                            Connect using a mobile signing app:
+                        </p>
+                        <button 
+                            // Directly initiate flow, passing empty string to signal QR generation (assumption)
+                            onClick={() => initiateNip46Login('')} 
+                            disabled={nip46Status === 'connecting' || nip46Status === 'waiting'} 
+                            className="w-full px-4 sm:px-6 py-2 sm:py-3 rounded font-semibold text-white transition-colors bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 text-sm sm:text-base" /* Adjusted padding/text */
+                        >
+                            Connect with Mobile App (NIP-46)
+                        </button>
+                        
+                        {/* Removed manual bunker URI input for simplicity 
+                        <p className="text-center text-gray-300">Or connect with a remote signer (NIP-46):</p>
+                        <input type="text" placeholder="Paste your bunker://... URI here" value={bunkerUriInput} onChange={(e) => setBunkerUriInput(e.target.value)} className="w-full p-3 border border-gray-600 rounded bg-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                        <button onClick={handleNip46Login} disabled={!bunkerUriInput.trim() || nip46Status === 'connecting' || nip46Status === 'waiting'} className="w-full px-6 py-3 rounded font-semibold text-white transition-colors bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">Connect with Bunker URI</button>
+                        */} 
+
+                        {authError && <p className="text-red-500 text-xs sm:text-sm mt-4 text-center">Login Failed: {authError.message}</p>} {/* Adjusted text size */}
+                    </div>
                 </div>
             );
         }
@@ -197,7 +270,17 @@ function App() {
     // Assumes currentView will only be 'menu' if logged in
     if (currentView === 'menu') {
         // Add null check for currentUser just in case, although useEffect should prevent this
-        if (!currentUser) return <div>Loading user...</div>; 
+        if (!currentUser) return <div>Loading user...</div>;
+        // Temporarily render placeholder instead of missing component
+        return (
+            <div className="p-4">
+                <h2 className="text-xl">Main Menu (Placeholder)</h2>
+                <p>User: {currentUser.npub}</p>
+                <button onClick={handleSelectPractice} className="mt-2 px-4 py-2 bg-blue-600 rounded mr-2">Practice (WIP)</button>
+                <button onClick={handleSelectMultiplayer} className="mt-2 px-4 py-2 bg-green-600 rounded">Multiplayer Lobby</button>
+            </div>
+        );
+        /* Commented out - Missing component
         return (
             <MainMenuScreen 
                 currentUser={currentUser} 
@@ -205,12 +288,20 @@ function App() {
                 onSelectMultiplayer={handleSelectMultiplayer}
             />
         );
+        */
     }
 
     // 4. Practice Screen
     // Assumes currentView will only be 'practice' if logged in
     if (currentView === 'practice') {
-        return <PracticeScreen onBackToMenu={handleBackToMenu} />;
+        // Add null checks just in case
+        if (!currentUser || !ndk) return <div>Loading practice...</div>;
+        // Render the actual PracticeScreen component
+        return <PracticeScreen 
+            ndk={ndk} 
+            currentUser={currentUser} 
+            onBackToMenu={handleBackToMenu} 
+        />;
     }
 
     // 5. Multiplayer Lobby Screen
@@ -230,7 +321,7 @@ function App() {
 
     // 6. Game Screen
     // Assumes currentView will only be 'game' if logged in
-    if (currentView === 'game' && opponentPubkey) {
+    if (currentView === 'game' && opponentPubkey && matchId) {
         // Add null checks just in case
         if (!currentUser || !ndk) return <div>Loading game...</div>;
         return (
@@ -238,6 +329,7 @@ function App() {
                 localPlayerPubkey={currentUser.pubkey} 
                 opponentPubkey={opponentPubkey} 
                 ndk={ndk} 
+                matchId={matchId}
                 onGameEnd={handleGameEnd}
             />
         );
