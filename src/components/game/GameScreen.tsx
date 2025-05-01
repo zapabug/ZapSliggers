@@ -30,8 +30,8 @@ const MAX_ABILITY_USES = 3;
 const GameScreen: React.FC<GameScreenProps> = ({ 
   opponentPubkey, 
   localPlayerPubkey, 
-  ndk, 
-  matchId, 
+  ndk,
+  matchId,
   onGameEnd 
 }) => {
   // Ref for accessing GameRenderer methods
@@ -40,7 +40,7 @@ const GameScreen: React.FC<GameScreenProps> = ({
   // --- Use the Game Logic Hook --- 
   const {
     playerStates,
-    // currentPlayerIndex, // Not directly used for control in multiplayer mode
+    // currentPlayerIndex, // Keep commented out, not needed here
     currentAim,
     selectedAbility,
     levelData,
@@ -56,6 +56,8 @@ const GameScreen: React.FC<GameScreenProps> = ({
       gameRendererRef,
       // initialLevelData: generateInitialPositions(2400, 1200), // Optionally pass initial data
       onGameEnd, // Pass the callback
+      ndk,
+      matchId,
   });
 
   // Log Match ID on mount (Keep this or adapt)
@@ -79,21 +81,32 @@ const GameScreen: React.FC<GameScreenProps> = ({
         let newAngle: number | undefined = undefined;
         let newPower: number | undefined = undefined;
         let preventDefault = false;
-
+        // Determine mode from useGameLogic props (assuming it doesn't change)
+        // If mode could change, we'd need it from the hook's return value.
+        // const mode = 'multiplayer'; // Removed unused variable
+        // Actually, useGameLogic is called with mode: 'multiplayer' here,
+        // so this key handler only applies to multiplayer as written.
+        // The practice mode inversion needs to happen where practice mode is active.
+        
+        // Let's rethink: The keyboard controls should be handled where the mode is known.
+        // If PracticeScreen also uses this key logic, THAT screen needs the inversion.
+        // For GameScreen (multiplayer), inversion isn't needed.
+        
+        // Applying the UX swap first:
         switch (event.key) {
-            case 'ArrowUp':
+            case 'ArrowLeft': // Now controls Angle LEFT
                 newAngle = (currentAim.angle - 2 + 360) % 360;
                 preventDefault = true;
                 break;
-            case 'ArrowDown':
+            case 'ArrowRight': // Now controls Angle RIGHT
                 newAngle = (currentAim.angle + 2) % 360;
                 preventDefault = true;
                 break;
-            case 'ArrowLeft':
+            case 'ArrowDown': // Now controls Power DOWN
                 newPower = Math.max(0, currentAim.power - 2);
                 preventDefault = true;
                 break;
-            case 'ArrowRight':
+            case 'ArrowUp': // Now controls Power UP
                 newPower = Math.min(100, currentAim.power + 2);
                 preventDefault = true;
                 break;
@@ -126,6 +139,7 @@ const GameScreen: React.FC<GameScreenProps> = ({
         window.removeEventListener('keydown', handleKeyDown);
     };
     // Dependencies now include handlers from the hook
+    // Add currentPlayerIndex if needed for conditional logic (removed for now)
   }, [handleFire, handleSelectAbility, handleAimChange, currentAim.angle, currentAim.power]); 
 
   // --- Return JSX (Connect UI to hook state/handlers) --- 

@@ -88,21 +88,28 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
             let newAngle: number | undefined = undefined;
             let newPower: number | undefined = undefined;
             let preventDefault = false;
+            let angleMultiplier = 1; // Default direction
 
+            // Check if it's Player 2's turn in practice mode for inversion
+            if (currentPlayerIndex === 1) { 
+                angleMultiplier = -1;
+            }
+
+            // Swap controls and apply inversion if needed
             switch (event.key) {
-                case 'ArrowUp':
-                    newAngle = (currentAim.angle - 2 + 360) % 360;
+                case 'ArrowLeft': // Now controls Angle LEFT
+                    newAngle = (currentAim.angle - (2 * angleMultiplier) + 360) % 360;
                     preventDefault = true;
                     break;
-                case 'ArrowDown':
-                    newAngle = (currentAim.angle + 2) % 360;
+                case 'ArrowRight': // Now controls Angle RIGHT
+                    newAngle = (currentAim.angle + (2 * angleMultiplier)) % 360;
                     preventDefault = true;
                     break;
-                case 'ArrowLeft':
+                case 'ArrowDown': // Now controls Power DOWN
                     newPower = Math.max(0, currentAim.power - 2);
                     preventDefault = true;
                     break;
-                case 'ArrowRight':
+                case 'ArrowUp': // Now controls Power UP
                     newPower = Math.min(100, currentAim.power + 2);
                     preventDefault = true;
                     break;
@@ -134,8 +141,8 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
         return () => {
             window.removeEventListener('keydown', handleKeyDown);
         };
-        // Dependencies include handlers from the hook
-    }, [handleFire, handleSelectAbility, handleAimChange, currentAim.angle, currentAim.power]); 
+        // Dependencies include handlers and currentPlayerIndex for the inversion logic
+    }, [handleFire, handleSelectAbility, handleAimChange, currentAim.angle, currentAim.power, currentPlayerIndex]); 
 
     // --- Return JSX (Similar structure to GameScreen, connected to hook) --- 
     return (
