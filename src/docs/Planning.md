@@ -189,3 +189,9 @@
     10. Updated `ProjectileBody` interface in `useShotTracers.ts` to include `abilityType`.
 **Decisions:** HP implemented solely as a resource for abilities (cost 25). Ability selection logic and state management handled in `GameScreen`. UI feedback provided by `ActionButtons`. Standard hits trigger round win via callback. Ability type is now passed down to physics engine and stored on projectile. Vulnerability state tracked. 
 **Steps Explained:** Detailed the state refactoring in `GameScreen`, the logic implementation in `handleSelectAbility`, UI updates in `ActionButtons`, callback implementation (`onRoundWin`) between `GameRenderer` and `GameScreen`, and signature/type updates for passing `abilityType`.
+
+## Interaction 23: Status Update & Focus Shift (Placeholder Date)
+**User Input:** Game mechanics (gravity, HP/ability resource, basic collisions, aiming, tracers, local play) are functional. Need to update docs to remove Slingshot replica references and focus on next steps: Nostr integration (login, matchmaking, payments) and mobile testing.
+**VibeStorm Response:** Acknowledged current status. Confirmed plan to update documentation (`Build.md`, `Gameplay.md`, `Planning.md`, `roadmap.md`) to reflect the implemented Klunkstr core, remove replica-phase language, and highlight the shift in focus towards Nostr features and testing.
+**Decisions:** Documentation updated to represent the current state where local Klunkstr mechanics are implemented. Focus shifted to integrating Nostr (login testing, matchmaking flow, turn sync) and payments (NUT-18 backend).
+**Steps Explained:** Outlined the documentation update process across all relevant files.

@@ -1,70 +1,43 @@
-Okay, here is a concise roadmap focused on replicating the original Slingshot gameplay within the modern web stack, then adding the Klunkstr twists.
-
 **Klunkstr Development Roadmap (React/TS/NDK/matter-js - 2D Canvas)**
 
-**Phase 1A: Original Slingshot Replica (Local Simulation - 2D Canvas - CURRENT FOCUS)**
+**Phase 1: Core Klunkstr Mechanics (Local Play - Mostly Complete)**
 
-*   **Goal:** Create a functional local version replicating the core physics and feel of the original Python Slingshot game using the web stack and original assets.
+*   **Goal:** Implement the core local gameplay loop for Klunkstr, including physics, controls, and basic game rules.
 *   **Key Steps:**
-    1.  **Setup:** Integrate `matter-js`, HTML Canvas (`GameRenderer.tsx`), UI overlays (`AimingInterface.tsx`, `ActionButtons.tsx`, `PlayerHUD.tsx` positioned in `GameScreen.tsx`). - *Partially Done (Basic setup)*
-    2.  **Assets:** Copy original assets to `/public/images`. - *Done*.
-    3.  **Physics Engine:** Initialize `matter-js`, disable world gravity, add static planets. - *Done*.
-    4.  **Firing:** Implement projectile creation and initial velocity application via UI controls. - *Done*.
-    5.  **Custom Gravity:** Implement and tune planetary gravity: Force uses an 'effectiveRadius' (base radius + size-based bonus) to subtly increase larger planets' influence range (`GRAVITY_CONSTANT=0.5`, `GRAVITY_AOE_BONUS_FACTOR=0.1`). - *Done*
-    6.  **Collisions:** Implement basic collision detection (destroy projectile on planet hit). Handle ship hits (projectile destroyed, damage logic TBD). - *Done*
-    7.  **Projectile Timeout:** Implement removal of projectiles after 45 seconds. - *Done*
-    8.  **Visuals:** Render original assets (`.png` files) for planets, ships, projectiles on the canvas.
-    9.  **Last Shot Trace:** Implement rendering the path of the previous shots (Last 10, dashed lines). - *Done (via `useShotTracers`)*
-   10.  **Active Trail:** Implement visual trail for active projectile (Solid line). - *Done (via `useShotTracers`, goal: particles)*
-   11.  **Level Loading:** Basic random level generation (place planets).
-     - Implement random generation of ship starting positions (within side zones, min separation enforced). - *Done*.
-     - Implement random generation of planet positions (respecting min distance from ships and other planets). - *Done*.
-     - Implement central planet spawning zone (currently 80% of virtual area). - *Done*.
-     - Implement wider aspect ratio (1200x600) for the game's virtual coordinate system. - *Done*.
-     - Implement adaptive camera view (aspect ratio fitting, dynamic zoom with 50% minimum view size). - *Done*.
+    1.  **Setup & Rendering:** Integrate `matter-js`, HTML Canvas (`GameRenderer`), UI overlays. - *Done*.
+    2.  **Assets:** Load game assets (`useGameAssets`). Placeholder visuals currently used. - *Setup Done*.
+    3.  **Physics Engine (`useMatterPhysics`):** Initialize engine, implement custom tuned gravity, handle basic collisions, implement projectile timeout. - *Done*.
+    4.  **Level Setup (`useGameInitialization`):** Random ship/planet placement, wide viewport. - *Done*.
+    5.  **Controls & Firing:** Implement aiming/power controls and projectile firing. - *Done*.
+    6.  **Aiming Aids (`useShotTracers`):** Render historical traces and active trails. - *Done*.
+    7.  **Klunkstr Rules (Partial):** Implement HP as resource, ability selection UI/logic, basic win condition callback. - *Done*.
+    8.  **Authentication (`useAuth`):** Implement NIP-07/NIP-46/nsec login. - *Done*.
+    9.  **Lobby:** Implement `LobbyScreen` with interactive `LobbyPlayground`. - *Done*.
+   10. **Challenges (`ChallengeHandler`):** Implement basic DM challenge handling. - *Done*.
+   11. **Viewport/Camera (`useDynamicViewport`):** Implement adaptive zoom/pan. - *Done*.
+   12. **PWA Setup:** Configure `vite-plugin-pwa`. - *Configured*
 
-**Phase 1B: Klunkstr Rules & Features**
+**Phase 2: Nostr Integration & Gameplay Completion (Current Focus)**
 
-*   **Goal:** Layer the specific Klunkstr gameplay mechanics onto the replica foundation.
+*   **Goal:** Integrate Nostr for multiplayer, complete Klunkstr ruleset, implement payments, and test thoroughly.
 *   **Key Steps:**
-    1.  **HP System:** Implement HP as a resource for abilities. *(Partially Done: State managed in `GameScreen`, used as resource)*
-    2.  **Abilities:** Implement Triple Shot, Explosive Arrow, Lead Tipped (cost, effects, usage limits).
-        - Implement ability selection UI/logic. *(Done: `ActionButtons`/`GameScreen` handle selection, cost, limits)*
-        - Implement ability effects in physics engine. *(Todo)*
-    3.  **Vulnerability:** Implement the mechanic based on ability usage. *(Partially Done: State tracking in `GameScreen`)*
-    4.  **Game Flow:** Implement turn structure (timer, state), round structure (Best of 3, 5 turns), Sudden Death, Klunkstr win conditions.
-        - Implement basic round win detection for standard hits. *(Done: `onRoundWin` callback)*
-        - Implement full round/match win conditions (incl. ability hits, turn limits, Sudden Death). *(Todo)*
-        - Implement turn timer logic. *(Todo)*
-    5.  **Advanced Levels:** Add Gas Giants, moving planets, level visualization. *(Todo)*
-    6.  **PWA Setup:** Configure `vite-plugin-pwa` and add icons. *(Configured - Needs Icons)*
-
-**Phase 2: Nostr Multiplayer & Wagering Integration**
-
-*   **Goal:** Connect two players via Nostr for a turn-based match with mandatory NUT-18 wagering.
-*   **Key Steps:**
-    1.  **Nostr Setup:** Integrate NDK (`useNDKInit`), handle login/signing (`nostr-login`), display profiles (`PlayerHUD`). - *Partially Done (NDK/Login setup)*
-    2.  **Matchmaking:** Implement DM (`kind:4`) challenge flow (`ChallengeHandler.tsx`) with Accept/Reject logic.
-    3.  **Wagering (NUT-18 Backend):**
-        *   Set up backend service.
-        *   Implement frontend display/handling of `creq`.
-        *   Implement backend verification.
-        *   Gate game start on payment confirmation.
-    4.  **Turn Synchronization:**
-        *   Send player moves (`kind:30079`).
-        *   Subscribe to opponent's moves.
-    5.  **Simultaneous Resolution:** Trigger local simulation based on received moves.
-    6.  **UI Integration:** Connect game state to UI (HP, ability usage, etc.).
-    7.  **Lobby Refinement:** Flesh out `LobbyScreen.tsx` with challenge list UI and entry point for practice mode.
+    1.  **Visuals:** Render actual sprites/assets in `GameRenderer`. - *(Next Immediate Step)*
+    2.  **Nostr Login Testing:** Debug and verify login flows (`useAuth`) on mobile devices.
+    3.  **Matchmaking:** Implement full DM (`kind:4`) challenge flow (Accept/Reject) in `ChallengeHandler`/`LobbyScreen`.
+    4.  **Wagering (NUT-18):** Define and implement backend service API, integrate frontend flow for payment requests/verification.
+    5.  **Turn Synchronization:** Implement sending/receiving moves (`kind:30079`), synchronize game state for simultaneous resolution.
+    6.  **Klunkstr Rules Completion:** Implement ability physics effects, full win conditions (HP/Vulnerability), Vulnerability state, ability limits, turn timer/limits, Sudden Death.
+    7.  **Lobby Refinement:** Add practice mode entry, potentially refine challenge UI.
 
 **Phase 3: Polish & Refinement**
 
-*   **Goal:** Improve the user experience, add visual flair, and conduct thorough testing.
+*   **Goal:** Improve the user experience, add visual/audio flair, and finalize testing.
 *   **Key Steps:**
-    1.  **Visual Polish:** Add 2D sprite animations, particle effects, UI transitions. Refine asset rendering.
+    1.  **Visual Polish:** Add 2D sprite animations, particle effects, UI transitions.
     2.  **Sound Effects:** Integrate sound effects.
-    3.  **Error Handling:** Improve Nostr/payment/game error handling.
-    4.  **Tutorials/Onboarding:** Implement help popups.
-    5.  **Testing:** Thoroughly test balance, Nostr, payments, mobile responsiveness.
+    3.  **Advanced Levels:** Add Gas Giants, moving planets.
+    4.  **Error Handling:** Improve Nostr/payment/game error handling robustness.
+    5.  **Tutorials/Onboarding:** Implement help popups or guides.
+    6.  **Testing:** Thoroughly test game balance, Nostr interactions, payments, and mobile responsiveness.
 
-This revised roadmap reflects the initial focus on building the replica foundation before adding Klunkstr-specific features and multiplayer.
+This roadmap reflects the current state where the local Klunkstr core is built, and the focus is now on completing the gameplay rules and integrating Nostr/payments.
