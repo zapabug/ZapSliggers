@@ -6,7 +6,7 @@ import { useNDKInit } from './useNDKInit'; // Import the custom NDK init hook
 // import { idb } from '../utils/idb';
 
 // Define constants (similar to App.tsx)
-const NSEC_APP_HEX_PUBKEY = '258c0814444344a9979816847bf9e371a8718e90bd51a777c7e952f41314a887';
+// NSEC_APP_HEX_PUBKEY removed as it's no longer used as a default
 const NIP46_CONNECT_TIMEOUT = 75000; // 75 seconds
 
 export type LoginMethod = 'none' | 'nip07' | 'nip46';
@@ -24,7 +24,7 @@ export interface UseAuthReturn {
     nip46Status: Nip46Status;
     authError: Error | null;
     loginWithNip07: () => Promise<void>;
-    initiateNip46Login: (remoteSignerPubkey?: string) => Promise<void>; // Optional pubkey override
+    initiateNip46Login: (bunkerIdentifier: string) => Promise<void>;
     logout: () => Promise<void>;
     cancelNip46LoginAttempt: () => void;
 }
@@ -109,7 +109,7 @@ export const useAuth = (): UseAuthReturn => {
     }, [ndk, isNdkReady, isLoggedIn, cleanupNip46]);
 
     // --- NIP-46 Login --- 
-    const initiateNip46Login = useCallback(async (remoteSignerPubkeyHex: string = NSEC_APP_HEX_PUBKEY, isRestore: boolean = false) => {
+    const initiateNip46Login = useCallback(async (bunkerIdentifier: string) => {
         if (!ndk || !isNdkReady) {
              setAuthError(new Error("NDK not ready for NIP-46."));
              return;
@@ -119,14 +119,14 @@ export const useAuth = (): UseAuthReturn => {
             return;
         }
         
-        console.log(`[useAuth] Initiating NIP-46 login for ${remoteSignerPubkeyHex}${isRestore ? ' (restore)' : ''}...`);
+        console.log(`[useAuth] Initiating NIP-46 login for ${bunkerIdentifier}...`);
         cleanupNip46(); // Clean previous attempts
         setLoginMethod('nip46');
-        setNip46Status(isRestore ? 'connecting' : 'generating');
+        setNip46Status('connecting');
         setAuthError(null);
 
         try {
-            const signer = new NDKNip46Signer(ndk, remoteSignerPubkeyHex);
+            const signer = new NDKNip46Signer(ndk, bunkerIdentifier);
             nip46SignerRef.current = signer; // Store ref
 
             signer.on("authUrl", (url) => {
@@ -193,7 +193,7 @@ export const useAuth = (): UseAuthReturn => {
             setNip46Status('failed');
             cleanupNip46();
         }
-    }, [ndk, isNdkReady, isLoggedIn, nip46Status, cleanupNip46]); // Added deps
+    }, [ndk, isNdkReady, isLoggedIn, nip46Status, cleanupNip46]);
 
     // --- Cancel NIP-46 --- 
     const cancelNip46LoginAttempt = useCallback(() => {

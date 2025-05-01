@@ -11,14 +11,15 @@ import { generateInitialPositions, InitialGamePositions } from '../../hooks/useG
 interface GameScreenProps {
   opponentPubkey: string;
   localPlayerPubkey: string;
-  ndk: NDK; // Add NDK instance prop
-  // TODO: Add game state props as needed (e.g., gameState, turnNumber)
+  ndk: NDK; // Pass NDK instance
+  onGameEnd: () => void; // Callback when the game concludes
 }
 
 // Define constants or get from config
 const MAX_HP = 100;
 const ABILITY_COST = 25;
 const MAX_ABILITY_USES = 3;
+// const MAX_ABILITY_TYPE_USES = 1; // Removed, not used
 
 // Define Player State structure
 interface PlayerState {
@@ -27,25 +28,26 @@ interface PlayerState {
   isVulnerable: boolean;
 }
 
-const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubkey, ndk }) => { // Destructure ndk prop
+const GameScreen: React.FC<GameScreenProps> = ({ 
+  opponentPubkey, 
+  localPlayerPubkey, 
+  ndk, 
+  onGameEnd // Destructure the new prop
+}) => {
   // Ref for accessing GameRenderer methods
   const gameRendererRef = useRef<GameRendererRef>(null);
 
   // --- Level Data State ---
-  // Now uses state that can be updated
   const [levelData, setLevelData] = useState<InitialGamePositions>(() => 
     generateInitialPositions(2400, 1200) 
   );
 
-  // Component State for aiming values (angle in degrees, power unitless)
-  // Angle: Assuming 0 is right, positive clockwise (adjust if UI gives different)
-  // Power: Assuming 0-100 from UI, needs scaling before passing to fireProjectile
+  // Component State for aiming values
   const [currentAim, setCurrentAim] = useState({ angle: 0, power: 50 });
 
   // Other Component State
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [turnTimer, setTurnTimer] = useState(60); // Example timer - Drive from game state later
-  // Removed abilityUsesLeft state as it's derived
+  const [turnTimer, setTurnTimer] = useState(60);
   const [currentPlayerIndex, setCurrentPlayerIndex] = useState<0 | 1>(0);
   const [playerStates, setPlayerStates] = useState<[PlayerState, PlayerState]>([
     { hp: MAX_HP, usedAbilities: new Set(), isVulnerable: false }, // Player 0
@@ -54,18 +56,13 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
   const [selectedAbility, setSelectedAbility] = useState<AbilityType | null>(null);
 
   // Derived state for convenience
-  const localPlayerIndex = 0; // Assuming local player is always index 0 for now
+  const localPlayerIndex = 0; // Assuming local player is always index 0
   const opponentPlayerIndex = 1;
   const localPlayerState = playerStates[localPlayerIndex];
   const opponentPlayerState = playerStates[opponentPlayerIndex];
-
-  // Pass correct HP values to HUDs
   const localPlayerCurrentHp = localPlayerState.hp;
   const opponentCurrentHp = opponentPlayerState.hp;
   
-  // Deriving this here instead of state
-  // const currentAbilityUsesLeft = MAX_ABILITY_USES - playerStates[currentPlayerIndex].usedAbilities.size;
-
   // --- Effect to Sync Aim State on Turn Change ---
   useEffect(() => {
     // Get the actual angle of the ship that is NOW current
@@ -76,12 +73,12 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
       let angleDeg = currentShipAngleRad * (180 / Math.PI);
       angleDeg = (angleDeg % 360 + 360) % 360; // Normalize to 0-360
 
-      console.log(`Turn changed to ${currentPlayerIndex}. Syncing aim angle state to: ${angleDeg.toFixed(1)} degrees`);
+      // console.log(`Turn changed to ${currentPlayerIndex}. Syncing aim angle state to: ${angleDeg.toFixed(1)} degrees`);
 
       // Update the aim state (angle only, keep existing power)
       setCurrentAim(prevAim => ({ ...prevAim, angle: angleDeg }));
     } else {
-      console.warn(`Could not get ship angle for player ${currentPlayerIndex} on turn change.`);
+      // console.warn(`Could not get ship angle for player ${currentPlayerIndex} on turn change.`);
       // Optionally reset to a default angle if getting the angle fails
       // setCurrentAim(prevAim => ({ ...prevAim, angle: currentPlayerIndex === 1 ? 180 : 0 }));
     }
@@ -92,41 +89,33 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
 
   }, [currentPlayerIndex]);
 
-  // --- Callback for Round Win ---
-  // Needs to be defined before handlePlayerHit
-  const handleRoundWin = useCallback((winningPlayerIndex: 0 | 1) => {
-    console.log(`!!! Round Win detected for Player ${winningPlayerIndex} !!!`);
+  // --- Callback for Round Win --- 
+  const handleRoundWin = useCallback(() => {
+    // TODO: Determine actual winner, potentially pass to onGameEnd
+    console.log(`!!! Round Win detected !!!`);
+    // For now, just call onGameEnd to return to lobby/menu
+    // This needs proper scoring/match end logic later
+    onGameEnd(); 
 
-    // --- Reset Logic --- 
-    // 1. Generate NEW level layout
-    const newLevel = generateInitialPositions(2400, 1200); 
-
-    // 2. Update GameScreen's levelData state (Triggers visual map reset)
+    // --- Reset Logic (Maybe move this to game start?) ---
+    const newLevel = generateInitialPositions(2400, 1200);
     setLevelData(newLevel);
-
-    // 3. Reset HP and Ability usage for the new round
     setPlayerStates([
-      { hp: MAX_HP, usedAbilities: new Set(), isVulnerable: false }, // Player 0
-      { hp: MAX_HP, usedAbilities: new Set(), isVulnerable: false }  // Player 1
+      { hp: MAX_HP, usedAbilities: new Set(), isVulnerable: false },
+      { hp: MAX_HP, usedAbilities: new Set(), isVulnerable: false }
     ]);
-
-    // 4. Reset turn/selected ability state for the *next round*
-    setCurrentPlayerIndex(0); 
+    setCurrentPlayerIndex(0);
     setSelectedAbility(null);
-
-    // TODO: Implement other round end logic (show modal, update scores etc)
-  }, []); // No dependencies needed as it only calls setters/external functions
+  }, [onGameEnd]);
 
   // --- Handle Player Hit Callback ---
-  // Updated signature: Assumes GameRenderer provides firing player index and projectile type
   const handlePlayerHit = useCallback((hitPlayerIndex: 0 | 1, firingPlayerIndex: 0 | 1, projectileType: AbilityType | 'standard') => {
-      console.log(`[GameScreen] handlePlayerHit: FiringPlayer=${firingPlayerIndex}, HitPlayer=${hitPlayerIndex}, Type=${projectileType}`);
+      // console.log(`[GameScreen] handlePlayerHit: FiringPlayer=${firingPlayerIndex}, HitPlayer=${hitPlayerIndex}, Type=${projectileType}`);
 
       // --- Check for Self-Hit first ---
       if (hitPlayerIndex === firingPlayerIndex) {
-          console.log(`!!! Player ${firingPlayerIndex} hit themselves! Round Loss!`);
-          const winnerIndex = (1 - firingPlayerIndex) as 0 | 1; // The other player wins
-          handleRoundWin(winnerIndex);
+          // console.log(`!!! Player ${firingPlayerIndex} hit themselves! Round Loss!`);
+          handleRoundWin();
           return; // Stop further processing
       }
 
@@ -134,11 +123,11 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
       let damage = 0;
       if (projectileType === 'standard') {
           damage = 100;
-          console.log(`Standard hit dealt ${damage} damage.`);
+          // console.log(`Standard hit dealt ${damage} damage.`);
       } else {
           // All current abilities deal the same damage
           damage = 50; 
-          console.log(`Ability hit (${projectileType}) dealt ${damage} damage.`);
+          // console.log(`Ability hit (${projectileType}) dealt ${damage} damage.`);
       }
 
       // --- Apply Damage and Check for Round Win --- 
@@ -153,14 +142,14 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
           // Deduct HP
           const newHp = hitPlayerCurrentState.hp - damage;
           hitPlayerCurrentState.hp = newHp;
-          console.log(`Player ${hitPlayerIndex} HP reduced to ${newHp}`);
+          // console.log(`Player ${hitPlayerIndex} HP reduced to ${newHp}`);
 
           // Check if the hit resulted in a win
           if (newHp <= 0) {
-              console.log(`Player ${hitPlayerIndex} HP reached 0 or below. Player ${firingPlayerIndex} wins the round!`);
+              // console.log(`Player ${hitPlayerIndex} HP reached 0 or below. Player ${firingPlayerIndex} wins the round!`);
               // Schedule handleRoundWin to run *after* this state update completes
               // Use setTimeout to avoid calling it directly within the setter
-              setTimeout(() => handleRoundWin(firingPlayerIndex), 0); 
+              setTimeout(() => handleRoundWin(), 0); 
           }
           
           return newStates; // Return the updated states array
@@ -168,49 +157,88 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
       
       // --- Round Win logic is now handled *inside* setPlayerStates based on HP --- 
 
-  }, [handleRoundWin]); // Removed playerStates dependency, setter handles it
+  }, [handleRoundWin]);
 
-  // TODO: Replace mock state with actual game state management (e.g., Zustand, props)
-  // TODO: Fetch profile data for HUDs if needed beyond pubkey (useProfile hook?)
-  // TODO: Implement game loop logic (turn handling, receiving Nostr events, triggering physics updates)
-  // TODO: Connect physics engine updates to GameRenderer props
-  // TODO: Handle ability selection state and logic
-
-  // Event Handlers
-  // Use useCallback to memoize the handler passed to AimingInterface
+  // --- Aim Change Handler ---
   const handleAimChange = useCallback((aim: { angle: number; power: number }) => {
-    console.log(`[GameScreen] handleAimChange called with:`, aim);
+    // console.log(`[GameScreen] handleAimChange called with:`, aim);
     // Update local state
     setCurrentAim(aim);
     // ALSO update the ship angle in the renderer
     gameRendererRef.current?.setShipAim(currentPlayerIndex, aim.angle);
-  }, [currentPlayerIndex]); // Add currentPlayerIndex dependency
+  }, [currentPlayerIndex]);
 
-  const handleFire = () => {
-    console.log(`Fire button clicked by Player ${currentPlayerIndex}! Aim:`, currentAim, `Ability: ${selectedAbility || 'None'}`);
+  // --- Fire Handler ---
+  const handleFire = useCallback(() => {
+    const currentPlayerState = playerStates[currentPlayerIndex];
+    // console.log(`Fire button clicked by Player ${currentPlayerIndex}! HP: ${currentPlayerState.hp}, Aim:`, currentAim, `Ability: ${selectedAbility || 'None'}`);
 
     const scaledPower = currentAim.power / 20;
 
-    // Pass selectedAbility to fireProjectile
-    gameRendererRef.current?.fireProjectile(
-        currentPlayerIndex,
-        scaledPower,
-        selectedAbility // Pass the selected ability (or null)
-    );
+    // Check if trying to use an ability
+    if (selectedAbility) {
+      // --- SUICIDE CHECK ---
+      if (currentPlayerState.hp <= ABILITY_COST) {
+        // console.error(`!!! Player ${currentPlayerIndex} SUICIDE! Tried to use ${selectedAbility} with ${currentPlayerState.hp} HP (Cost: ${ABILITY_COST}). Round Loss!`);
+        // Opponent wins
+        handleRoundWin();
+        // Reset selected ability visually, but don't proceed further
+        setSelectedAbility(null);
+        return; // Stop execution here
+      }
 
-    // Reset selected ability after firing
-    setSelectedAbility(null);
+      // --- Sufficient HP - Fire Ability Projectile ---
+      // console.log(`Firing ability ${selectedAbility} for Player ${currentPlayerIndex}`);
+      gameRendererRef.current?.fireProjectile(
+          currentPlayerIndex,
+          scaledPower,
+          selectedAbility // Pass the selected ability
+      );
 
-    // Switch player turn
+      // --- Update state AFTER successful ability fire ---
+      setPlayerStates(currentStates => {
+        const newStates: [PlayerState, PlayerState] = [
+            { ...currentStates[0], usedAbilities: new Set(currentStates[0].usedAbilities) }, 
+            { ...currentStates[1], usedAbilities: new Set(currentStates[1].usedAbilities) }
+        ];
+        const playerToUpdate = newStates[currentPlayerIndex];
+        
+        // Deduct HP
+        playerToUpdate.hp -= ABILITY_COST;
+        // Add ability to used set
+        playerToUpdate.usedAbilities.add(selectedAbility);
+        // Update vulnerability status
+        playerToUpdate.isVulnerable = playerToUpdate.usedAbilities.size >= 2; // Vulnerable if 2 or more abilities used
+
+        // console.log(`Player ${currentPlayerIndex} state updated after ability use: HP=${playerToUpdate.hp}, Used=${Array.from(playerToUpdate.usedAbilities).join(',')}, Vulnerable=${playerToUpdate.isVulnerable}`);
+        
+        return newStates;
+      });
+
+      // Reset selected ability visually
+      setSelectedAbility(null);
+
+    } else {
+      // --- Fire Standard Projectile ---
+      // console.log(`Firing standard projectile for Player ${currentPlayerIndex}`);
+      gameRendererRef.current?.fireProjectile(
+          currentPlayerIndex,
+          scaledPower,
+          null // No ability selected
+      );
+      // No state change needed for standard fire (HP cost, ability use)
+    }
+
+    // Switch player turn AFTER processing fire (either ability or standard)
     setCurrentPlayerIndex(prevIndex => (prevIndex === 0 ? 1 : 0));
 
     // TODO: Send move via Nostr event (kind:30079)
     // TODO: Update game state (e.g., switch to 'resolving' phase)
-  };
+  }, [playerStates, currentPlayerIndex, currentAim, selectedAbility, handleRoundWin]);
 
-  // Updated handleSelectAbility (was handleAbilities)
+  // --- Select Ability Handler ---
   const handleSelectAbility = useCallback((abilityType: AbilityType) => {
-    console.log(`[GameScreen] handleSelectAbility START for ability: ${abilityType}. Current aim:`, currentAim);
+    // console.log(`[GameScreen] handleSelectAbility START for ability: ${abilityType}. Current aim:`, currentAim);
     setPlayerStates(currentStates => {
       const currentPlayerData = currentStates[currentPlayerIndex];
 
@@ -223,48 +251,26 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
 
       // Check Max Uses
       if (currentPlayerData.usedAbilities.size >= MAX_ABILITY_USES) {
-        console.warn(`Player ${currentPlayerIndex} cannot use ability: Max uses (${MAX_ABILITY_USES}) reached.`);
+        // console.warn(`Player ${currentPlayerIndex} cannot select ability: Max uses (${MAX_ABILITY_USES}) reached.`);
         return currentStates; // Prevent selection
       }
 
       // Check if already used this specific ability type
       if (currentPlayerData.usedAbilities.has(abilityType)) {
-        console.warn(`Player ${currentPlayerIndex} cannot use ability: ${abilityType} already used this match.`);
+        // console.warn(`Player ${currentPlayerIndex} cannot select ability: ${abilityType} already used this match.`);
         return currentStates; // Prevent selection
       }
 
-      // Check HP Cost
-      if (currentPlayerData.hp < ABILITY_COST) {
-        console.warn(`Player ${currentPlayerIndex} cannot use ability: Insufficient HP (${currentPlayerData.hp}/${ABILITY_COST}).`);
-        return currentStates; // Prevent selection
-      }
+      // --- REMOVED HP CHECK HERE ---
+      // The check is now done in handleFire at the moment of firing.
 
-      // --- All checks passed - Select the ability --- 
+      // --- All checks passed - Select the ability ---
       console.log(`Player ${currentPlayerIndex} selected ability: ${abilityType}`);
       setSelectedAbility(abilityType);
-
-      // Clone the state to modify it immutably
-      const newStates: [PlayerState, PlayerState] = [
-          { ...currentStates[0], usedAbilities: new Set(currentStates[0].usedAbilities) }, 
-          { ...currentStates[1], usedAbilities: new Set(currentStates[1].usedAbilities) }
-      ];
-      const newState = newStates[currentPlayerIndex];
-
-      // Deduct HP
-      newState.hp -= ABILITY_COST;
-
-      // Add to used abilities
-      newState.usedAbilities.add(abilityType);
-
-      // Update vulnerability status
-      newState.isVulnerable = newState.usedAbilities.size >= 2;
-      if (newState.isVulnerable) {
-          console.log(`Player ${currentPlayerIndex} is now Vulnerable!`);
-      }
-
-      return newStates;
+      // No player state change needed *at selection time* regarding HP or ability usage count
+      return currentStates; 
     });
-  }, [currentPlayerIndex, selectedAbility, currentAim]); // Dependencies: current player and current selection
+  }, [currentPlayerIndex, selectedAbility]);
 
   // --- Keyboard Controls --- 
   useEffect(() => {
@@ -276,30 +282,32 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
         switch (event.key) {
             case 'ArrowUp':
                 newAngle = (currentAim.angle - 2 + 360) % 360;
-                preventDefault = true; // Prevent scroll
+                preventDefault = true;
                 break;
             case 'ArrowDown':
                 newAngle = (currentAim.angle + 2) % 360;
-                preventDefault = true; // Prevent scroll
+                preventDefault = true;
                 break;
             case 'ArrowLeft':
                 newPower = Math.max(0, currentAim.power - 2);
-                preventDefault = true; // Prevent scroll
+                preventDefault = true;
                 break;
             case 'ArrowRight':
                 newPower = Math.min(100, currentAim.power + 2);
-                preventDefault = true; // Prevent scroll
+                preventDefault = true;
                 break;
-            case ' ': 
-                // Space already has preventDefault
-                event.preventDefault();
+            case ' ': // Spacebar
+                event.preventDefault(); // Always prevent default for space
                 handleFire();
                 break;
+            // Map numbers 1, 2, 3 to abilities if needed
+            case '1': handleSelectAbility('splitter'); break; 
+            case '2': handleSelectAbility('gravity'); break; 
+            case '3': handleSelectAbility('plastic'); break; 
             default:
                 break;
         }
 
-        // Prevent default browser action (scrolling) if needed
         if (preventDefault) {
           event.preventDefault();
         }
@@ -310,83 +318,72 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
             angle: newAngle !== undefined ? newAngle : currentAim.angle,
             power: newPower !== undefined ? newPower : currentAim.power,
           };
-          setCurrentAim(updatedAim);
-          
-          // If angle changed, update the renderer
-          if (newAngle !== undefined) {
-            gameRendererRef.current?.setShipAim(currentPlayerIndex, newAngle);
-          }
+          handleAimChange(updatedAim); // Use handleAimChange to update state & renderer
         }
     };
 
     window.addEventListener('keydown', handleKeyDown);
-
     return () => {
         window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [handleFire, currentAim.angle, currentAim.power, currentPlayerIndex]); // Update dependencies
-  // --- End Keyboard Controls ---
+  }, [handleFire, handleSelectAbility, handleAimChange, currentAim.angle, currentAim.power]); // Update dependencies
 
-  // Log currentAim before render
-  console.log(`[GameScreen] Rendering. Current aim state:`, currentAim);
-
+  // --- Return JSX --- 
   return (
-    // Main container: Remove flex centering
-    <div className="relative w-full h-screen bg-black text-white overflow-hidden">
+    <div className="relative w-full h-dvh bg-black text-white overflow-hidden">
 
       {/* Player HUDs - Positioned absolutely top-left and top-right */}
-      {/* Use closer positioning values like top-2 left-2 etc. */}
       <div className="absolute top-2 left-2 z-10 pointer-events-auto">
         <PlayerHUD
-          pubkey={localPlayerPubkey}
+          pubkey={localPlayerPubkey} // Pass pubkey
           currentHp={localPlayerCurrentHp}
           maxHp={MAX_HP}
-          isPlayer1={true}
+          isPlayer1={true} // Controls alignment/layout
           ndk={ndk}
         />
       </div>
       <div className="absolute top-2 right-2 z-10 pointer-events-auto">
         <PlayerHUD
-          pubkey={opponentPubkey}
+          pubkey={opponentPubkey} // Pass pubkey
           currentHp={opponentCurrentHp}
           maxHp={MAX_HP}
-          isPlayer1={false} // Controls alignment
+          isPlayer1={false} // Controls alignment/layout
           ndk={ndk}
         />
       </div>
 
-      {/* Game Canvas Container - Set to fill parent */}
-      <div className="relative z-0 w-full h-full">
-        {/* Conditionally render GameRenderer only if levelData is available */} 
+      {/* Game Canvas Container - Fills space behind UI */}
+      <div className="absolute inset-0 z-0 w-full h-full">
         {levelData && (
           <GameRenderer
-            ref={gameRendererRef} // Pass the ref here
-            levelData={levelData} // Pass level data state
-            onPlayerHit={handlePlayerHit} // Pass hit handler
+            ref={gameRendererRef}
+            levelData={levelData}
+            onPlayerHit={handlePlayerHit}
           />
         )}
       </div>
 
-      {/* Bottom Control Area - Positioned absolutely near corners */}
-      {/* Use closer positioning values like bottom-4 left-4 etc. */}
+      {/* Bottom Control Area - Aiming */} 
       <div className="absolute bottom-4 left-4 z-10 pointer-events-auto flex flex-col items-start max-w-xs">
         <AimingInterface
-          onAimChange={handleAimChange} // Pass the handler
-          currentAngle={currentAim.angle} // Pass current angle state
+          // Pass necessary props - Assuming AimingInterface takes angle/power and onChange
+          currentAngle={currentAim.angle} 
+          onAimChange={handleAimChange} 
         />
       </div>
 
-      {/* Action/Fire Buttons Container */}
+      {/* Bottom Control Area - Actions/Fire */} 
       <div className="absolute bottom-4 right-4 z-10">
         <ActionButtons
           onFire={handleFire}
           onAbilitySelect={handleSelectAbility}
           selectedAbility={selectedAbility}
+          // Pass correct player state data
           usedAbilities={playerStates[currentPlayerIndex].usedAbilities}
           currentHp={playerStates[currentPlayerIndex].hp}
           abilityCost={ABILITY_COST}
           maxAbilityUses={MAX_ABILITY_USES}
-          disabled={false}
+          disabled={false} // TODO: Add disabled logic (e.g., during shot resolution)
         />
       </div>
 
@@ -394,4 +391,4 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
   );
 };
 
-export default GameScreen; 
+export default GameScreen;

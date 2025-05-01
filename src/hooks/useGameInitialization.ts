@@ -11,13 +11,13 @@ const SHIP_RADIUS = 63;
 const PLANET_MIN_RADIUS = 30;
 const PLANET_MAX_RADIUS = 180;
 // const EDGE_PADDING = 50; // No longer needed with constrained zones
-const PLANET_SPAWN_AREA_FACTOR = 0.8; // Spawn planets within central 80% *of initial view*
-const SHIP_ZONE_WIDTH_FACTOR = 0.2; // Ships spawn in outer 20% *of initial view*
-const INITIAL_VIEW_WIDTH_FACTOR = 0.6; // Initial view is central 60%
-const INITIAL_VIEW_HEIGHT_FACTOR = 0.6;
+const PLANET_SPAWN_AREA_FACTOR = 0.9; // Spawn planets within central 90% *of initial view*
+const SHIP_ZONE_WIDTH_FACTOR = 0.1; // Ships spawn in outer 10% *of initial view*
+const INITIAL_VIEW_WIDTH_FACTOR = 0.75; // Initial view is central 75%
+const INITIAL_VIEW_HEIGHT_FACTOR = 0.75; // Initial view is central 75%
 // Minimum distances remain the same
-const MIN_SHIP_SEPARATION_FACTOR = 0.4; // Min separation relative to *initial view width*
-const MIN_PLANET_SHIP_DISTANCE = 150; 
+const MIN_SHIP_SEPARATION_FACTOR = 0.9; // INCREASED: Min separation relative to *initial view width*
+const MIN_PLANET_SHIP_DISTANCE = 250; 
 const MIN_PLANET_PLANET_DISTANCE = 50; 
 const NUM_PLANETS = 3;
 

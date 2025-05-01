@@ -19,7 +19,13 @@ import { QRCodeCanvas } from 'qrcode.react';
 // import { NDKUserProfile, NDKNip07Signer, NDKNip46Signer } from '@nostr-dev-kit/ndk'
 // Remove unused import
 // import { useNDK } from './hooks/useNDK'; 
-import { ChallengeHandler } from './components/ChallengeHandler'; 
+// Removed unused import
+// import { ChallengeHandler } from './components/ChallengeHandler'; 
+// Import LobbyScreen
+import LobbyScreen from './components/lobby/LobbyScreen';
+// Import the new screen components
+import MainMenuScreen from './components/screens/MainMenuScreen';
+import PracticeScreen from './components/screens/PracticeScreen';
 
 // Remove local relay definition
 // const explicitRelayUrls = [...] 
@@ -32,8 +38,11 @@ import { ChallengeHandler } from './components/ChallengeHandler';
 // Define nsec.app hex pubkey
 // const NSEC_APP_HEX_PUBKEY = '258c0814444344a9979816847bf9e371a8718e90bd51a777c7e952f41314a887';
 
-// Mock opponent pubkey for GameScreen
-const MOCK_OPPONENT_PUBKEY = 'fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52'; // Example pubkey (atlas)
+// Removed unused mock opponent pubkey
+// const MOCK_OPPONENT_PUBKEY = 'fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52';
+
+// Define view states
+type AppView = 'login' | 'connecting_ndk' | 'menu' | 'practice' | 'lobby' | 'game';
 
 function App() { 
   // Initialize ndk-hooks with the singleton instance
@@ -53,8 +62,6 @@ function App() {
     authError,
     loginWithNip07,
     initiateNip46Login,
-    // logout, // Not currently used in UI?
-    // cancelNip46LoginAttempt, // Not currently used in UI?
   } = useAuth();
 
   // Get the ndk instance via the hook
@@ -63,81 +70,183 @@ function App() {
   // const isReady = !!ndk; // Basic readiness check - assumes ndk is available when initialized
   // const ndkConnectionError = null; // Placeholder - need proper error handling
 
-  // Local UI state (e.g., whether game screen is active)
-  // We might still need this if `isLoggedIn` doesn't automatically mean the game starts.
-  const [gameActive, setGameActive] = useState(false);
-  
-  // Effect to automatically attempt login when NDK is ready and user isn't logged in
+  // State for the current view
+  const [currentView, setCurrentView] = useState<AppView>('connecting_ndk'); 
+  // State for NIP-46 input
+  const [bunkerUriInput, setBunkerUriInput] = useState('');
+  // State for opponent pubkey when game starts
+  const [opponentPubkey, setOpponentPubkey] = useState<string | null>(null); 
+
+  // --- Effects to manage view transitions based on NDK and Auth state --- 
   useEffect(() => {
-    console.log("[App Login Trigger Effect] Check:", { isNdkReady, isLoggedIn, loginMethod });
-    if (isNdkReady && !isLoggedIn && loginMethod === 'none') {
-      console.log("[App Login Trigger Effect] NDK Ready, not logged in. Attempting login...");
-      // Try NIP-07 first, then NIP-46 (logic is inside useAuth)
-      const attemptAutoLogin = async () => {
-        try {
-          // Log before attempting NIP-07
-          console.log("[App Login Trigger Effect] Trying NIP-07...");
-          await loginWithNip07();
-          // If loginWithNip07 succeeds, isLoggedIn becomes true, stopping further attempts.
-          // If it fails, useAuth handles the error state, we might need to check authError here?
-          // Or assume NIP-46 should be tried regardless of NIP-07 failure reason (current useAuth logic)?
-        } catch { // Error handled within useAuth, catch block still needed syntactically
-          console.log("[App Login Trigger Effect] NIP-07 failed or unavailable, trying NIP-46...");
-          // The error is already handled within useAuth, just proceed
+    if (!isNdkReady) {
+      setCurrentView('connecting_ndk');
+    } else if (!isLoggedIn) {
+      // NDK is ready, but user not logged in -> show login options
+      setCurrentView('login');
+    } else if (isLoggedIn && currentView === 'login') {
+      // Just logged in -> go to menu
+      setCurrentView('menu');
+    } else if (!isLoggedIn && currentView !== 'login' && currentView !== 'connecting_ndk') {
+      // Logged out from somewhere else? -> Force back to login
+      setCurrentView('login');
+    }
+    // Add dependencies? Needs careful thought to avoid loops.
+    // Maybe only trigger on isNdkReady and isLoggedIn changes?
+  }, [isNdkReady, isLoggedIn, currentView]);
+
+  // --- Event Handlers for Navigation/Login --- 
+  const handleNip46Login = () => {
+      if (!bunkerUriInput.trim()) return;
+      initiateNip46Login(bunkerUriInput.trim());
+  };
+
+  const handleSelectPractice = () => {
+      if (isLoggedIn) setCurrentView('practice');
+  };
+
+  const handleSelectMultiplayer = () => {
+      if (isLoggedIn) setCurrentView('lobby');
+  };
+
+  const handleBackToMenu = () => {
+      setCurrentView('menu');
+  };
+
+  const handleChallengeAccepted = (opponent: string) => {
+      console.log(`[App] Starting multiplayer game against: ${opponent}`);
+      setOpponentPubkey(opponent);
+      setCurrentView('game');
+  };
+
+  const handleGameEnd = () => {
+      console.log("[App] Multiplayer game ended, returning to menu."); // Go back to menu after game
+      setOpponentPubkey(null);
+      setCurrentView('menu'); 
+  };
+
+  // --- Render Logic --- 
+  const renderContent = () => {
+    console.log(`[App Render] View: ${currentView}, NDK Ready: ${isNdkReady}, Logged In: ${isLoggedIn}, NIP46 Status: ${nip46Status}`);
+
+    // 1. NDK Connecting
+    if (currentView === 'connecting_ndk') {
+      return (
+        <div className="flex items-center justify-center h-full w-full">
+          {ndkConnectionError 
+            ? `Error connecting to Nostr relays: ${ndkConnectionError.message}` 
+            : 'Connecting to Nostr relays...'}
+        </div>
+      );
+    }
+
+    // 2. Login View (Handles NIP-07 button, NIP-46 input/QR/Connecting)
+    if (currentView === 'login') {
+        // Reordered NIP-46 state checks slightly to potentially help linter
+
+        // NIP-46 Connecting state
+        if (loginMethod === 'nip46' && nip46Status === 'connecting') {
+            return (
+                <div className="w-full h-full flex flex-col items-center justify-center">
+                    <p className="text-xl text-gray-400">Connecting via NIP-46...</p>
+                    {authError && <p className="text-red-500 text-xs mt-2">{authError.message}</p>}
+                </div>
+            );
         }
-
-        // Check if logged in *after* NIP-07 attempt
-        // Need to re-evaluate isLoggedIn state here, potentially by reading it from useAuth again?
-        // Or rely on the next render cycle?
-        // Simplification: If loginMethod is still 'none' after NIP-07 attempt, try NIP-46
-        // This assumes loginWithNip07 resets method to 'none' on failure.
-        // Let's check the current state from useAuth again or just call NIP46.
-        // Calling initiateNip46Login might be simpler if useAuth prevents duplicate attempts.
-        if (loginMethod === 'none') { // Check if NIP-07 failed to set method
-           console.log("[App Login Trigger Effect] NIP-07 likely failed/unavailable, initiating NIP-46...");
-           initiateNip46Login(); // Use default bunker pubkey
+        // NIP-46 QR Code / Waiting state
+        else if (loginMethod === 'nip46' && nip46Status === 'waiting' && nip46AuthUrl) {
+             return (
+                <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center">
+                    <p className="mb-4 text-lg">Scan with your Nostr app or copy:</p>
+                    <div className="bg-white p-4 rounded-lg mb-4"><QRCodeCanvas value={nip46AuthUrl} size={256} /></div>
+                    <input type="text" readOnly value={nip46AuthUrl} className="w-full max-w-md p-2 border border-gray-600 rounded bg-gray-800 text-white text-xs mb-2 break-all" onClick={(e) => (e.target as HTMLInputElement).select()} />
+                    <button onClick={() => navigator.clipboard.writeText(nip46AuthUrl!)} className="px-4 py-2 rounded font-semibold text-white transition-colors bg-blue-600 hover:bg-blue-700 mb-4">Copy Code</button>
+                    <p className="text-gray-400">Waiting for connection...</p>
+                    {authError && <p className="text-red-500 text-xs mt-2">{authError.message}</p>}
+                </div>
+            );
         }
-      };
-      attemptAutoLogin();
+        // Default Login Options (NIP-07 / NIP-46 Input)
+        else {
+            return (
+                <div className="flex flex-col items-center justify-center p-8 bg-gray-800 rounded-lg shadow-xl space-y-6 w-full max-w-md">
+                    <h1 className="text-3xl font-bold text-purple-400 mb-4">Klunkstr Login</h1>
+                    {window.nostr ? (
+                        <button onClick={loginWithNip07} className="w-full px-6 py-3 rounded font-semibold text-white transition-colors bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">Login with Extension (NIP-07)</button>
+                    ) : (
+                        <p className="text-sm text-gray-400 text-center">Nostr extension not detected. Use NIP-46 below.</p>
+                    )}
+                    <div className="w-full border-t border-gray-600 my-4"></div>
+                    <p className="text-center text-gray-300">Or connect with a remote signer (NIP-46):</p>
+                    <input type="text" placeholder="Paste your bunker://... URI here" value={bunkerUriInput} onChange={(e) => setBunkerUriInput(e.target.value)} className="w-full p-3 border border-gray-600 rounded bg-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                    <button onClick={handleNip46Login} disabled={!bunkerUriInput.trim() || nip46Status === 'connecting' || nip46Status === 'waiting'} className="w-full px-6 py-3 rounded font-semibold text-white transition-colors bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">Connect with Bunker URI</button>
+                    {authError && <p className="text-red-500 text-sm mt-4 text-center">Login Failed: {authError.message}</p>}
+                </div>
+            );
+        }
     }
-  }, [isNdkReady, isLoggedIn, loginMethod, loginWithNip07, initiateNip46Login]);
 
-  // Effect to start the game once logged in
-  useEffect(() => {
-    if (isLoggedIn && !gameActive) {
-      console.log("[App Game Start Effect] Logged in, starting game...");
-      setGameActive(true);
-    } else if (!isLoggedIn && gameActive) {
-       console.log("[App Game Start Effect] Logged out, stopping game...");
-       setGameActive(false); // Stop game if user logs out
+    // --- Views accessible only when logged in --- 
+    // Removed redundant check, useEffect should ensure currentView is correct
+    // if (!isLoggedIn || !currentUser || !ndk) {
+    //     console.warn("[App Render] Trying to render authed view but not logged in!");
+    //     return <div className="flex items-center justify-center h-full w-full">Redirecting to login...</div>;
+    // }
+
+    // 3. Main Menu
+    // Assumes currentView will only be 'menu' if logged in
+    if (currentView === 'menu') {
+        // Add null check for currentUser just in case, although useEffect should prevent this
+        if (!currentUser) return <div>Loading user...</div>; 
+        return (
+            <MainMenuScreen 
+                currentUser={currentUser} 
+                onSelectPractice={handleSelectPractice}
+                onSelectMultiplayer={handleSelectMultiplayer}
+            />
+        );
     }
-  }, [isLoggedIn, gameActive]);
 
-  // Conditional rendering based on isReady from NDK hook
-  if (!isNdkReady) {
-    console.log('[App Render] NDK not yet ready.');
-    // Optionally show connection error message
-    return (
-      <div className="flex items-center justify-center h-screen w-screen bg-gray-900 text-white">
-        {ndkConnectionError 
-          ? `Error connecting to Nostr relays: ${ndkConnectionError.message}` 
-          : 'Connecting to Nostr relays...'}
-      </div>
-    );
-  }
-
-  // NDK is ready (according to custom hook), proceed with rendering the rest of the app
-  console.log('[App Render] NDK is ready. Checking state:',
-    {
-      ndk: !!ndk,
-      isLoggedIn,
-      currentUserNpub: currentUser?.npub,
-      gameActive,
-      loginMethod,
-      nip46Status,
-      authError: authError?.message,
+    // 4. Practice Screen
+    // Assumes currentView will only be 'practice' if logged in
+    if (currentView === 'practice') {
+        return <PracticeScreen onBackToMenu={handleBackToMenu} />;
     }
-  );
+
+    // 5. Multiplayer Lobby Screen
+    // Assumes currentView will only be 'lobby' if logged in
+    if (currentView === 'lobby') {
+        // Add null checks just in case
+        if (!currentUser || !ndk) return <div>Loading lobby...</div>;
+        return (
+            <LobbyScreen 
+                ndk={ndk}
+                currentUser={currentUser}
+                onChallengeAccepted={handleChallengeAccepted}
+                onBackToMenu={handleBackToMenu}
+            />
+        );
+    }
+
+    // 6. Game Screen
+    // Assumes currentView will only be 'game' if logged in
+    if (currentView === 'game' && opponentPubkey) {
+        // Add null checks just in case
+        if (!currentUser || !ndk) return <div>Loading game...</div>;
+        return (
+            <GameScreen 
+                localPlayerPubkey={currentUser.pubkey} 
+                opponentPubkey={opponentPubkey} 
+                ndk={ndk} 
+                onGameEnd={handleGameEnd}
+            />
+        );
+    }
+
+    // Fallback for unexpected states
+    console.error(`[App Render] Reached unexpected state: View=${currentView}, LoggedIn=${isLoggedIn}`);
+    return <div className="flex items-center justify-center h-full w-full">Unexpected application state.</div>;
+  };
 
   return (
     // Ensure the main div takes full screen and prevents overflow
@@ -145,103 +254,7 @@ function App() {
 
       {/* Main Content Area */} 
       <div className="flex-grow w-full h-full"> {/* Use flex-grow to fill remaining space */}
-        {(() => {
-          // A. Show Game if logged in and game is active
-          if (isLoggedIn && currentUser && gameActive) {
-            console.log('[App Render] Showing GameScreen');
-            return (
-              <GameScreen 
-                localPlayerPubkey={currentUser.pubkey} 
-                opponentPubkey={MOCK_OPPONENT_PUBKEY} 
-                ndk={ndk!} // NDK is guaranteed to be ready here
-              />
-            );
-          } 
-          // REMOVED INLINE LOBBY STATE - Will be handled by LobbyScreen component
-          // else if (appState.player1Pubkey && !appState.gameActive) { ... } 
-
-          // B. Show NIP-46 QR Code if waiting for connection
-          else if (loginMethod === 'nip46' && nip46Status === 'waiting' && nip46AuthUrl) {
-              console.log('[App Render] Showing NIP-46 QR Code');
-              return (
-                <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center">
-                    <p className="mb-4 text-lg">Scan with your Nostr app (e.g., Damus, Amethyst) or copy the code:</p>
-                    <div className="bg-white p-4 rounded-lg mb-4">
-                        <QRCodeCanvas value={nip46AuthUrl} size={256} />
-                    </div>
-                    <input 
-                        type="text" 
-                        readOnly 
-                        value={nip46AuthUrl} 
-                        className="w-full max-w-md p-2 border border-gray-600 rounded bg-gray-800 text-white text-xs mb-2 break-all" 
-                        onClick={(e) => (e.target as HTMLInputElement).select()} // Select text on click
-                    />
-                    <button 
-                        onClick={() => navigator.clipboard.writeText(nip46AuthUrl!)}
-                        className="px-4 py-2 rounded font-semibold text-white transition-colors bg-blue-600 hover:bg-blue-700 mb-4"
-                    >
-                        Copy Code
-                    </button>
-                    <p className="text-gray-400">Waiting for connection...</p>
-                     {authError && <p className="text-red-500 text-xs mt-2">{authError.message}</p>}
-                </div>
-              );
-          }
-          // C. Show NIP-46 "Connecting..." or "Generating..." message
-          else if (loginMethod === 'nip46' && (nip46Status === 'connecting' || nip46Status === 'generating')) {
-              console.log('[App Render] Showing NIP-46 Connecting/Generating Status');
-               return (
-                   <div className="w-full h-full flex flex-col items-center justify-center">
-                      <p className="text-xl text-gray-400">
-                          {nip46Status === 'generating' ? 'Generating connection code...' : 'Connecting via NIP-46...'}
-                      </p>
-                      {authError && <p className="text-red-500 text-xs mt-2">{authError.message}</p>}
-                   </div>
-               );
-          }
-          // D. Show Initial Login / NIP-07 Attempt State
-          // This covers the initial state before login attempt, or during NIP-07 prompt
-          else if (!isLoggedIn) { // Covers loginMethod 'none' or 'nip07' before success
-             console.log('[App Render] Showing Initial/NIP-07 Login State');
-             return (
-                <div className="w-full h-full flex flex-col items-center justify-center">
-                   <p className="text-xl text-gray-400 mb-4">
-                     {loginMethod === 'nip07' ? 'Attempting login with browser extension (NIP-07)...' : 'Preparing login...'}
-                   </p>
-                    {/* Optional: Keep a button to manually trigger NIP-46 if NIP-07 hangs? */} 
-                    {/* <button onClick={initiateNip46Login} disabled={appState.nip46Status !== 'idle'} className=">Login with Nostr App (NIP-46)</button> */} 
-                   {authError && <p className="text-red-500 text-xs mt-2">{authError.message}</p>}
-                </div>
-              );
-          }
-          // E. Logged In, but Game Not Active (e.g., Lobby state)
-          else if (isLoggedIn && currentUser && !gameActive) { 
-            console.log('[App Render] Showing Logged In / Lobby State');
-            return (
-              <div className="w-full h-full flex flex-col items-center justify-center text-center p-4">
-                  <p className="text-xl text-gray-400 mb-4">Logged In! Waiting for Opponent...</p>
-                  {/* TODO: Add Lobby UI, replace ChallengeHandler if needed */} 
-                  {ndk && <ChallengeHandler 
-                                ndk={ndk} 
-                                loggedInPubkey={currentUser.pubkey} 
-                                // onChallengeAccepted={(opponentPubkey) => setGameActive(true)} // Example
-                             />}
-                   {authError && <p className="text-red-500 text-xs mt-2">{authError.message}</p>}
-              </div>
-            );
-          } 
-          // F. Fallback: Should not be reached
-          else { 
-            console.warn('[App Render] Reached unexpected fallback state', { isLoggedIn, gameActive, loginMethod, nip46Status });
-            return (
-              <div className="w-full h-full flex flex-col items-center justify-center text-center p-4">
-                 <p className="text-xl text-gray-400 mb-4">Unexpected Application State</p>
-                 {authError && <p className="text-red-500 text-xs mt-2">Auth Error: {authError.message}</p>}
-                 {ndkConnectionError && <p className="text-red-500 text-xs mt-2">NDK Error: {ndkConnectionError.message}</p>}
-              </div>
-            );
-          }
-        })()}
+        {renderContent()}
       </div>
     </div>
   )

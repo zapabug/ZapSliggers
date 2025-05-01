@@ -18,13 +18,13 @@ const { Engine, Runner, Bodies, World, Composite, Vector, Body, Events } = Matte
 const SHIP_RADIUS = 63; // Sets the size (radius) for player ship bodies. Used for ship creation and collision detection.
 const PLANET_MIN_RADIUS = 40; // Default radius used for planets in gravity calculations if a specific radius isn't found.
 const GRAVITY_CONSTANT = 0.35; // Multiplier controlling the overall strength of gravitational pull from planets.
-const GRAVITY_AOE_BONUS_FACTOR = 0.15; // Factor applied to increase a planet's effective gravitational range based on its size.
-const PLASTIC_GRAVITY_FACTOR = 0.75; // Factor by which planet gravity is reduced for 'plastic' projectiles.
+const GRAVITY_AOE_BONUS_FACTOR = 0.2; // Factor applied to increase a planet's effective gravitational range based on its size.
+const PLASTIC_GRAVITY_FACTOR = 0.85; // Factor by which planet gravity is reduced for 'plastic' projectiles.
 const SHIP_GRAVITY_RANGE = SHIP_RADIUS * 4; // Range within which 'gravity' projectile is pulled by opponent ship.
 const SHIP_GRAVITY_CONSTANT = 0.3; // Strength of the opponent ship's pull on 'gravity' projectiles.
 const DEFAULT_FRICTION_AIR = 0.002; // Default air friction for standard projectiles & fragments
-const PLASTIC_FRICTION_AIR = 0.015;  // Increased air friction (drag) for plastic projectiles.
-const GRAVITY_FRICTION_AIR = 0.015; // Slightly increased air friction (drag) for gravity projectiles.
+const PLASTIC_FRICTION_AIR = 0.008;  // Increased air friction (drag) for plastic projectiles.
+const GRAVITY_FRICTION_AIR = 0.005; // Slightly increased air friction (drag) for gravity projectiles.
 
 interface UseMatterPhysicsProps {
   levelData: InitialGamePositions;
