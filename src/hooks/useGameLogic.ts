@@ -8,6 +8,7 @@ import { InitialGamePositions, generateInitialPositions } from './useGameInitial
 const MAX_HP = 100;
 const ABILITY_COST = 25;
 const MAX_ABILITY_USES = 3;
+export const MAX_ROUNDS = 3; // Re-add export
 
 // Player State structure
 export interface PlayerState {
@@ -23,7 +24,7 @@ export interface UseGameLogicProps {
     opponentPubkey?: string; // Optional for practice mode
     gameRendererRef: React.RefObject<GameRendererRef | null>; // Allow null initial value
     initialLevelData?: InitialGamePositions; // Optional, can generate internally
-    onGameEnd: () => void; // Callback when game/round ends
+    onGameEnd: (finalScore: [number, number]) => void; // Callback when game/round ends
 }
 
 // Return value of the hook
@@ -33,6 +34,8 @@ export interface UseGameLogicReturn {
     currentAim: { angle: number; power: number };
     selectedAbility: AbilityType | null;
     levelData: InitialGamePositions;
+    score: [number, number]; // Re-add score
+    currentRound: number; // Re-add current round
     handleAimChange: (aim: { angle: number; power: number }) => void;
     handleFire: () => void;
     handleSelectAbility: (abilityType: AbilityType) => void;
@@ -77,6 +80,8 @@ export function useGameLogic({
         { hp: MAX_HP, usedAbilities: new Set(), isVulnerable: false }  // Player 1
     ]);
     const [selectedAbility, setSelectedAbility] = useState<AbilityType | null>(null);
+    const [score, setScore] = useState<[number, number]>([0, 0]); // Re-add score
+    const [currentRound, setCurrentRound] = useState<number>(1); // Re-add current round
 
      // --- Effect to Sync Aim State on Turn Change (Practice Mode Only) --- 
     useEffect(() => {
@@ -91,31 +96,86 @@ export function useGameLogic({
         setSelectedAbility(null);
     }, [currentPlayerIndex, mode, gameRendererRef]); // Dependency on currentPlayerIndex and mode
 
-    // --- Callback for Round Win / Game End --- 
-    const handleRoundWin = useCallback(() => {
-        console.log(`!!! Round Win detected (Mode: ${mode}) !!!`);
-        onGameEnd(); // Call the provided callback
+    // --- Callback for Round Win / Game End ---
+    // Restore the full round completion logic
+    const handleRoundCompletion = useCallback((winningPlayerIndex: 0 | 1 | null) => {
+        const updatedScore = [...score] as [number, number]; // Clone score
 
-        // Reset game state - TODO: Refine this based on actual game rules (rounds, etc.)
-        const newLevel = generateInitialPositions(2400, 1200);
-        setLevelData(newLevel);
-        setPlayerStates([
-            { hp: MAX_HP, usedAbilities: new Set(), isVulnerable: false },
-            { hp: MAX_HP, usedAbilities: new Set(), isVulnerable: false }
-        ]);
-        setCurrentPlayerIndex(0);
-        setSelectedAbility(null);
-        // Reset aim based on player 0's initial angle (usually 0)
-        setCurrentAim({ angle: 0, power: 50 });
-        // Optionally, tell renderer to reset positions based on newLevel? Depends on GameRenderer structure
-        // gameRendererRef.current?.resetPositions(newLevel);
-    }, [onGameEnd, mode]); // Added mode dependency
+        if (winningPlayerIndex !== null) {
+            updatedScore[winningPlayerIndex]++;
+            console.log(`Round ${currentRound} won by Player ${winningPlayerIndex}. Score: ${updatedScore[0]}-${updatedScore[1]}`);
+        } else {
+            // Self-hit or other non-scoring round end
+            console.log(`Round ${currentRound} completed (No score). Score: ${updatedScore[0]}-${updatedScore[1]}`);
+        }
+        setScore(updatedScore); // Use setScore
+
+        // Check if game should end (best of 3 + tie-breaker) or next round should start
+        const player0Wins = updatedScore[0] >= 2;
+        const player1Wins = updatedScore[1] >= 2;
+
+        if (mode === 'practice' && (player0Wins || player1Wins || currentRound >= MAX_ROUNDS)) {
+            // End Game logic with tie-breaker
+            let finalScore: [number, number] = [...updatedScore]; 
+            let finalWinnerMsg = "";
+
+            if (player0Wins) {
+                finalWinnerMsg = "Player 0 (Blue) wins";
+            } else if (player1Wins) {
+                finalWinnerMsg = "Player 1 (Red) wins";
+            } else if (currentRound >= MAX_ROUNDS && finalScore[0] === finalScore[1]) {
+                // Tie score after final round, apply HP tie-breaker
+                const hp0 = playerStates[0].hp;
+                const hp1 = playerStates[1].hp;
+                if (hp0 > hp1) {
+                    finalScore = [2, finalScore[1]]; 
+                    finalWinnerMsg = "Player 0 (Blue) wins (HP Tie-breaker)";
+                } else if (hp1 > hp0) {
+                    finalScore = [finalScore[0], 2]; 
+                    finalWinnerMsg = "Player 1 (Red) wins (HP Tie-breaker)";
+                } else {
+                    finalWinnerMsg = "Draw (Score and HP Tie)";
+                }
+            } else {
+                 finalWinnerMsg = "Draw";
+            }
+            
+            const winnerMsg = finalWinnerMsg || "Game Over"; 
+
+            console.log(`Game Over! ${winnerMsg}. Final Score: ${updatedScore[0]}-${updatedScore[1]} (HP: ${playerStates[0].hp} vs ${playerStates[1].hp})`);
+            onGameEnd(finalScore); 
+        } else if (mode === 'practice'){
+            // Start Next Round logic with alternating start player
+            console.log(`Starting Round ${currentRound + 1}`);
+            const nextRound = currentRound + 1;
+            const startingPlayerIndex: 0 | 1 = (nextRound % 2 === 1) ? 0 : 1; 
+
+            setCurrentRound(nextRound); // Use setCurrentRound
+
+            const newLevel = generateInitialPositions(2400, 1200);
+            setLevelData(newLevel);
+            setPlayerStates([
+                { hp: MAX_HP, usedAbilities: new Set(), isVulnerable: false },
+                { hp: MAX_HP, usedAbilities: new Set(), isVulnerable: false }
+            ]);
+            setCurrentPlayerIndex(startingPlayerIndex); 
+            setSelectedAbility(null);
+            const initialAngle = startingPlayerIndex === 0 ? 0 : 180;
+            setCurrentAim({ angle: initialAngle, power: 50 });
+        } else {
+            // Multiplayer logic (remains unchanged)
+             console.log(`Multiplayer Round Ended. Triggering onGameEnd.`);
+             // Pass a placeholder score for multiplayer until score logic is added there
+             onGameEnd([0, 0]); 
+        }
+    }, [mode, currentRound, score, onGameEnd, playerStates]); // Ensure all dependencies are correct
 
     // --- Handle Player Hit Callback --- 
+    // Restore logic to call handleRoundCompletion
     const handlePlayerHit = useCallback((hitPlayerIndex: 0 | 1, firingPlayerIndex: 0 | 1, projectileType: AbilityType | 'standard') => {
         if (hitPlayerIndex === firingPlayerIndex) {
-            console.log(`!!! Player ${firingPlayerIndex} (Mode: ${mode}) hit themselves! Round Loss!`);
-            handleRoundWin();
+            console.log(`!!! Player ${firingPlayerIndex} (Mode: ${mode}) hit themselves! Round Lost!`);
+            setTimeout(() => handleRoundCompletion(null), 0);
             return;
         }
 
@@ -131,11 +191,11 @@ export function useGameLogic({
 
             if (newHp <= 0) {
                  console.log(`Player ${hitPlayerIndex} (Mode: ${mode}) defeated. Player ${firingPlayerIndex} wins round!`);
-                 setTimeout(() => handleRoundWin(), 0);
+                 setTimeout(() => handleRoundCompletion(firingPlayerIndex), 0);
             }
             return newStates;
         });
-    }, [handleRoundWin, mode]); // Added mode dependency
+    }, [handleRoundCompletion, mode]); // Update dependencies
 
     // --- Aim Change Handler --- 
     const handleAimChange = useCallback((aim: { angle: number; power: number }) => {
@@ -146,6 +206,7 @@ export function useGameLogic({
     }, [mode, myPlayerIndex, currentPlayerIndex, gameRendererRef]);
 
     // --- Fire Handler --- 
+    // Restore logic to call handleRoundCompletion on suicide
     const handleFire = useCallback(() => {
         const actingPlayerIndex = mode === 'practice' ? currentPlayerIndex : myPlayerIndex;
         const actingPlayerState = playerStates[actingPlayerIndex];
@@ -157,7 +218,7 @@ export function useGameLogic({
         if (selectedAbility) {
             if (actingPlayerState.hp <= ABILITY_COST) {
                 console.error(`!!! Player ${actingPlayerIndex} (Mode: ${mode}) SUICIDE! Tried ${selectedAbility} with ${actingPlayerState.hp} HP.`);
-                handleRoundWin();
+                setTimeout(() => handleRoundCompletion(null), 0);
                 setSelectedAbility(null);
                 return;
             }
@@ -186,7 +247,7 @@ export function useGameLogic({
              setCurrentPlayerIndex(prevIndex => (prevIndex === 0 ? 1 : 0));
         }
 
-    }, [mode, myPlayerIndex, currentPlayerIndex, playerStates, currentAim, selectedAbility, handleRoundWin, gameRendererRef]);
+    }, [mode, myPlayerIndex, currentPlayerIndex, playerStates, currentAim, selectedAbility, handleRoundCompletion, gameRendererRef]); // Update dependencies
 
     // --- Select Ability Handler --- 
     const handleSelectAbility = useCallback((abilityType: AbilityType) => {
@@ -215,6 +276,8 @@ export function useGameLogic({
         currentAim,
         selectedAbility,
         levelData,
+        score, // Re-add return
+        currentRound, // Re-add return
         handleAimChange,
         handleFire,
         handleSelectAbility,

@@ -15,9 +15,10 @@
    - **Rendering:** 2D rendering on HTML Canvas via `GameRenderer.tsx`. Uses `useGameAssets` for loading. Placeholder shapes currently drawn. Adaptive camera/viewport implemented (`useDynamicViewport`).
    - **Physics (`useMatterPhysics`):** `matter-js` engine running. World gravity disabled. Tuned planetary gravity implemented (force based on effective radius scaling with planet size). Basic projectile-planet/boundary collisions handled. Projectile timeout functional (45s).
    - **Level Setup (`useGameInitialization`):** Random initial placement of ships (in side zones) and planets (in central zone) respecting distance constraints. Wider virtual viewport (2400x1200).
-   - **Controls & Firing:** Aiming (rotation/power via UI/keyboard) and firing implemented (`GameScreen` -> `GameRenderer`).
+   - **Controls & Firing:** Aiming (rotation/power via UI/keyboard) and firing implemented (`GameScreen` / `PracticeScreen` -> `useGameLogic` -> `GameRenderer`).
    - **Aiming Aids (`useShotTracers`):** Historical shot traces (last 10) and active projectile trails rendered.
-   - **Klunkstr Rules (Partial):** Basic HP system implemented (as resource). Ability selection UI/logic functional (`ActionButtons`/`GameScreen`). Standard projectile hits trigger round win callback.
+   - **Klunkstr Rules (Partial):** Basic HP system implemented (as resource). Ability selection UI/logic functional (`ActionButtons`/`useGameLogic`). Standard projectile hits trigger round win callback in `useGameLogic`.
+   - **Practice Mode:** Full practice mode implemented (`PracticeScreen` + `useGameLogic`): turn-based, best-of-3 rounds, scoring, HP tie-breaker, alternating start player, opponent Npub display. - *Done*.
    - **Authentication (`useAuth`):** NIP-07/NIP-46/nsec login logic implemented.
    - **Lobby (`LobbyScreen`, `LobbyPlayground`):** Basic lobby structure exists with interactive playground.
    - **Challenges (`ChallengeHandler`):** Basic Nostr DM challenge sending/receiving implemented.
@@ -109,6 +110,7 @@
    - Viewport & Positioning: Implemented wider virtual viewport, random placement, adaptive camera zoom. - *Done*.
    - Gravity Tuning: Implemented effectiveRadius calculation. - *Done*.
    - HP/Ability Logic: Basic resource management and selection UI implemented. - *Done*
+   - Practice Mode Logic: Implemented best-of-3 rounds, scoring, HP tie-breaker, alternating start. - *Done*
 
 **8. Comments & Education:** *(Generally accurate, focusing on NDK/Matter.js/Nostr concepts)*
    - `@nostr-dev-kit/ndk` provides a comprehensive toolkit...

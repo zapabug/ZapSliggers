@@ -1,11 +1,14 @@
 'use strict';
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import NDK, { NDKUser } from '@nostr-dev-kit/ndk'; // Import NDK types
 import GameRenderer, { GameRendererRef } from '../game/GameRenderer'; // Adjust path
 import AimingInterface from '../ui_overlays/AimingInterface'; // Adjust path
 import { PlayerHUD } from '../ui_overlays/PlayerHUD'; // Adjust path
 import ActionButtons from '../ui_overlays/ActionButtons'; // Adjust path
-import { useGameLogic } from '../../hooks/useGameLogic'; // Adjust path
+import { useGameLogic, MAX_ROUNDS } from '../../hooks/useGameLogic'; // Import hook and MAX_ROUNDS
+
+// Define opponent Npub
+const OPPONENT_NPUB = "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6";
 
 interface PracticeScreenProps {
     ndk: NDK;
@@ -25,25 +28,54 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
 }) => {
     const gameRendererRef = useRef<GameRendererRef>(null);
 
-    // --- Use the Game Logic Hook in Practice Mode --- 
+    // Get opponent pubkey from npub using NDKUser
+    let opponentPubkey: string;
+    try {
+        const opponentUser = new NDKUser({ npub: OPPONENT_NPUB });
+        opponentPubkey = opponentUser.pubkey;
+        if (!opponentPubkey) { // Basic check if pubkey is valid
+            throw new Error('Failed to derive pubkey from NDKUser');
+        }
+    } catch (error) {
+        console.error("Error getting opponent pubkey:", error);
+        opponentPubkey = currentUser.pubkey; // Fallback to current user on error
+    }
+
+    // --- Callback to handle game end (copied from previous correct state) ---
+    const handlePracticeGameEnd = useCallback((finalScore?: [number, number]) => {
+        let message = "Game Over!";
+        if (finalScore) {
+            if (finalScore[0] >= 2) {
+                message = "Blue Wins!";
+            } else if (finalScore[1] >= 2) {
+                message = "Red Wins!";
+            } else {
+                // Neither reached 2 wins
+                message = `Game Over!\nDraw: ${finalScore[0]} - ${finalScore[1]}`;
+            }
+        } 
+        alert(message);
+        onBackToMenu(); // Call the original navigation callback
+    }, [onBackToMenu]);
+
+    // --- Use the Game Logic Hook in Practice Mode (copied from previous correct state) --- 
     const {
         playerStates,
         currentPlayerIndex, // Use this to indicate whose turn it is visually
         currentAim,
         selectedAbility,
         levelData,
+        score, 
+        currentRound, 
         handleAimChange,
         handleFire,
         handleSelectAbility,
         handlePlayerHit,
-        // myPlayerIndex // Removed, not needed for practice mode control
     } = useGameLogic({
         mode: 'practice', 
         localPlayerPubkey: currentUser.pubkey,
-        // Opponent pubkey not needed for practice mode logic in the hook
         gameRendererRef,
-        onGameEnd: onBackToMenu, // Map back callback to game end
-        // NDK passed separately to HUDs below
+        onGameEnd: handlePracticeGameEnd, // Use the wrapped callback
     });
 
     // Derived state for convenience
@@ -119,6 +151,11 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
                 <h1 className="text-xl font-bold ml-4 text-purple-300 self-center">
                     Practice Mode - {currentPlayerIndex === 0 ? 'Player 1' : 'Player 2'}'s Turn
                 </h1>
+                {/* Display Score and Round (copied from previous correct state) */}
+                <div className="ml-auto text-lg font-semibold text-yellow-300 flex items-center space-x-4 pr-4">
+                    <span>Round: {currentRound} / {MAX_ROUNDS}</span>
+                    <span>Score: {score[0]}</span>
+                </div>
             </div>
 
             {/* Game Area Container (takes remaining space) */}
@@ -131,17 +168,15 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
                         maxHp={MAX_HP}
                         isPlayer1={true}
                         ndk={ndk}
-                        // isActive={currentPlayerIndex === 0} // Prop removed for now
                     />
                 </div>
                 <div className="absolute top-2 right-2 z-10 pointer-events-auto">
                     <PlayerHUD
-                        pubkey={currentUser.pubkey} // Player 2 (placeholder/local user)
+                        pubkey={opponentPubkey} // Player 2 (use derived opponent pubkey)
                         currentHp={playerStates[1].hp} // Use index 1 state
                         maxHp={MAX_HP}
                         isPlayer1={false}
                         ndk={ndk}
-                        // isActive={currentPlayerIndex === 1} // Prop removed for now
                     />
                 </div>
 

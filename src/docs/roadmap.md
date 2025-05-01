@@ -16,6 +16,7 @@
    10. **Challenges (`ChallengeHandler`):** Implement basic DM challenge handling. - *Done*.
    11. **Viewport/Camera (`useDynamicViewport`):** Implement adaptive zoom/pan. - *Done*.
    12. **PWA Setup:** Configure `vite-plugin-pwa`. - *Configured*
+   13. **Practice Mode:** Implement full practice mode logic (Best of 3 rounds, scoring, HP tie-breaker, alternating start, opponent display). - *Done*
 
 **Phase 2: Nostr Integration & Gameplay Completion (Current Focus)**
 
@@ -27,7 +28,7 @@
     4.  **Wagering (NUT-18):** Define and implement backend service API, integrate frontend flow for payment requests/verification.
     5.  **Turn Synchronization:** Implement sending/receiving moves (`kind:30079`), synchronize game state for simultaneous resolution.
     6.  **Klunkstr Rules Completion:** Implement ability physics effects, full win conditions (HP/Vulnerability), Vulnerability state, ability limits, turn timer/limits, Sudden Death.
-    7.  **Lobby Refinement:** Add practice mode entry, potentially refine challenge UI.
+    7.  **Lobby Refinement:** Potentially refine challenge UI.
 
 **Phase 3: Polish & Refinement**
 

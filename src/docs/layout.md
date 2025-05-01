@@ -12,12 +12,13 @@ src/
 ├── components/
 │   ├── ChallengeHandler.tsx # Handles Nostr DM challenge logic (Uses manual NDK calls)
 │   ├── game/
-│   │   ├── GameRenderer.tsx # Renders game state onto Canvas (Uses physics/viewport/init/tracer hooks)
-│   │   └── GameScreen.tsx   # Main PvP game view container (Orchestrates GameRenderer, UI Overlays, Game Logic)
+│   │   ├── GameRenderer.tsx # Renders game state onto Canvas (Uses physics/viewport/init/tracer/asset hooks)
+│   │   └── GameScreen.tsx   # Main PvP game view container (Uses useGameLogic hook)
 │   ├── lobby/
-│   │   ├── LobbyScreen.tsx  # Screen shown after login (Hosts LobbyPlayground, ChallengeHandler)
-│   │   └── LobbyPlayground.tsx # Interactive single-player simulation for lobby
-│   ├── screens/        # ??? (Unexpected directory - Needs review)
+│   │   ├── LobbyScreen.tsx  # Screen shown after login (Hosts ChallengeHandler)
+│   │   └── LobbyPlayground.tsx # Standalone interactive single-player simulation (not used by LobbyScreen currently)
+│   ├── screens/        # Contains full-screen components like PracticeScreen
+│   │   └── PracticeScreen.tsx # Main Practice mode view container (Uses useGameLogic hook)
 │   └── ui_overlays/
 │       ├── ActionButtons.tsx # Fire button, Ability buttons
 │       ├── AimingInterface.tsx # Joystick, Power slider
@@ -37,10 +38,11 @@ src/
 │   ├── useDynamicViewport.ts  # Manages dynamic camera panning/zooming
 │   ├── useGameInitialization.ts # Handles initial random placement of ships/planets
 │   ├── useGameAssets.ts       # Handles loading game image assets
+│   └── useGameLogic.ts       # Encapsulates core game state (players, level, aim, abilities) and logic handlers (fire, aim, select ability, hit detection, round/match win condition). Parameterized by `mode` ('practice'/'multiplayer'). Practice mode includes turn-based logic, best-of-3 rounds, scoring, HP tie-breaker, and alternating start player.
 ├── index.css           # Global styles, Tailwind directives
 ├── main.tsx            # Application entry point, NDK instance creation
 ├── ndk.ts              # NDK singleton instance export (Potentially related to useNDKInit)
-├── screens/            # ??? (Unexpected directory - Needs review, duplicates components/screens?)
+├── screens/            # Contains full-screen components like PracticeScreen
 ├── services/           # Services (e.g., for potential future backend interaction)
 ├── types/              # TypeScript type definitions
 │   └── game.ts         # Game-specific types
@@ -50,47 +52,55 @@ src/
 ## Key Components & Responsibilities
 
 *   **`App.tsx`**:
-    *   Initializes NDK using `useNDKInit`.
-    *   Handles the overall application state (login status, active screen).
+    *   Initializes NDK via `useAuth` -> `useNDKInit`.
+    *   Handles the overall application state (login status, active screen: Login, Menu, Practice, Lobby, Game).
     *   Uses the `useAuth` hook to manage login state and UI.
-    *   Renders `LobbyScreen` or `GameScreen` based on state.
+    *   Renders `PracticeScreen`, `LobbyScreen`, or `GameScreen` based on state and passes necessary props (ndk, currentUser, callbacks).
 *   **`main.tsx`**:
     *   Creates the global NDK singleton instance (`ndkInstance`) with explicit relays.
     *   Renders the root `App` component.
 *   **`LobbyScreen.tsx` (`src/components/lobby/`)**:
-    *   Displayed after successful login.
-    *   Hosts the `LobbyPlayground` component for an interactive waiting experience.
+    *   Displayed after successful login (when user selects Multiplayer from Menu).
+    *   Displays user's Nostr ID (npub/QR).
     *   Contains the `ChallengeHandler` component for managing Nostr challenges.
-    *   Entry point for initiating challenges or practice mode (practice TBD).
-*   **`LobbyPlayground.tsx` (`src/components/lobby/`)**:
-    *   Provides an interactive, single-player version of the core game mechanics.
-    *   Displayed within the `LobbyScreen` as a dynamic waiting room element.
-    *   Uses `GameRenderer` and associated hooks.
+    *   Calls back to `App.tsx` (`onChallengeAccepted`) when a challenge is confirmed.
+*   **`PracticeScreen.tsx` (`src/components/screens/`)**:
+    *   Container for the practice game mode.
+    *   Uses the `useGameLogic` hook with `mode: 'practice'`.
+    *   Implements turn-based gameplay using the hook's state and handlers.
+    *   Renders `GameRenderer` and UI overlays.
 *   **`GameScreen.tsx` (`src/components/game/`)**:
-    *   Container for the active PvP game match.
-    *   Integrates `GameRenderer` and UI overlay components.
-    *   Manages game state (HP, abilities, etc.).
+    *   Container for the active PvP game match (entered via challenge acceptance).
+    *   Uses the `useGameLogic` hook with `mode: 'multiplayer'`.
+    *   Implements simultaneous local control (each player controls their determined ship based on pubkey).
+    *   Connects UI to state/handlers provided by `useGameLogic`.
 *   **`GameRenderer.tsx` (`src/components/game/`)**:
     *   Core canvas rendering component.
-    *   Uses `useMatterPhysics`, `useDynamicViewport`, `useGameInitialization`, `useShotTracers`, and `useGameAssets` hooks to get physics state, viewport, initial positions, trace data, and loaded assets.
+    *   Uses `useMatterPhysics`, `useDynamicViewport`, `useShotTracers`, and `useGameAssets` hooks.
+    *   Receives level data (initial positions) as a prop.
     *   Handles drawing game elements (ships, planets, projectiles, background, traces) using loaded assets.
     *   Exposes control methods (`fireProjectile`, `setShipAim`) via `useImperativeHandle`.
+    *   Calls back (`onPlayerHit`) when a projectile hits a player body.
 *   **`ChallengeHandler.tsx` (`src/components/`)**:
-    *   Handles sending/receiving Nostr DM (`kind:4`) challenges.
-    *   Uses passed `ndk` prop for manual subscriptions (`ndk.subscribe`).
+    *   Manages the two-way Nostr DM (`kind:4`) challenge/acceptance handshake.
+    *   Uses passed `ndk` prop and `loggedInPubkey`.
+    *   Calls `onChallengeAccepted(opponentPubkey, matchId)` on successful handshake completion.
 *   **UI Overlay Components (`src/components/ui_overlays/`)**:
     *   Provide interactive elements layered on the game canvas.
-    *   `PlayerHUD` uses `UserProfileDisplay`.
-    *   `UserProfileDisplay` fetches Nostr profile data using direct `ndk.fetchProfile()`.
+    *   `PlayerHUD` receives pubkey/state, uses `UserProfileDisplay` internally.
+    *   `UserProfileDisplay` uses manual NDK calls (`ndk.fetchProfile()`) to fetch Nostr profile.
+    *   `AimingInterface` displays/updates aim angle/power.
+    *   `ActionButtons` displays/handles ability selection and firing trigger.
 
 ## Custom Hooks (`src/hooks/`)
 
-*   **`useAuth.ts`**: Manages NIP-07/NIP-46/nsec login state & settings persistence.
-*   **`useNDKInit.ts`**: Manages NDK connection state.
-*   **`useShotTracers.ts`**: Handles logic and state for active/historical projectile trails.
+*   **`useAuth.ts`**: Manages NIP-07/NIP-46/nsec login state & settings persistence. Includes NDK initialization via `useNDKInit`.
+*   **`useNDKInit.ts`**: Manages NDK connection state (used internally by `useAuth`).
+*   **`useGameLogic.ts`**: Encapsulates core game state (players, level, aim, abilities) and logic handlers (fire, aim, select ability, hit detection, round/match win condition). Parameterized by `mode` ('practice'/'multiplayer'). Practice mode includes turn-based logic, best-of-3 rounds, scoring, HP tie-breaker, and alternating start player.
+*   **`useShotTracers.ts`**: Manages state and logic for active/historical projectile trails.
 *   **`useMatterPhysics.ts`**: Abstracts Matter.js setup and core physics loop.
 *   **`useDynamicViewport.ts`**: Abstracts dynamic camera/zoom logic.
-*   **`useGameInitialization.ts`**: Abstracts random level generation logic.
+*   **`useGameInitialization.ts`**: Handles initial random placement of ships/planets.
 *   **`useGameAssets.ts`**: Abstracts game image asset loading.
 
-*Note: Review the purpose of `src/screens/` and `src/components/screens/` directories.* 
+*Note: The `src/screens/` directory seems redundant or unused. Key screens like `PracticeScreen` are in `src/components/screens/`.* 
