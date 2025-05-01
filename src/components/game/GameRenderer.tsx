@@ -1,7 +1,8 @@
 import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle, ForwardedRef, useMemo } from 'react';
 import Matter from 'matter-js'; // Keep base import for Composite
 import { useShotTracers, ProjectileBody } from '../../hooks/useShotTracers';
-import { generateInitialPositions, InitialGamePositions } from '../../hooks/useGameInitialization'; // Restore import
+// import { generateInitialPositions, InitialGamePositions } from '../../hooks/useGameInitialization'; // Removed unused import
+import { InitialGamePositions } from '../../hooks/useGameInitialization'; // Keep only this type import
 import { AbilityType } from '../ui_overlays/ActionButtons';
 import { useMatterPhysics, MatterPhysicsHandles } from '../../hooks/useMatterPhysics';
 import { useDynamicViewport } from '../../hooks/useDynamicViewport';
@@ -20,7 +21,6 @@ const PLANET_MIN_RADIUS = 40; // Needed for drawing fallback
 interface GameRendererProps {
   levelData: InitialGamePositions;
   onPlayerHit: (hitPlayerIndex: 0 | 1, firingPlayerIndex: 0 | 1, projectileType: AbilityType | 'standard') => void; // Updated signature
-  onLevelReset?: () => void; // Made optional
 }
 
 // Define the interface for the methods exposed via the ref
@@ -28,7 +28,6 @@ export interface GameRendererRef {
   fireProjectile: (playerIndex: 0 | 1, power: number, abilityType: AbilityType | null) => void;
   setShipAim: (playerIndex: 0 | 1, angleDegrees: number) => void;
   getShipAngle: (playerIndex: 0 | 1) => number | undefined;
-  resetGame: () => void; // NEW: Add reset function
 }
 
 // --- Drawing Helper Functions ---
@@ -86,18 +85,6 @@ const drawProjectile = (ctx: CanvasRenderingContext2D, body: ProjectileBody) => 
         ctx.fill();
 };
 
-const drawActiveTrail = (ctx: CanvasRenderingContext2D, trailData: { trail: Matter.Vector[], ownerIndex: 0 | 1 }) => {
-    if (trailData.trail.length < 2) return;
-        ctx.beginPath();
-        ctx.moveTo(trailData.trail[0].x, trailData.trail[0].y);
-        for (let i = 1; i < trailData.trail.length; i++) {
-            ctx.lineTo(trailData.trail[i].x, trailData.trail[i].y);
-        }
-        ctx.strokeStyle = trailData.ownerIndex === 0 ? '#00f' : '#f00'; 
-        ctx.lineWidth = 2;
-        ctx.stroke();
-};
-
 const drawHistoricalTrace = (ctx: CanvasRenderingContext2D, trace: Matter.Vector[]) => {
         if (trace.length < 2) return;
         ctx.beginPath();
@@ -105,23 +92,24 @@ const drawHistoricalTrace = (ctx: CanvasRenderingContext2D, trace: Matter.Vector
         for (let i = 1; i < trace.length; i++) {
           ctx.lineTo(trace[i].x, trace[i].y);
         }
-        ctx.strokeStyle = '#0f0'; 
-        ctx.lineWidth = 1;
-        ctx.setLineDash([5, 5]); 
+        ctx.strokeStyle = '#C0C0C0'; // Silver color
+        ctx.lineWidth = 2; // Use same line width (already 2)
+        ctx.setLineDash([8, 4]); // Use same dash pattern
         ctx.stroke();
         ctx.setLineDash([]); 
 };
 
 // --- GameRenderer Component ---
-const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>(({ levelData, onPlayerHit, onLevelReset }: GameRendererProps, ref: ForwardedRef<GameRendererRef>) => {
+const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>(({ levelData, onPlayerHit }: GameRendererProps, ref: ForwardedRef<GameRendererRef>) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const physicsRef = useRef<MatterPhysicsHandles | null>(null);
+  const isInitialMount = useRef(true); // Ref to track initial mount
 
   // --- Hooks ---
   const tracers = useShotTracers(); // Get the full object
-  const { projectileTrails, lastShotTraces } = tracers;
+  const { lastShotTraces } = tracers; // Only destructure lastShotTraces
 
   // --- Memoize the handlers object to pass to useMatterPhysics ---
   const shotTracerHandlers = useMemo(() => ({
@@ -156,7 +144,7 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>(({ levelData
     latestTracesRef.current = lastShotTraces;
   }, [lastShotTraces]);
 
-  // --- Imperative Handle --- (Delegates to useMatterPhysics)
+  // --- Imperative Handle --- (Simpler now)
   useImperativeHandle(ref, () => ({
     fireProjectile: (playerIndex, power, abilityType) => {
         physicsRef.current?.fireProjectile(playerIndex, power, abilityType);
@@ -167,12 +155,6 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>(({ levelData
     getShipAngle: (playerIndex) => {
         return physicsRef.current?.getShipAngle(playerIndex);
     },
-    resetGame: () => {
-        console.log("[GameRenderer Ref] resetGame called.");
-        const newLevel = generateInitialPositions(VIRTUAL_WIDTH, VIRTUAL_HEIGHT); 
-        physicsRef.current?.resetPhysics(newLevel); // Pass the *new* level data to resetPhysics
-        onLevelReset?.(); 
-    }
   }));
 
   // --- Effects ---
@@ -202,7 +184,24 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>(({ levelData
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // --- Render Loop --- (Now simpler)
+  // --- Effect to Reset Physics on LevelData Change --- 
+  useEffect(() => {
+    // Skip reset on initial mount
+    if (isInitialMount.current) {
+        isInitialMount.current = false;
+        return;
+    }
+    
+    console.log("[GameRenderer] levelData prop changed. Resetting physics.");
+    if (physicsRef.current && levelData) {
+        physicsRef.current.resetPhysics(levelData);
+    } else {
+        console.warn("[GameRenderer] Cannot reset physics: ref or levelData missing.");
+    }
+    // Dependency: levelData prop
+  }, [levelData]);
+
+  // --- Render Loop --- (useEffect dependencies might need adjustment)
   useEffect(() => {
     let animationFrameId: number;
     const renderLoop = () => {
@@ -228,17 +227,37 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>(({ levelData
         drawBackground(ctx, backgroundImage);
         drawBorder(ctx);
 
-        // Draw Game Objects
-        const bodies = Matter.Composite.allBodies(engine.world);
+        // Draw Game Objects & Aiming Indicators
+        const bodies = physicsRef.current ? physicsRef.current.getAllBodies() : []; // Use physics ref
         bodies.forEach(body => {
-            if (body.label === 'planet') drawPlanet(ctx, body);
-            else if (body.label.startsWith('ship-')) drawShip(ctx, body);
-            else if (body.label.startsWith('projectile-')) drawProjectile(ctx, body as ProjectileBody);
+            if (body.label === 'planet') {
+                 drawPlanet(ctx, body);
+            } else if (body.label.startsWith('ship-')) {
+                drawShip(ctx, body);
+                // Draw aiming indicator for this ship
+                const aimLength = SHIP_RADIUS * 1.5; // Reduced length
+                const angle = body.angle;
+                const startX = body.position.x + Math.cos(angle) * SHIP_RADIUS;
+                const startY = body.position.y + Math.sin(angle) * SHIP_RADIUS;
+                const endX = body.position.x + Math.cos(angle) * (SHIP_RADIUS + aimLength);
+                const endY = body.position.y + Math.sin(angle) * (SHIP_RADIUS + aimLength);
+                
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(endX, endY);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)'; // White, semi-transparent
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            } else if (body.label.startsWith('projectile-')) {
+                drawProjectile(ctx, body as ProjectileBody);
+            }
             // Skip drawing boundaries
         });
 
-        // Draw Trails & Traces
-        projectileTrails.forEach(trail => drawActiveTrail(ctx, trail));
+        // Draw ONLY Historical Traces (Full flight path after projectile is removed)
+        // projectileTrails.forEach(trail => drawActiveTrail(ctx, trail)); // REMOVED active trail drawing
         Object.values(latestTracesRef.current).forEach(traceSet => {
             traceSet.forEach(trace => drawHistoricalTrace(ctx, trace));
         });
@@ -256,9 +275,11 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>(({ levelData
     return () => {
         cancelAnimationFrame(animationFrameId);
     };
-  // Dependencies: viewport ensures re-render on scale/offset change.
-  // physics.engine might change identity on reset, background, trails change state.
-  }, [viewport, physics.engine, backgroundImage, projectileTrails]);
+  // Dependencies: viewport, backgroundImage. Engine reference itself should be stable.
+  // We need to ensure this loop redraws when bodies change AFTER reset.
+  // Adding physics.engine might not be sufficient if the engine object identity is stable.
+  // Reading getAllBodies() inside ensures latest bodies are used each frame.
+  }, [viewport, backgroundImage]); // Keep dependencies minimal, rely on getAllBodies
 
   // --- Component Render ---
   const canvasStyle: React.CSSProperties = {

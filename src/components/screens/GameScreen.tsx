@@ -39,26 +39,11 @@ const GameScreen: React.FC = () => {
   const [roundUsedAbilities, setRoundUsedAbilities] = useState<[Set<AbilityType>, Set<AbilityType>]>([new Set(), new Set()]);
 
   const gameRendererRef = useRef<GameRendererRef>(null);
+  const roundEndTimerRef = useRef<number | null>(null); // Define the missing ref
   const levelData = useGameInitialization();
 
   // *** ADD LOG AT START OF RENDER ***
   console.log(`[GameScreen Render] State: ${gameState}, HP: ${playerHp.join(', ')}, WinnerIdx: ${roundWinnerIndex}`);
-
-  // --- Function to Prepare and Start Next Round --- //
-  const prepareNextRound = useCallback(() => {
-    console.log("[GameScreen] prepareNextRound: Resetting state...");
-    // Reset states first
-    setPlayerHp([INITIAL_HP, INITIAL_HP]);
-    setRoundUsedAbilities([new Set(), new Set()]);
-    setCurrentPlayerIndex(0);
-    setSelectedAbility(null);
-    setCurrentPower(1.0);
-    gameRendererRef.current?.resetGame(); // Reset physics/map
-    
-    // Then hide overlay
-    console.log("[GameScreen] prepareNextRound: Hiding winner overlay...");
-    setRoundWinnerIndex(null); 
-  }, []); // Remove state dependencies, not needed for setter logic
 
   // --- Single Fire Handler ---
   const handleFire = useCallback(() => {
@@ -78,7 +63,19 @@ const GameScreen: React.FC = () => {
 
   // --- Handle Player Hit (Sets Winner, Schedules Reset) --- //
   const handlePlayerHit = useCallback((hitPlayerIndex: 0 | 1, firingPlayerIndex: 0 | 1, projectileType: AbilityType | 'standard') => {
-    if (gameState !== 'playing') return; 
+    // Check if the game is already over before processing the hit
+    let shouldProcessHit = true;
+    setGameState(currentGameState => {
+        if (currentGameState !== 'playing') {
+            shouldProcessHit = false;
+        }
+        return currentGameState; // Return current state, no change here
+    });
+
+    if (!shouldProcessHit) {
+        console.log("[GameScreen] handlePlayerHit: Hit received but game state is not 'playing'. Ignoring.");
+        return; 
+    }
 
     const damage = projectileType === 'standard' ? 100 : 50;
     console.log(`[GameScreen] handlePlayerHit: FiringPlayer=${firingPlayerIndex}, HitPlayer=${hitPlayerIndex}, Type=${projectileType}, Damage=${damage}`);
@@ -91,16 +88,18 @@ const GameScreen: React.FC = () => {
         console.log(`!!! Player ${firingPlayerIndex + 1} hit themselves! Round Loss!`);
         determinedWinner = firingPlayerIndex === 0 ? 1 : 0;
     } else {
-        // Apply damage and check for knockout win
-        const potentialNewHp = Math.max(0, playerHp[hitPlayerIndex] - damage);
-        // Update HP state immediately for visual feedback if needed (though overlay shows soon)
+        // Apply damage using functional update
+        let hitPlayerKnockedOut = false;
         setPlayerHp(currentHp => {
             const newHp: [number, number] = [...currentHp];
-            newHp[hitPlayerIndex] = potentialNewHp;
+            newHp[hitPlayerIndex] = Math.max(0, currentHp[hitPlayerIndex] - damage);
+            if (newHp[hitPlayerIndex] <= 0) {
+                hitPlayerKnockedOut = true;
+            }
             return newHp;
         });
 
-        if (potentialNewHp <= 0) {
+        if (hitPlayerKnockedOut) {
             determinedWinner = firingPlayerIndex;
             console.log(`[GameScreen] Player ${determinedWinner + 1} wins by knockout!`);
         }
@@ -111,32 +110,30 @@ const GameScreen: React.FC = () => {
         console.log(`[GameScreen] Round Winner Index: ${determinedWinner}`);
         setRoundWinnerIndex(determinedWinner); // Store who won the round
 
-        // Update score and check for MATCH end
-        setPlayerScores(scores => {
-            const newScores: [number, number] = [...scores];
+        // Update score and check for MATCH end using functional update
+            setPlayerScores(scores => {
+              const newScores: [number, number] = [...scores];
+            // Check winner index again inside setter, as it's determined above
             if (determinedWinner !== null) { 
                 newScores[determinedWinner]++;
-                console.log(`[GameScreen] Scores updated: P1=${newScores[0]}, P2=${newScores[1]}`);
+              console.log(`[GameScreen] Scores updated: P1=${newScores[0]}, P2=${newScores[1]}`);
                 if (newScores[determinedWinner] >= 2) {
                     console.log(`[GameScreen] MATCH OVER! Player ${determinedWinner + 1} wins the match!`);
-                    matchIsOver = true; 
+                    matchIsOver = true; // Set flag for state update below
                 }
             }
-            return newScores;
-        });
-
-        // If the match is NOT over, schedule the next round reset/start
-        if (!matchIsOver) {
-             console.log(`[GameScreen] Scheduling next round preparation in ${ROUND_END_DELAY_MS}ms`);
-             prepareNextRound(); // Call the function that now does the resets
-        }
+              return newScores;
+            });
 
         // Set game state based on match outcome
-        setGameState(matchIsOver ? 'matchOver' : 'roundOver');
-        console.log(`[GameScreen] Setting gameState to: ${matchIsOver ? 'matchOver' : 'roundOver'}`);
+        // No need for functional update here as it only depends on matchIsOver flag set above
+        const finalGameState = matchIsOver ? 'matchOver' : 'roundOver';
+        setGameState(finalGameState); 
+        console.log(`[GameScreen] Setting gameState to: ${finalGameState}`);
     }
 
-  }, [gameState, playerHp, prepareNextRound]);
+    // Remove gameState and playerHp from dependencies, prepareNextRound is stable
+  }, []);
 
   // --- Ability Select Handler (Prevent Switching) --- //
   const handleAbilitySelect = useCallback((ability: AbilityType) => {
@@ -176,29 +173,9 @@ const GameScreen: React.FC = () => {
     };
   }, []);
 
-  // --- Reset game state when levelData changes ---
-  useEffect(() => {
-      if (levelData) {
-          console.log("[GameScreen] New level data received, resetting FULL game state...");
-           // Clear timer if level resets
-           if (roundEndTimerRef.current) {
-            window.clearTimeout(roundEndTimerRef.current); // Use window.clearTimeout
-            roundEndTimerRef.current = null;
-          }
-          gameRendererRef.current?.resetGame();
-          setRoundWinnerIndex(null);
-          setPlayerHp([INITIAL_HP, INITIAL_HP]);
-          setRoundUsedAbilities([new Set(), new Set()]);
-          setPlayerScores([0, 0]);
-          setCurrentPlayerIndex(0);
-          setSelectedAbility(null);
-          setCurrentPower(1.0);
-          setGameState('playing');
-      }
-  }, [levelData]);
-
   // --- Effect to Handle Round End Delay --- //
   useEffect(() => {
+    console.log(`[GameScreen Effect Check] gameState is now: ${gameState}`);
     let timerId: number | null = null;
     if (gameState === 'roundOver') {
         console.log(`[GameScreen Effect] Round over. Setting ${ROUND_END_DELAY_MS}ms timeout for next round...`);
@@ -218,6 +195,7 @@ const GameScreen: React.FC = () => {
 
   // --- Effect to Handle State Reset and Start Next Round --- //
   useEffect(() => {
+    console.log(`[GameScreen Effect Check] gameState is now: ${gameState}`);
     if (gameState === 'loadingNextRound') {
         console.log(`[GameScreen Effect] Loading next round: Resetting state...`);
         // Perform all state resets
@@ -299,7 +277,7 @@ const GameScreen: React.FC = () => {
         <GameRenderer 
           ref={gameRendererRef} 
           levelData={levelData}
-          onPlayerHit={handlePlayerHit}
+          onPlayerHit={handlePlayerHit} 
         />
       ) : (
         <div>Loading Level...</div>

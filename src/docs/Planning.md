@@ -61,12 +61,24 @@
 **Decisions:** Updated LLD: Phase 1 wagering includes NWC zap (default) and P2P eCash transfer (alternative). Phase 2 goals include exploring trusted eCash escrow and atomic swaps. App cut method clarified based on Phase 1 choice.
 **Steps Explained:** Detailed the P2P eCash flow and its reliance on user honesty. Contrasted this with the backend requirement for eCash escrow. Positioned NWC as the pragmatic starting point, allowing eCash as a user-driven alternative initially. 
 
-## Interaction 8: 2025-07-26 12:00 (Placeholder Time)
-**User Input:** "nut 18 requests Pay to play no freebees" and link to NUT-18 spec.
-**VibeStorm Questions:** Confirmed understanding of NUT-18 and its implication for mandatory pre-payment via eCash. Clarified the need for a backend service to handle the NUT-18 flow.
-**VibeStorm Response:** Agreed that NUT-18 Payment Requests are the ideal solution for the user's requirements. Detailed the refined flow: Game service generates NUT-18 requests, sends via DM; players fulfill using compatible wallets; service verifies tokens via mint API, holds escrow, starts game, pays winner. Emphasized this confirms the need for a backend service.
-**Decisions:** Adopted NUT-18 Payment Requests facilitated by a trusted backend service as the **sole Phase 1 mandatory wagering method**. Updated LLD to reflect this, including backend service requirement, Cashu library dependency, NUT-18 wallet requirement for users, and refined UI/flow descriptions.
-**Steps Explained:** Explained the step-by-step NUT-18 interaction between players, the game service, and the Cashu mint API. Highlighted the backend service's role in verification and escrow. 
+## Interaction 8: Wagering & Payouts - Final Decision (Cashu Exclusive)
+**User Input:** Clarification on using eCash exclusively, emphasizing freedom tech adoption and rejecting backend requirements or Lightning fallbacks. Also noting winner payout methods (DM + QR) and potential for ephemeral player keys.
+**VibeStorm Questions:** Confirmed understanding of the mandate for a pure Cashu flow, dual payout methods for winner, and the ephemeral key scenario.
+**VibeStorm Response:** Agreed to implement a fully Cashu-based wagering and payout system. This aligns with the project's goal of promoting freedom technologies and addresses the specified refinements.
+**Refined Flow:**
+1.  **Matchmaking:** Players find each other (e.g., via `kind:1` LFG notes mentioning the game npub, confirmed via `kind:4` DMs). Players might initiate contact using a temporary/session key.
+2.  **Agent & Stake:** A designated agent/bot npub facilitates the game. Each player sends 1000 sats (likely via a Cashu-enabled Lightning Address like npub.cash, converted to tokens by the agent's mint) to the agent's address. The agent uses a wallet connected to trusted mints (e.g., cashu.me, Minibits). *The agent needs to associate the incoming stake with the player's intended persistent payout pubkey if a temporary key was used for matchmaking.*
+3.  **Verification:** The agent verifies receipt of the 1000 sats worth of Cashu tokens *from both players* in its wallet and confirms the payout pubkeys.
+4.  **Game Start:** Once both stakes and payout pubkeys are confirmed, the game begins.
+5.  **Payout:** After the game concludes:
+    *   The agent generates 1900 sats worth of Cashu tokens for the winner.
+    *   The agent generates 100 sats worth of Cashu tokens for the developer split.
+    *   The agent serializes these tokens into their `cashuA...` string format.
+    *   The agent sends the winner's token string via encrypted NIP-04 DM to their confirmed persistent pubkey **and** generates a QR code containing the same token string for display in the winner's game UI.
+    *   The agent sends the developer's token string via encrypted NIP-04 DM to the designated developer pubkey.
+6.  **Redemption:** The winner (via DM or QR scan) and developer (via DM) must use a Cashu-compatible wallet/service (connected to the agent's mint) to redeem the received token string and claim their funds.
+**Decisions:** Adopted **exclusive Cashu token transmission** as the sole method for handling stakes (implicitly, via agent receiving/holding tokens) and payouts. Winner receives token via **both DM and QR code**. Developer receives via DM. **No Lightning payouts or backend escrow service required.** The system must handle players potentially using temporary keys for matchmaking/gameplay and ensure payouts reach their intended persistent pubkeys. Updated LLD to reflect this pure eCash flow and identity handling consideration.
+**Steps Explained:** Detailed the player-to-agent stake flow (assuming LN->Cashu conversion at the agent's mint), the agent's verification role (including associating stakes with correct payout pubkeys), the dual DM/QR winner payout mechanism, and the exclusive Cashu token DM payout for the developer. Emphasized the need for recipients to redeem tokens manually.
 
 ## Interaction 11: 2025-07-26 12:45 (Placeholder Time)
 **User Input:** "Player Orientation: Ships start facing each other on the 2D plane. Their 3D models will reflect this orientation.\nalways never changing verry simple concept mabe some davincy looking contraptions or a mediaval tribuchet\nbut syfi vibe"

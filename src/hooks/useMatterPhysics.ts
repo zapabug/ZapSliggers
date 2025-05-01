@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import Matter from 'matter-js';
 import { ProjectileBody } from './useShotTracers'; // Assuming ProjectileBody export
 import { InitialGamePositions } from './useGameInitialization';
@@ -17,13 +17,13 @@ const { Engine, Runner, Bodies, World, Composite, Vector, Body, Events } = Matte
 // Constants from GameRenderer relevant to physics
 const SHIP_RADIUS = 63; // Sets the size (radius) for player ship bodies. Used for ship creation and collision detection.
 const PLANET_MIN_RADIUS = 40; // Default radius used for planets in gravity calculations if a specific radius isn't found.
-const GRAVITY_CONSTANT = 0.4; // Multiplier controlling the overall strength of gravitational pull from planets.
-const GRAVITY_AOE_BONUS_FACTOR = 0.05; // Factor applied to increase a planet's effective gravitational range based on its size.
-const PLASTIC_GRAVITY_FACTOR = 0.5; // Factor by which planet gravity is reduced for 'plastic' projectiles.
+const GRAVITY_CONSTANT = 0.35; // Multiplier controlling the overall strength of gravitational pull from planets.
+const GRAVITY_AOE_BONUS_FACTOR = 0.15; // Factor applied to increase a planet's effective gravitational range based on its size.
+const PLASTIC_GRAVITY_FACTOR = 0.75; // Factor by which planet gravity is reduced for 'plastic' projectiles.
 const SHIP_GRAVITY_RANGE = SHIP_RADIUS * 4; // Range within which 'gravity' projectile is pulled by opponent ship.
 const SHIP_GRAVITY_CONSTANT = 0.3; // Strength of the opponent ship's pull on 'gravity' projectiles.
-const DEFAULT_FRICTION_AIR = 0.005; // Default air friction for standard projectiles & fragments
-const PLASTIC_FRICTION_AIR = 0.02;  // Increased air friction (drag) for plastic projectiles.
+const DEFAULT_FRICTION_AIR = 0.002; // Default air friction for standard projectiles & fragments
+const PLASTIC_FRICTION_AIR = 0.015;  // Increased air friction (drag) for plastic projectiles.
 const GRAVITY_FRICTION_AIR = 0.015; // Slightly increased air friction (drag) for gravity projectiles.
 
 interface UseMatterPhysicsProps {
@@ -33,6 +33,9 @@ interface UseMatterPhysicsProps {
   shotTracerHandlers: ShotTracerHandlers;
   onPlayerHit: (hitPlayerIndex: 0 | 1, firingPlayerIndex: 0 | 1, projectileType: AbilityType | 'standard') => void;
 }
+
+// --- Add Ref type for the callback ---
+type OnPlayerHitCallback = (hitPlayerIndex: 0 | 1, firingPlayerIndex: 0 | 1, projectileType: AbilityType | 'standard') => void;
 
 export interface MatterPhysicsHandles {
   engine: Matter.Engine | null;
@@ -55,14 +58,24 @@ export const useMatterPhysics = ({
   const engineRef = useRef<Matter.Engine | null>(null);
   const runnerRef = useRef<Matter.Runner | null>(null);
   const shipBodiesRef = useRef<(Matter.Body | null)[]>([null, null]);
-  const [currentLevelData, setCurrentLevelData] = useState<InitialGamePositions>(initialLevelData);
   const currentLevelDataRef = useRef(initialLevelData);
 
-  // Keep level data in sync
-  useEffect(() => {
-    currentLevelDataRef.current = currentLevelData;
-  }, [currentLevelData]);
+  // --- Ref to store the latest onPlayerHit callback --- 
+  const onPlayerHitRef = useRef<OnPlayerHitCallback>(onPlayerHit);
 
+  // --- Effect to keep the ref updated --- 
+  useEffect(() => {
+      onPlayerHitRef.current = onPlayerHit;
+  }, [onPlayerHit]);
+
+  // Keep level data REF in sync (using prop directly now for reset)
+  useEffect(() => { 
+      currentLevelDataRef.current = initialLevelData; 
+  }, [initialLevelData]);
+
+  // Ref to store the latest shotTracerHandlers
+  const shotTracerHandlersRef = useRef<ShotTracerHandlers>(shotTracerHandlers);
+  useEffect(() => { shotTracerHandlersRef.current = shotTracerHandlers; }, [shotTracerHandlers]);
 
   // --- Collision Handling Logic ---
   const handleCollisions = useCallback((event: Matter.IEventCollision<Matter.Engine>) => {
@@ -96,7 +109,8 @@ export const useMatterPhysics = ({
             } else if (otherBody.label.startsWith('ship-')) {
                 const hitPlayerIndex = parseInt(otherBody.label.split('-')[1], 10) as 0 | 1;
                 console.log(`[Collision] Proj ${projectile.id} (P${firedByPlayerIndex}, Type: ${projectileType}) hit P${hitPlayerIndex}`);
-                onPlayerHit(hitPlayerIndex, firedByPlayerIndex, projectileType);
+                // --- Use the ref to call the latest callback --- 
+                onPlayerHitRef.current(hitPlayerIndex, firedByPlayerIndex, projectileType);
                 
                 shotTracerHandlers.handleProjectileRemoved(projectile);
                 World.remove(currentEngine.world, projectile);
@@ -115,7 +129,7 @@ export const useMatterPhysics = ({
             }
         }
     });
-  }, [onPlayerHit, shotTracerHandlers]);
+  }, [shotTracerHandlers]);
 
   // --- Physics Update Logic ---
   const updateProjectilesAndApplyGravity = useCallback(() => {
@@ -355,7 +369,7 @@ export const useMatterPhysics = ({
     if (!engine || !shipBody) return;
 
     const angle = shipBody.angle;
-    const speed = 10 + power * 1.2; // Base speed + power scaled by 1.2x
+    const speed = 10 + power * 1.5; // Base speed + power scaled by 1.5x
     const velocity = Vector.mult(Vector.rotate({ x: 1, y: 0 }, angle), speed);
 
     // Start position slightly in front of the ship
@@ -420,9 +434,11 @@ export const useMatterPhysics = ({
           console.error("[Physics Hook] Attempted resetPhysics with undefined newLevelData.");
           return;
       }
-      setCurrentLevelData(newLevelData);
+      // Update the ref just in case anything else relies on it
+      currentLevelDataRef.current = newLevelData;
+      // Directly initialize world with the new data
       initializeWorld(newLevelData);
-  }, [initializeWorld]);
+  }, [initializeWorld]); // Dependency is stable initializeWorld
 
   const getDynamicBodies = useCallback(() => {
       if (!engineRef.current) return [];

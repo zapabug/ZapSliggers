@@ -137,13 +137,13 @@ This document outlines the core gameplay loop and dynamics for **Klunkstr**.
 *   Active/historical shot traces functional (`useShotTracers`).
 *   **Klunkstr Rules Progress:**
     *   **Implemented Abilities:** `splitter`, `gravity`, `plastic` projectiles are selectable and have physics effects implemented in `useMatterPhysics`.
-    *   **HP System:** HP (`playerHp` state) functions as player health, reduced on hit. Initial HP is 100.
-    *   **Ability Selection/UI:** Logic exists in `GameScreen.tsx` and `ActionButtons.tsx` for selecting abilities. Abilities can only be used once per turn (UI disabled after selection).
+    *   **HP System:** HP (`playerStates[playerIndex].hp` state in `GameScreen`) functions as player health. **Players start each round with 100 HP.** HP is reduced on hit.
+    *   **Ability Selection/UI:** Logic exists in `GameScreen.tsx` and `ActionButtons.tsx` for selecting abilities. Abilities can currently be selected once per turn (UI disabled after selection). **Match-level usage tracking (`usedAbilities` set) exists but isn't strictly enforced by current simplified rules.**
     *   **Round Win Condition:** Logic implemented in `GameScreen.tsx`:
-        *   Standard projectile hit deals 100 damage (instant win/knockout).
-        *   Ability projectile hit deals 50 damage.
+        *   Standard projectile hit deals **100 damage**.
+        *   Ability projectile hit (`splitter`, `gravity`, `plastic`) deals **50 damage**.
         *   Hitting yourself results in an instant round loss.
-        *   A round ends when a player's HP reaches 0 or below due to damage.
+        *   A round ends when a player's HP reaches **0 or below** due to damage.
     *   Match structure (Best of 3 rounds score tracking) implemented.
 *   **Remaining Implementation:**
     *   **Target Klunkstr Rules (If Pursued):** Refactor HP to be solely an ability resource, implement ability costs, implement match-level ability limits (3 total, 1 per type), implement Vulnerability state, and implement the associated target win conditions.
@@ -217,9 +217,9 @@ This document outlines the core gameplay loop and dynamics for **Klunkstr**.
    - **Sudden Death:** Creates a chaotic end-phase for drawn rounds.
 
 **5. Power-ups & Special Mechanics (Current Simple Implementation):**
-   - **Health Points (HP):** Players start each **round** with 100 HP. HP is reduced by opponent hits. Reaching 0 HP results in a round loss.
+   - **Health Points (HP):** Players start each **round** with 100 HP. HP is reduced by opponent hits. **Reaching 0 or below HP results in a round loss.**
    - **Ability Activation Cost:** None currently implemented.
-   - **Usage Limits:** Abilities (`splitter`, `gravity`, `plastic`) can be selected once per turn. No match-level limits.
+   - **Usage Limits:** Abilities (`splitter`, `gravity`, `plastic`) can be selected once per turn. No match-level limits are currently enforced (though tracked).
    - **Vulnerability:** Not implemented.
    - **Projectile Collision Default:** Projectiles pass through each other.
    - **Available Abilities (Current Implementation):** *(Selection logic in `GameScreen.tsx`, UI in `ActionButtons.tsx`, Physics in `useMatterPhysics.ts`)*
@@ -234,8 +234,8 @@ This document outlines the core gameplay loop and dynamics for **Klunkstr**.
        - **Damage on Hit:** 50 HP.
 
 **6. Specific Interactions (Current Implementation):**
-   - **Standard Projectile vs. Player:** Deals 100 damage. If HP <= 0, target loses round.
-   - **Ability Projectile vs. Player:** Deals 50 damage. If HP <= 0, target loses round.
+   - **Standard Projectile vs. Player:** Deals **100 damage**. If HP <= 0, target loses round.
+   - **Ability Projectile vs. Player:** Deals **50 damage**. If HP <= 0, target loses round.
    - **Self-Hit:** Instantly lose the round.
 
 **7. Visual Presentation & Camera:**

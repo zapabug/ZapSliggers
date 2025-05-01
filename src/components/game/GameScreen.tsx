@@ -32,8 +32,8 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
   const gameRendererRef = useRef<GameRendererRef>(null);
 
   // --- Level Data State ---
-  // Remove setLevelData as it's unused. Reset happens via gameRendererRef.current.resetGame()
-  const [levelData] = useState<InitialGamePositions>(() => 
+  // Now uses state that can be updated
+  const [levelData, setLevelData] = useState<InitialGamePositions>(() => 
     generateInitialPositions(2400, 1200) 
   );
 
@@ -97,20 +97,25 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
   const handleRoundWin = useCallback((winningPlayerIndex: 0 | 1) => {
     console.log(`!!! Round Win detected for Player ${winningPlayerIndex} !!!`);
 
-    // Reset the game via the renderer ref to generate a new map layout
-    gameRendererRef.current?.resetGame(); 
+    // --- Reset Logic --- 
+    // 1. Generate NEW level layout
+    const newLevel = generateInitialPositions(2400, 1200); 
 
-    // DO NOT Reset player states here - HP/abilities are per-match, not per-round
-    // Resetting player position/map is handled by resetGame()
+    // 2. Update GameScreen's levelData state (Triggers visual map reset)
+    setLevelData(newLevel);
 
-    // Reset the turn to player 0 (can adjust later)
+    // 3. Reset HP and Ability usage for the new round
+    setPlayerStates([
+      { hp: MAX_HP, usedAbilities: new Set(), isVulnerable: false }, // Player 0
+      { hp: MAX_HP, usedAbilities: new Set(), isVulnerable: false }  // Player 1
+    ]);
+
+    // 4. Reset turn/selected ability state for the *next round*
     setCurrentPlayerIndex(0); 
-
-    // Reset selected ability for the start of the new round
     setSelectedAbility(null);
 
     // TODO: Implement other round end logic (show modal, update scores etc)
-  }, []); // Dependencies removed as we only call external refs/setters
+  }, []); // No dependencies needed as it only calls setters/external functions
 
   // --- Handle Player Hit Callback ---
   // Updated signature: Assumes GameRenderer provides firing player index and projectile type
@@ -125,50 +130,56 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
           return; // Stop further processing
       }
 
-      // --- Determine Winner based on Projectile Type and Vulnerability ---
-      const targetPlayerState = playerStates[hitPlayerIndex];
-      let roundWinnerIndex: 0 | 1 | null = null;
-
-      switch (projectileType) {
-          case 'standard':
-          case 'lead':
-              // Instant win on standard/lead hit
-              console.log(`Player ${firingPlayerIndex} landed a standard/lead hit! Round Win!`);
-              roundWinnerIndex = firingPlayerIndex;
-              break;
-
-          case 'triple':
-          case 'explosive':
-              // Win only if target is Vulnerable
-              if (targetPlayerState.isVulnerable) {
-                  console.log(`Player ${firingPlayerIndex} landed a ${projectileType} hit on a Vulnerable target! Round Win!`);
-                  roundWinnerIndex = firingPlayerIndex;
-              } else {
-                  console.log(`Player ${firingPlayerIndex} landed a ${projectileType} hit, but target was not Vulnerable. No immediate win.`);
-                  // No round win - game continues
-              }
-              break;
+      // --- Calculate Damage --- 
+      let damage = 0;
+      if (projectileType === 'standard') {
+          damage = 100;
+          console.log(`Standard hit dealt ${damage} damage.`);
+      } else {
+          // All current abilities deal the same damage
+          damage = 50; 
+          console.log(`Ability hit (${projectileType}) dealt ${damage} damage.`);
       }
 
-      // --- Call handleRoundWin if a winner was determined ---
-      if (roundWinnerIndex !== null) {
-          handleRoundWin(roundWinnerIndex);
-      }
+      // --- Apply Damage and Check for Round Win --- 
+      setPlayerStates(currentStates => {
+          // Clone the state array and the specific player state we are modifying
+          const newStates: [PlayerState, PlayerState] = [
+              { ...currentStates[0] }, 
+              { ...currentStates[1] }
+          ];
+          const hitPlayerCurrentState = newStates[hitPlayerIndex];
 
-      // --- REMOVED HP Deduction Logic --- 
+          // Deduct HP
+          const newHp = hitPlayerCurrentState.hp - damage;
+          hitPlayerCurrentState.hp = newHp;
+          console.log(`Player ${hitPlayerIndex} HP reduced to ${newHp}`);
 
-  }, [playerStates, handleRoundWin]); // Dependencies: playerStates (for vulnerability check), handleRoundWin
+          // Check if the hit resulted in a win
+          if (newHp <= 0) {
+              console.log(`Player ${hitPlayerIndex} HP reached 0 or below. Player ${firingPlayerIndex} wins the round!`);
+              // Schedule handleRoundWin to run *after* this state update completes
+              // Use setTimeout to avoid calling it directly within the setter
+              setTimeout(() => handleRoundWin(firingPlayerIndex), 0); 
+          }
+          
+          return newStates; // Return the updated states array
+      });
+      
+      // --- Round Win logic is now handled *inside* setPlayerStates based on HP --- 
+
+  }, [handleRoundWin]); // Removed playerStates dependency, setter handles it
 
   // TODO: Replace mock state with actual game state management (e.g., Zustand, props)
   // TODO: Fetch profile data for HUDs if needed beyond pubkey (useProfile hook?)
   // TODO: Implement game loop logic (turn handling, receiving Nostr events, triggering physics updates)
   // TODO: Connect physics engine updates to GameRenderer props
   // TODO: Handle ability selection state and logic
-  console.log('NDK instance received in GameScreen:', ndk); // Log to confirm
 
   // Event Handlers
   // Use useCallback to memoize the handler passed to AimingInterface
   const handleAimChange = useCallback((aim: { angle: number; power: number }) => {
+    console.log(`[GameScreen] handleAimChange called with:`, aim);
     // Update local state
     setCurrentAim(aim);
     // ALSO update the ship angle in the renderer
@@ -199,7 +210,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
 
   // Updated handleSelectAbility (was handleAbilities)
   const handleSelectAbility = useCallback((abilityType: AbilityType) => {
-    console.log(`Player ${currentPlayerIndex} attempting to select ability: ${abilityType}`);
+    console.log(`[GameScreen] handleSelectAbility START for ability: ${abilityType}. Current aim:`, currentAim);
     setPlayerStates(currentStates => {
       const currentPlayerData = currentStates[currentPlayerIndex];
 
@@ -253,7 +264,7 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
 
       return newStates;
     });
-  }, [currentPlayerIndex, selectedAbility]); // Dependencies: current player and current selection
+  }, [currentPlayerIndex, selectedAbility, currentAim]); // Dependencies: current player and current selection
 
   // --- Keyboard Controls --- 
   useEffect(() => {
@@ -316,6 +327,9 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
   }, [handleFire, currentAim.angle, currentAim.power, currentPlayerIndex]); // Update dependencies
   // --- End Keyboard Controls ---
 
+  // Log currentAim before render
+  console.log(`[GameScreen] Rendering. Current aim state:`, currentAim);
+
   return (
     // Main container: Remove flex centering
     <div className="relative w-full h-screen bg-black text-white overflow-hidden">
@@ -349,7 +363,6 @@ const GameScreen: React.FC<GameScreenProps> = ({ opponentPubkey, localPlayerPubk
             ref={gameRendererRef} // Pass the ref here
             levelData={levelData} // Pass level data state
             onPlayerHit={handlePlayerHit} // Pass hit handler
-            onLevelReset={() => console.log("[GameScreen] Received level reset confirmation.")}
           />
         )}
       </div>
