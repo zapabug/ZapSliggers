@@ -22,120 +22,268 @@ const toRoman = (num: number): string => {
 // --- END NEW ---
 
 const INITIAL_HP = 100;
+const ROUND_END_DELAY_MS = 3000; // Delay before automatically starting next round
+
+// Define Game States
+type GameState = 'playing' | 'roundOver' | 'matchOver' | 'loadingNextRound';
 
 const GameScreen: React.FC = () => {
+  // --- State --- //
+  const [gameState, setGameState] = useState<GameState>('playing');
+  const [roundWinnerIndex, setRoundWinnerIndex] = useState<0 | 1 | null>(null); // Store winner index
   const [currentPlayerIndex, setCurrentPlayerIndex] = useState<0 | 1>(0);
-  const [winner, setWinner] = useState<0 | 1 | null>(null);
-  const [selectedAbility, setSelectedAbility] = useState<AbilityType | null>(null); // Single ability state
+  const [selectedAbility, setSelectedAbility] = useState<AbilityType | null>(null);
   const [playerScores, setPlayerScores] = useState<[number, number]>([0, 0]);
-  const [playerHp, setPlayerHp] = useState<[number, number]>([INITIAL_HP, INITIAL_HP]); // HP state
-  // Remove separate P1/P2 power states
-  const [currentPower, setCurrentPower] = useState<number>(1.0); // Single power state (if needed for UI)
-  const [usedAbilities, setUsedAbilities] = useState<Set<AbilityType>>(new Set()); // Track used abilities this turn
+  const [playerHp, setPlayerHp] = useState<[number, number]>([INITIAL_HP, INITIAL_HP]);
+  const [currentPower, setCurrentPower] = useState<number>(1.0);
+  const [roundUsedAbilities, setRoundUsedAbilities] = useState<[Set<AbilityType>, Set<AbilityType>]>([new Set(), new Set()]);
 
   const gameRendererRef = useRef<GameRendererRef>(null);
-  const levelData = useGameInitialization(); // ADD: Get level data
+  const levelData = useGameInitialization();
 
-  // --- Restored Single Fire Handler ---
-  const handleFire = () => {
-    if (winner !== null) return; // Only fire if game not over
+  // *** ADD LOG AT START OF RENDER ***
+  console.log(`[GameScreen Render] State: ${gameState}, HP: ${playerHp.join(', ')}, WinnerIdx: ${roundWinnerIndex}`);
 
-    // console.log(`[GameScreen] Firing for P${currentPlayerIndex + 1} with power ${currentPower.toFixed(2)}, Ability: ${selectedAbility}`);
-    gameRendererRef.current?.fireProjectile(currentPlayerIndex, currentPower, selectedAbility);
-
-    // Update used abilities
-    if (selectedAbility) {
-        setUsedAbilities(prev => new Set(prev).add(selectedAbility));
-    }
-
-    setSelectedAbility(null); // Reset selected ability after firing
-    setCurrentPower(1.0); // Reset power after firing (if controlled by slider)
-    setCurrentPlayerIndex(prevIndex => (prevIndex === 0 ? 1 : 0)); // Switch turn
-  };
-
-  // --- NEW: Handle Player Hit (Memoized) ---
-  const handlePlayerHit = useCallback((hitPlayerIndex: 0 | 1, damage: number) => {
-    // Check winner state using a ref or ensure it's in useCallback deps if needed
-    // For now, assume direct check is okay, but be mindful of stale closures
-    // if (winnerRef.current !== null) return;
-    // Temporarily removing winner check from inside useCallback as it would require
-    // adding `winner` to dependency array, potentially causing other issues.
-    // The check outside in the component rendering the button might be sufficient.
-    // OR pass winner state down if absolutely necessary.
-
-    console.log(`[GameScreen] Player ${hitPlayerIndex + 1} hit for ${damage} damage.`);
-    setPlayerHp(currentHp => {
-        const newHp: [number, number] = [...currentHp];
-        newHp[hitPlayerIndex] = Math.max(0, newHp[hitPlayerIndex] - damage);
-        console.log(`[GameScreen] HP Updated: P1=${newHp[0]}, P2=${newHp[1]}`);
-
-        // Check for winner
-        if (newHp[hitPlayerIndex] <= 0) {
-            const winnerIndex = hitPlayerIndex === 0 ? 1 : 0;
-            console.log(`[GameScreen] Player ${winnerIndex + 1} wins the round!`);
-            setWinner(winnerIndex);
-            // Update score
-            setPlayerScores(scores => {
-              const newScores: [number, number] = [...scores];
-              newScores[winnerIndex]++;
-              console.log(`[GameScreen] Scores updated: P1=${newScores[0]}, P2=${newScores[1]}`);
-              return newScores;
-            });
-        }
-        return newHp;
-    });
-  // Dependencies: Functions from useState are stable and don't need to be listed.
-  // If we checked `winner` inside, it would need to be added: }, [winner]);
-  }, []);
-
-  // --- Restored Single Ability Select Handler ---
-  const handleAbilitySelect = (ability: AbilityType | null) => {
-    if (winner !== null) return;
-    // Check if ability has already been used this turn or max uses reached (if applicable)
-    // Add checks here based on ActionButtons props if needed
-    console.log(`[GameScreen] Ability selected for P${currentPlayerIndex + 1}: ${ability}`);
-    setSelectedAbility(ability);
-  };
-  // Remove separate P1/P2 handlers
-
-  // --- NEW: handleNewRound ---
-  const handleNewRound = () => {
-    console.log("[GameScreen] Starting new round...");
-    gameRendererRef.current?.resetGame();
-    setWinner(null);
-    setPlayerHp([INITIAL_HP, INITIAL_HP]); // Reset HP
-    setUsedAbilities(new Set()); // Reset used abilities
-    // Decide who starts next round (e.g., loser starts or player 1 starts)
-    // Let's make Player 1 always start for simplicity now.
+  // --- Function to Prepare and Start Next Round --- //
+  const prepareNextRound = useCallback(() => {
+    console.log("[GameScreen] prepareNextRound: Resetting state...");
+    // Reset states first
+    setPlayerHp([INITIAL_HP, INITIAL_HP]);
+    setRoundUsedAbilities([new Set(), new Set()]);
     setCurrentPlayerIndex(0);
     setSelectedAbility(null);
-    setCurrentPower(1.0); // Reset power
-  };
-  // --- END NEW ---
+    setCurrentPower(1.0);
+    gameRendererRef.current?.resetGame(); // Reset physics/map
+    
+    // Then hide overlay
+    console.log("[GameScreen] prepareNextRound: Hiding winner overlay...");
+    setRoundWinnerIndex(null); 
+  }, []); // Remove state dependencies, not needed for setter logic
 
-  // Reset UI state on turn change
+  // --- Single Fire Handler ---
+  const handleFire = useCallback(() => {
+    if (gameState !== 'playing') return;
+    gameRendererRef.current?.fireProjectile(currentPlayerIndex, currentPower, selectedAbility);
+    if (selectedAbility) {
+      setRoundUsedAbilities(prevSets => {
+        const newSets: [Set<AbilityType>, Set<AbilityType>] = [new Set(prevSets[0]), new Set(prevSets[1])];
+        newSets[currentPlayerIndex].add(selectedAbility);
+        return newSets;
+      });
+    }
+    setSelectedAbility(null);
+    setCurrentPower(1.0);
+    setCurrentPlayerIndex(prevIndex => (prevIndex === 0 ? 1 : 0));
+  }, [gameState, currentPlayerIndex, currentPower, selectedAbility]);
+
+  // --- Handle Player Hit (Sets Winner, Schedules Reset) --- //
+  const handlePlayerHit = useCallback((hitPlayerIndex: 0 | 1, firingPlayerIndex: 0 | 1, projectileType: AbilityType | 'standard') => {
+    if (gameState !== 'playing') return; 
+
+    const damage = projectileType === 'standard' ? 100 : 50;
+    console.log(`[GameScreen] handlePlayerHit: FiringPlayer=${firingPlayerIndex}, HitPlayer=${hitPlayerIndex}, Type=${projectileType}, Damage=${damage}`);
+
+    let determinedWinner: 0 | 1 | null = null;
+    let matchIsOver = false;
+
+    // Check for self-hit first
+    if (hitPlayerIndex === firingPlayerIndex) {
+        console.log(`!!! Player ${firingPlayerIndex + 1} hit themselves! Round Loss!`);
+        determinedWinner = firingPlayerIndex === 0 ? 1 : 0;
+    } else {
+        // Apply damage and check for knockout win
+        const potentialNewHp = Math.max(0, playerHp[hitPlayerIndex] - damage);
+        // Update HP state immediately for visual feedback if needed (though overlay shows soon)
+        setPlayerHp(currentHp => {
+            const newHp: [number, number] = [...currentHp];
+            newHp[hitPlayerIndex] = potentialNewHp;
+            return newHp;
+        });
+
+        if (potentialNewHp <= 0) {
+            determinedWinner = firingPlayerIndex;
+            console.log(`[GameScreen] Player ${determinedWinner + 1} wins by knockout!`);
+        }
+    }
+
+    // If a winner was determined
+    if (determinedWinner !== null) {
+        console.log(`[GameScreen] Round Winner Index: ${determinedWinner}`);
+        setRoundWinnerIndex(determinedWinner); // Store who won the round
+
+        // Update score and check for MATCH end
+        setPlayerScores(scores => {
+            const newScores: [number, number] = [...scores];
+            if (determinedWinner !== null) { 
+                newScores[determinedWinner]++;
+                console.log(`[GameScreen] Scores updated: P1=${newScores[0]}, P2=${newScores[1]}`);
+                if (newScores[determinedWinner] >= 2) {
+                    console.log(`[GameScreen] MATCH OVER! Player ${determinedWinner + 1} wins the match!`);
+                    matchIsOver = true; 
+                }
+            }
+            return newScores;
+        });
+
+        // If the match is NOT over, schedule the next round reset/start
+        if (!matchIsOver) {
+             console.log(`[GameScreen] Scheduling next round preparation in ${ROUND_END_DELAY_MS}ms`);
+             prepareNextRound(); // Call the function that now does the resets
+        }
+
+        // Set game state based on match outcome
+        setGameState(matchIsOver ? 'matchOver' : 'roundOver');
+        console.log(`[GameScreen] Setting gameState to: ${matchIsOver ? 'matchOver' : 'roundOver'}`);
+    }
+
+  }, [gameState, playerHp, prepareNextRound]);
+
+  // --- Ability Select Handler (Prevent Switching) --- //
+  const handleAbilitySelect = useCallback((ability: AbilityType) => {
+    if (gameState !== 'playing') return;
+    
+    // Check if ability already used THIS ROUND by the CURRENT player
+    if (roundUsedAbilities[currentPlayerIndex].has(ability)) {
+        console.log(`[GameScreen] Ability ${ability} already used this round by Player ${currentPlayerIndex + 1}.`);
+        return; // Cannot select an already used ability
+    }
+
+    // Logic to prevent switching selection
+    setSelectedAbility(prevSelected => {
+        if (prevSelected === null) {
+            // Nothing selected, so select the clicked ability
+            console.log(`[GameScreen] Selecting ability: ${ability}`);
+            return ability;
+        } else if (prevSelected === ability) {
+            // Clicked the already selected ability, so deselect it
+            console.log(`[GameScreen] Deselecting ability: ${ability}`);
+            return null;
+        } else {
+            // An ability is already selected, and clicked a *different* one
+            console.log(`[GameScreen] Cannot switch ability. Deselect ${prevSelected} first.`);
+            return prevSelected; // Keep the previous selection
+        }
+    });
+  }, [gameState, currentPlayerIndex, roundUsedAbilities]);
+
+  // --- Cleanup Timer on Unmount --- //
   useEffect(() => {
-      if (winner !== null) return;
-      setSelectedAbility(null); // Reset ability selection
-      setCurrentPower(1.0); // Reset power slider/value
-      setUsedAbilities(new Set()); // Reset used abilities for the new turn
-  }, [currentPlayerIndex, winner]);
+    return () => {
+      if (roundEndTimerRef.current) {
+        // Use window.clearTimeout
+        window.clearTimeout(roundEndTimerRef.current);
+      }
+    };
+  }, []);
 
-  // --- NEW: Reset game physics when levelData changes (e.g., on initial load or explicit reset)
+  // --- Reset game state when levelData changes ---
   useEffect(() => {
       if (levelData) {
-          console.log("[GameScreen] New level data received, resetting renderer physics...");
-          gameRendererRef.current?.resetGame(); // Tell renderer to reset with its internal logic
-          // Reset local game state too
-          setWinner(null);
+          console.log("[GameScreen] New level data received, resetting FULL game state...");
+           // Clear timer if level resets
+           if (roundEndTimerRef.current) {
+            window.clearTimeout(roundEndTimerRef.current); // Use window.clearTimeout
+            roundEndTimerRef.current = null;
+          }
+          gameRendererRef.current?.resetGame();
+          setRoundWinnerIndex(null);
           setPlayerHp([INITIAL_HP, INITIAL_HP]);
-          setUsedAbilities(new Set());
-          setCurrentPlayerIndex(0); // Player 1 starts
+          setRoundUsedAbilities([new Set(), new Set()]);
+          setPlayerScores([0, 0]);
+          setCurrentPlayerIndex(0);
           setSelectedAbility(null);
           setCurrentPower(1.0);
+          setGameState('playing');
       }
-  }, [levelData]); // Depend on levelData
+  }, [levelData]);
 
+  // --- Effect to Handle Round End Delay --- //
+  useEffect(() => {
+    let timerId: number | null = null;
+    if (gameState === 'roundOver') {
+        console.log(`[GameScreen Effect] Round over. Setting ${ROUND_END_DELAY_MS}ms timeout for next round...`);
+        timerId = window.setTimeout(() => {
+            console.log(`[GameScreen Effect] Timeout finished. Setting gameState to loadingNextRound.`);
+            setGameState('loadingNextRound');
+        }, ROUND_END_DELAY_MS);
+    }
+    // Cleanup function to clear timeout if component unmounts or gameState changes
+    return () => {
+      if (timerId !== null) {
+         console.log('[GameScreen Effect] Cleaning up roundOver timer.');
+         window.clearTimeout(timerId);
+      }
+    };
+  }, [gameState]);
+
+  // --- Effect to Handle State Reset and Start Next Round --- //
+  useEffect(() => {
+    if (gameState === 'loadingNextRound') {
+        console.log(`[GameScreen Effect] Loading next round: Resetting state...`);
+        // Perform all state resets
+        setPlayerHp([INITIAL_HP, INITIAL_HP]);
+        setRoundUsedAbilities([new Set(), new Set()]);
+        gameRendererRef.current?.resetGame(); // Reset physics/map layout
+        setCurrentPlayerIndex(0);
+        setSelectedAbility(null);
+        setCurrentPower(1.0);
+        setRoundWinnerIndex(null); // Clear the round winner index
+        
+        // Immediately switch back to playing state AFTER resets
+        setGameState('playing');
+        console.log(`[GameScreen Effect] State reset complete. Switching gameState to playing.`);
+    }
+  }, [gameState]);
+
+  // --- Render Logic --- //
+  const renderContent = () => {
+    switch (gameState) {
+      case 'playing':
+        return (
+          <>
+            {/* Turn Indicator */}
+            <h3 style={{ margin: '0', color: currentPlayerIndex === 0 ? '#87CEFA' : '#F08080', background: 'rgba(0,0,0,0.4)', padding: '5px 10px', borderRadius: '4px' }}>
+              Player {currentPlayerIndex + 1}'s Turn (HP: {playerHp[currentPlayerIndex]})
+            </h3>
+            {/* Single Action Button Set */}
+            <ActionButtons
+              onFire={handleFire}
+              selectedAbility={selectedAbility}
+              onAbilitySelect={handleAbilitySelect}
+              // Pass the ROUND used abilities for the CURRENT player
+              usedAbilities={roundUsedAbilities[currentPlayerIndex]}
+              currentHp={playerHp[currentPlayerIndex]}
+              abilityCost={10} // Dummy cost display
+              maxAbilityUses={1} // Keep as 1 for ActionButton's internal check? Or remove from ActionButtons?
+              disabled={false}
+            />
+          </>
+        );
+      case 'roundOver':
+      case 'matchOver': {
+        const winnerText = roundWinnerIndex !== null ? `Player ${roundWinnerIndex + 1}` : 'Error';
+        const isMatch = gameState === 'matchOver';
+        return (
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}> 
+            <div style={{ textAlign: 'center', color: '#90EE90', background: 'rgba(0,0,0,0.6)', padding: '20px', borderRadius: '10px' }}>
+              <h2>{winnerText} {isMatch ? 'WINS THE MATCH!' : 'Wins the Round!'}</h2>
+              <h3 style={{ margin: '10px 0' }}>{isMatch ? 'Final Score' : 'Score'}: {toRoman(playerScores[0])} - {toRoman(playerScores[1])}</h3>
+              {/* No button needed, transition is automatic */}
+            </div>
+          </div>
+        );
+      }
+      case 'loadingNextRound':
+         // Optional: Show a brief loading indicator
+         return (
+             <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', color: 'white' }}>
+                 Loading next round...
+             </div>
+         );
+      default:
+        return null;
+    }
+  };
 
   return (
     <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden' }}>
@@ -146,15 +294,15 @@ const GameScreen: React.FC = () => {
       {/* --- Leaderboard REMOVED (can add back later) --- */}
       {/* <div style={{...}}> Leaderboard ... </div> */}
 
-      {/* --- Game Renderer (Pass levelData) --- */}
+      {/* --- Game Renderer (Pass levelData & CORRECTED onPlayerHit) --- */}
       {levelData ? (
         <GameRenderer 
           ref={gameRendererRef} 
-          levelData={levelData} // ADD: Pass levelData
-          onPlayerHit={handlePlayerHit} 
+          levelData={levelData}
+          onPlayerHit={handlePlayerHit}
         />
       ) : (
-        <div>Loading Level...</div> // Or some other placeholder
+        <div>Loading Level...</div>
       )}
 
 
@@ -169,47 +317,7 @@ const GameScreen: React.FC = () => {
           alignItems: 'flex-start',
           gap: '10px'
       }}>
-        {winner === null ? (
-          // --- Game Active UI ---
-          <>
-            {/* Turn Indicator */}
-            <h3 style={{ margin: '0', color: currentPlayerIndex === 0 ? '#87CEFA' : '#F08080', background: 'rgba(0,0,0,0.4)', padding: '5px 10px', borderRadius: '4px' }}>
-              Player {currentPlayerIndex + 1}'s Turn
-            </h3>
-            {/* Single Action Button Set */}
-            <ActionButtons
-              onFire={handleFire}
-              selectedAbility={selectedAbility}
-              onAbilitySelect={handleAbilitySelect}
-              usedAbilities={usedAbilities}
-              currentHp={playerHp[currentPlayerIndex]}
-              abilityCost={10} 
-              maxAbilityUses={1} 
-              disabled={false} 
-              // currentPower={currentPower}
-              // onPowerChange={setCurrentPower}
-            />
-          </>
-        ) : (
-          // --- Winner Screen UI (Stays centered for now, could also be moved) ---
-          // This div wrapper could be removed if winner message should also be bottom-left
-          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}> 
-            <div style={{ textAlign: 'center', color: '#90EE90', background: 'rgba(0,0,0,0.6)', padding: '20px', borderRadius: '10px' }}>
-              <h2>Player {winner + 1} Wins the Round!</h2>
-              <h3 style={{ margin: '10px 0' }}>Score: {toRoman(playerScores[0])} - {toRoman(playerScores[1])}</h3>
-              <button
-                  onClick={handleNewRound}
-                  style={{
-                      marginTop: '20px', padding: '10px 20px', fontSize: '1.1em',
-                      backgroundColor: '#4CAF50', color: 'white', border: 'none',
-                      borderRadius: '5px', cursor: 'pointer'
-                  }}
-              >
-                  New Round
-              </button>
-            </div>
-          </div>
-        )}
+        {renderContent()}
       </div>
     </div>
   );

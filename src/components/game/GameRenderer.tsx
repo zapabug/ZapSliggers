@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle, ForwardedRef, useMemo } from 'react';
 import Matter from 'matter-js'; // Keep base import for Composite
 import { useShotTracers, ProjectileBody } from '../../hooks/useShotTracers';
-import { generateInitialPositions, InitialGamePositions } from '../../hooks/useGameInitialization';
+import { generateInitialPositions, InitialGamePositions } from '../../hooks/useGameInitialization'; // Restore import
 import { AbilityType } from '../ui_overlays/ActionButtons';
 import { useMatterPhysics, MatterPhysicsHandles } from '../../hooks/useMatterPhysics';
 import { useDynamicViewport } from '../../hooks/useDynamicViewport';
@@ -169,11 +169,9 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>(({ levelData
     },
     resetGame: () => {
         console.log("[GameRenderer Ref] resetGame called.");
-        // Generate new level layout outside and pass via props or trigger a state update
-        // For now, assuming levelData prop will change externally triggering physics reset
-        const newLevel = generateInitialPositions(VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
-        physicsRef.current?.resetPhysics(newLevel);
-        onLevelReset?.(); // Notify parent if needed
+        const newLevel = generateInitialPositions(VIRTUAL_WIDTH, VIRTUAL_HEIGHT); 
+        physicsRef.current?.resetPhysics(newLevel); // Pass the *new* level data to resetPhysics
+        onLevelReset?.(); 
     }
   }));
 

@@ -136,16 +136,23 @@ This document outlines the core gameplay loop and dynamics for **Klunkstr**.
 *   `ChallengeHandler` handles basic DM challenges.
 *   Active/historical shot traces functional (`useShotTracers`).
 *   **Klunkstr Rules Progress:**
-    *   HP system implemented as a resource for abilities (`GameScreen.tsx`).
-    *   Ability selection logic, HP cost (25 HP), usage limits (max 3 total, 1 per type), and Vulnerability state tracking implemented (`GameScreen.tsx`, `ActionButtons.tsx`).
-    *   Round win condition logic refactored in `GameScreen.tsx` to handle projectile types, vulnerability, and self-hits correctly based on rules. `onPlayerHit` callback signature updated through `GameRenderer` and `useMatterPhysics`.
+    *   **Implemented Abilities:** `splitter`, `gravity`, `plastic` projectiles are selectable and have physics effects implemented in `useMatterPhysics`.
+    *   **HP System:** HP (`playerHp` state) functions as player health, reduced on hit. Initial HP is 100.
+    *   **Ability Selection/UI:** Logic exists in `GameScreen.tsx` and `ActionButtons.tsx` for selecting abilities. Abilities can only be used once per turn (UI disabled after selection).
+    *   **Round Win Condition:** Logic implemented in `GameScreen.tsx`:
+        *   Standard projectile hit deals 100 damage (instant win/knockout).
+        *   Ability projectile hit deals 50 damage.
+        *   Hitting yourself results in an instant round loss.
+        *   A round ends when a player's HP reaches 0 or below due to damage.
+    *   Match structure (Best of 3 rounds score tracking) implemented.
 *   **Remaining Implementation:**
-    *   Physics effects for specific abilities (Explosive proximity/AoE, Triple Shot spread, Lead gravity) in `useMatterPhysics`.
-    *   Full match structure (Best of 3 rounds, turn limits).
-    *   Sudden Death phase mechanics.
+    *   **Target Klunkstr Rules (If Pursued):** Refactor HP to be solely an ability resource, implement ability costs, implement match-level ability limits (3 total, 1 per type), implement Vulnerability state, and implement the associated target win conditions.
+    *   Physics effects for Gas Giants (pass-through outer layer).
+    *   Turn limits per round (currently unlimited, target is 5 per player).
+    *   Sudden Death phase mechanics (if round ends without winner).
     *   Full asset rendering (using sprites/better visuals instead of basic shapes).
     *   Practice mode button functionality.
-    *   Nostr integration for game state synchronization (`kind:30079` moves) and the public lobby/payment flow (Section 9).
+    *   Nostr integration for game state synchronization (`kind:30079` moves) and the public lobby/payment flow.
     *   NUT-18 wagering integration.
 
 **1. Core Concept (Klunkstr Target):**
@@ -179,20 +186,19 @@ This document outlines the core gameplay loop and dynamics for **Klunkstr**.
        - Projectiles have distinct colors/trails. Abilities may alter projectile appearance.
        - **Active Trail:** A solid colored line follows the projectile as it flies. *(Goal: Change to particle/smoke effect)*.
      - **Simulation:** The physics engine runs, calculating projectile paths under the influence of planetary gravity (acting towards planet centers, strength based on size).
-     - **Collision Detection:**
-       - **Player Hit (Standard Projectile / Lead Tipped):** Direct hit on opponent's ship **instantly wins the round**. *(Round win detection via `onRoundWin` callback implemented)*.
-       - **Player Hit (Triple Shot / Explosive Arrow - Direct/AoE):**
-         - If the opponent is **Vulnerable** (see Section 5): Direct hit/AoE hit **instantly wins the round**. *(Win logic TBD)*.
-         - If the opponent is **NOT Vulnerable**: Hit deals "half damage" (effectively no immediate game state change). *(Collision logic TBD)*.
+     - **Collision Detection (Current Implementation):**
+       - **Self-Hit:** Player whose projectile hits their own ship instantly loses the round.
+       - **Opponent Hit (Standard Projectile):** Deals 100 damage. If opponent HP drops to 0 or below, firing player wins the round.
+       - **Opponent Hit (Ability Projectile - `splitter`, `gravity`, `plastic`):** Deals 50 damage. If opponent HP drops to 0 or below, firing player wins the round.
        - **Planet Hit (Standard Planet / Gas Giant Core):** Projectile is destroyed and removed. *(Implemented)*.
-       - **Planet Hit (Gas Giant Outer Layers):** Projectile passes through, path still affected by gravity. *(Logic TBD)*.
+       - **Planet Hit (Gas Giant Outer Layers):** *(Logic TBD - Currently destroys projectile)*.
        - **Off-Screen / Timeout:** Projectile is removed after 45 seconds or if it leaves a very large boundary. *(Implemented)*.
        - **Projectile-Projectile:** Default pass-through.
      - **Path Recording:** The sequence of positions for each projectile during this phase is recorded *(handled by `useShotTracers` hook)*.
      - **World Update:** Any moving planets update their positions.
    - **C. Post-Resolution / Next Turn Prep:**
      - **Last Shot Trace:** The recorded paths from the **last 10 completed shots for each player** are rendered as static, dashed visual traces on the **2D canvas**. These traces persist across turns, serving as an aiming guide. *(Implementation uses `useShotTracers` hook and state management)*.
-     - **Round/Game State Check:** Determine if the round or match has ended based on win conditions (standard hit detected). If Turn 5 ends with no winner, proceed to Sudden Death. Otherwise, start the next Aiming Phase. *(Basic win detection implemented, full state check TBD)*.
+     - **Round/Game State Check:** Determine if the round or match has ended based on win conditions (knockout or self-hit). If Turn 5 ends with no winner (Turn limit TBD), proceed to Sudden Death (TBD). Otherwise, start the next Aiming Phase.
    - **D. Sudden Death Phase (End of Round 5 if no winner):**
      - **Activation:** Occurs automatically after the 5th turn's resolution if no player won.
      - **Projectile Behavior (5th Turn Projectiles Only):**
@@ -210,21 +216,27 @@ This document outlines the core gameplay loop and dynamics for **Klunkstr**.
    - **Randomized Gravity:** Adds replayability.
    - **Sudden Death:** Creates a chaotic end-phase for drawn rounds.
 
-**5. Power-ups & Special Mechanics:**
-   - **Health Points (HP):** Players start each **match** with 100 HP. This is used *only* as a resource to activate abilities. It does not track damage taken during a round. *(HP state managed in `GameScreen.tsx`)*.
-   - **Ability Activation Cost:** Activating *any* ability costs **25 HP**. *(Implemented in `GameScreen.tsx`)*.
-   - **Usage Limits:** Max **3** ability uses total per player per **match**. Each specific ability type usable only **once** per player per match. *(Limits checked in `GameScreen.tsx`, reflected in `ActionButtons.tsx`)*.
-   - **Vulnerability:** A player becomes **Vulnerable** if they have activated **two or more** abilities during the match (i.e., spent >= 50 HP). Vulnerable players can be defeated in one hit by Triple Shot or Explosive Arrow impacts. *(Vulnerability state tracked in `GameScreen.tsx`)*.
+**5. Power-ups & Special Mechanics (Current Simple Implementation):**
+   - **Health Points (HP):** Players start each **round** with 100 HP. HP is reduced by opponent hits. Reaching 0 HP results in a round loss.
+   - **Ability Activation Cost:** None currently implemented.
+   - **Usage Limits:** Abilities (`splitter`, `gravity`, `plastic`) can be selected once per turn. No match-level limits.
+   - **Vulnerability:** Not implemented.
    - **Projectile Collision Default:** Projectiles pass through each other.
-   - **Available Abilities (Cost 25 HP Each):** *(Selection logic in `GameScreen.tsx`, UI in `ActionButtons.tsx`)*
-     - **1. Triple Shot Arrow:** Fires three projectiles in a narrow spread. Each deals "half damage" (instantly wins round *only* if opponent is Vulnerable). *(Physics effect TBD)*.
-     - **2. Explosive Arrow:** Creates AoE explosion upon **detecting proximity** to the opponent's ship (within a defined radius). Direct hit *or* AoE deals "half damage" (instantly wins round *only* if opponent is Vulnerable). If it hits a planet/boundary first, it is destroyed without exploding. *(Physics effect TBD)*.
-     - **3. Lead Tipped Arrow:** Projectile significantly more affected by gravity. Standard damage (instantly wins round). *(Physics effect TBD)*.
+   - **Available Abilities (Current Implementation):** *(Selection logic in `GameScreen.tsx`, UI in `ActionButtons.tsx`, Physics in `useMatterPhysics.ts`)*
+     - **1. Splitter Projectile:**
+       - **Effect:** After a delay (~1.5s), the projectile splits into three smaller fragments.
+       - **Damage on Hit:** 50 HP.
+     - **2. Gravity Projectile (Magnetic):**
+       - **Effect:** Attracted towards the opponent's ship within a certain range. Slightly increased air friction.
+       - **Damage on Hit:** 50 HP.
+     - **3. Plastic Projectile:**
+       - **Effect:** Less affected by planetary gravity. Higher air friction.
+       - **Damage on Hit:** 50 HP.
 
-**6. Specific Interactions:**
-   - **Standard Arrow / Lead Tipped vs. Player:** Instantly wins round. *(Basic detection implemented)*.
-   - **Triple/Explosive vs. Player:** Instantly wins round *only* if target is Vulnerable. *(Logic TBD)*.
-   - **Self-Hit:** If a player's projectile hits their *own* ship, that player instantly **loses** the round. *(Logic TBD)*.
+**6. Specific Interactions (Current Implementation):**
+   - **Standard Projectile vs. Player:** Deals 100 damage. If HP <= 0, target loses round.
+   - **Ability Projectile vs. Player:** Deals 50 damage. If HP <= 0, target loses round.
+   - **Self-Hit:** Instantly lose the round.
 
 **7. Visual Presentation & Camera:**
    - **Rendering:** 2D physics/logic, rendered directly onto an **HTML Canvas using 2D drawing APIs**. We will use sprites or simple shapes for planets, launchers, and projectiles. The virtual coordinate system uses a wider aspect ratio (2400x1200).

@@ -35,15 +35,12 @@ const ActionButtons: React.FC<ActionButtonsProps> = (props) => {
     onFire,
     selectedAbility,
     onAbilitySelect,
-    // --- Destructure Added Props ---
     usedAbilities,
     currentHp,
     abilityCost,
-    maxAbilityUses,
     disabled,
   } = props;
 
-  // Selectable abilities available to the player
   const availableAbilities: AbilityType[] = ['splitter', 'gravity', 'plastic'];
 
   // Define specific angles for each selectable ability button
@@ -84,12 +81,9 @@ const ActionButtons: React.FC<ActionButtonsProps> = (props) => {
       {/* Ability Buttons Origin - Positioned absolutely, offset from the corner */}
       <div className="absolute bottom-8 right-16 z-10 w-0 h-0">
         {availableAbilities.map((ability) => {
-          // --- Use Props for Checks ---
           const isUsed = usedAbilities.has(ability);
           const hasEnoughHp = currentHp >= abilityCost;
-          const usesLeft = maxAbilityUses - usedAbilities.size;
-          // Check general disabled state first
-          const isButtonDisabled = disabled || isUsed || usesLeft <= 0 || !hasEnoughHp;
+          const isButtonDisabled = disabled || isUsed || !hasEnoughHp;
           const isSelected = selectedAbility === ability;
 
           let baseBgColor = 'bg-purple-600 hover:bg-purple-700 bg-opacity-75';
@@ -101,7 +95,6 @@ const ActionButtons: React.FC<ActionButtonsProps> = (props) => {
               borderStyle = 'border-transparent';
           }
 
-          // Assert the type when indexing abilityAngles
           const angleDegrees = abilityAngles[ability as 'splitter' | 'gravity' | 'plastic'];
           const angleRadians = angleDegrees * (Math.PI / 180);
           const x = radius * Math.sin(angleRadians);
