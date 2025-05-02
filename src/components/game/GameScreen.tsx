@@ -1,222 +1,136 @@
 'use strict';
-import React, { useRef, useEffect } from 'react';
+import React from 'react';
 import NDK from '@nostr-dev-kit/ndk';
-import GameRenderer, { GameRendererRef } from './GameRenderer';
+import GameRenderer from '../game/GameRenderer';
 import AimingInterface from '../ui_overlays/AimingInterface';
 import { PlayerHUD } from '../ui_overlays/PlayerHUD';
 import ActionButtons from '../ui_overlays/ActionButtons';
-// Import the new hook
 import { useGameLogic } from '../../hooks/useGameLogic';
-// Keep level generation import if GameScreen needs to generate initial level
-// import { generateInitialPositions, InitialGamePositions } from '../../hooks/useGameInitialization';
+import { mainSettings } from '../../config/gameSettings';
 
-// Define props expected by GameScreen (Keep this interface)
 interface GameScreenProps {
-  opponentPubkey: string;
-  localPlayerPubkey: string;
-  ndk: NDK; // Pass NDK instance
-  matchId: string; // Match ID prop remains
-  onGameEnd: () => void; // Callback when the game concludes
+    ndk: NDK;
+    localPlayerPubkey: string;
+    opponentPubkey: string;
+    matchId: string;
+    onGameEnd: (finalScore: [number, number]) => void;
+    onBackToMenu: () => void;
 }
 
-// Define constants (can be moved or kept)
-const MAX_HP = 100;
-const ABILITY_COST = 25;
-const MAX_ABILITY_USES = 3;
-
-// PlayerState interface is now exported from useGameLogic, no need to redefine
-// interface PlayerState { ... }
-
-const GameScreen: React.FC<GameScreenProps> = ({ 
-  opponentPubkey, 
-  localPlayerPubkey, 
-  ndk,
-  matchId,
-  onGameEnd 
+const GameScreen: React.FC<GameScreenProps> = ({
+    ndk,
+    localPlayerPubkey,
+    opponentPubkey,
+    matchId,
+    onGameEnd,
+    onBackToMenu,
 }) => {
-  // Ref for accessing GameRenderer methods
-  const gameRendererRef = useRef<GameRendererRef>(null);
+    const {
+        playerStates,
+        myPlayerIndex,
+        aimStates,
+        selectedAbility,
+        levelData,
+        score,
+        currentRound,
+        handleAimChange,
+        handleFire,
+        handleSelectAbility,
+        physicsHandles,
+        shotTracerHandlers,
+    } = useGameLogic({
+        settings: mainSettings,
+        mode: 'multiplayer',
+        localPlayerPubkey: localPlayerPubkey,
+        opponentPubkey: opponentPubkey,
+        onGameEnd: onGameEnd,
+        ndk: ndk,
+        matchId: matchId,
+    });
 
-  // --- Use the Game Logic Hook --- 
-  const {
-    playerStates,
-    // currentPlayerIndex, // Keep commented out, not needed here
-    selectedAbility,
-    levelData,
-    handleAimChange,
-    handleFire,
-    handleSelectAbility,
-    handlePlayerHit,
-    handleProjectileResolved,
-    myPlayerIndex, // Get the index determined by the hook
-    aimStates // Use aimStates from useGameLogic
-  } = useGameLogic({
-      mode: 'multiplayer', 
-      localPlayerPubkey,
-      opponentPubkey,
-      gameRendererRef,
-      // initialLevelData: generateInitialPositions(2400, 1200), // Optionally pass initial data
-      onGameEnd, // Pass the callback
-      ndk,
-      matchId,
-  });
+    const localPlayerState = playerStates[myPlayerIndex];
+    const localAimState = aimStates[myPlayerIndex];
+    const opponentPlayerIndex = myPlayerIndex === 0 ? 1 : 0;
+    const opponentPlayerState = playerStates[opponentPlayerIndex];
 
-  // Log Match ID on mount (Keep this or adapt)
-  useEffect(() => {
-    console.log(`[GameScreen] Initialized for Match ID: ${matchId}. My Index: ${myPlayerIndex}`);
-  }, [matchId, myPlayerIndex]);
+    const isMyTurn = true;
 
-  // --- REMOVED ALL STATE DEFINITIONS AND HANDLER FUNCTIONS --- 
-  // (levelData, currentAim, currentPlayerIndex, playerStates, selectedAbility)
-  // (handleRoundWin, handlePlayerHit, handleAimChange, handleFire, handleSelectAbility)
-  // --- REMOVED Effect to Sync Aim State on Turn Change --- 
+    return (
+        <div className="relative w-full h-dvh bg-black text-white overflow-hidden flex flex-col">
+            <div className="flex-shrink-0 w-full flex justify-start p-2 bg-gray-800 shadow-md z-20">
+                <button
+                    onClick={onBackToMenu}
+                    className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-white font-semibold transition-colors duration-150 mr-4"
+                >
+                    &larr; Leave Match
+                </button>
+                <h1 className="text-xl font-bold ml-4 text-purple-300 self-center">
+                    Match vs {opponentPubkey.slice(0, 10)}...
+                </h1>
+                <div className="ml-auto text-lg font-semibold text-yellow-300 flex items-center space-x-4 pr-4">
+                    <span>Round: {currentRound} / {mainSettings.MAX_ROUNDS}</span>
+                    <span>Score: {score[myPlayerIndex]} - {score[opponentPlayerIndex]}</span>
+                </div>
+            </div>
 
-  // Derived state for convenience (using hook state)
-  const localPlayerData = playerStates[myPlayerIndex];
-  const opponentPlayerIndex = myPlayerIndex === 0 ? 1 : 0;
-  const opponentPlayerData = playerStates[opponentPlayerIndex];
-  // Get the local player's aim state
-  const localPlayerAim = aimStates[myPlayerIndex]; 
+            <div className="relative flex-grow w-full h-full">
+                <div className={`absolute top-2 ${myPlayerIndex === 0 ? 'left-2' : 'right-2'} z-10 pointer-events-auto`}>
+                    <PlayerHUD
+                        pubkey={localPlayerPubkey}
+                        currentHp={localPlayerState.hp}
+                        maxHp={mainSettings.MAX_HP}
+                        isPlayer1={myPlayerIndex === 0}
+                        ndk={ndk}
+                    />
+                </div>
+                <div className={`absolute top-2 ${opponentPlayerIndex === 0 ? 'left-2' : 'right-2'} z-10 pointer-events-auto`}>
+                    <PlayerHUD
+                        pubkey={opponentPubkey}
+                        currentHp={opponentPlayerState.hp}
+                        maxHp={mainSettings.MAX_HP}
+                        isPlayer1={opponentPlayerIndex === 0}
+                        ndk={ndk}
+                    />
+                </div>
 
-  // --- Keyboard Controls (Use handlers from hook) --- 
-  useEffect(() => {
-    // Ensure localPlayerAim is defined before setting up listener or using it
-    if (!localPlayerAim) return;
+                <div className="absolute inset-0 z-0 w-full h-full">
+                    {levelData && physicsHandles && shotTracerHandlers && (
+                        <GameRenderer
+                            physicsHandles={physicsHandles}
+                            shotTracerHandlers={shotTracerHandlers}
+                        />
+                    )}
+                    {(!levelData || !physicsHandles) && (
+                        <div className="absolute inset-0 flex items-center justify-center text-2xl font-bold text-gray-500">
+                            Initializing Match...
+                        </div>
+                    )}
+                </div>
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-        let newAngle: number | undefined = undefined;
-        let newPower: number | undefined = undefined;
-        let preventDefault = false;
-        // Determine mode from useGameLogic props (assuming it doesn't change)
-        // If mode could change, we'd need it from the hook's return value.
-        // const mode = 'multiplayer'; // Removed unused variable
-        // Actually, useGameLogic is called with mode: 'multiplayer' here,
-        // so this key handler only applies to multiplayer as written.
-        // The practice mode inversion needs to happen where practice mode is active.
-        
-        // Let's rethink: The keyboard controls should be handled where the mode is known.
-        // If PracticeScreen also uses this key logic, THAT screen needs the inversion.
-        // For GameScreen (multiplayer), inversion isn't needed.
-        
-        // Applying the UX swap first:
-        switch (event.key) {
-            case 'ArrowLeft': // Now controls Angle LEFT
-                // Use localPlayerAim here
-                newAngle = (localPlayerAim.angle - 2 + 360) % 360;
-                preventDefault = true;
-                break;
-            case 'ArrowRight': // Now controls Angle RIGHT
-                 // Use localPlayerAim here
-                newAngle = (localPlayerAim.angle + 2) % 360;
-                preventDefault = true;
-                break;
-            case 'ArrowDown': // Now controls Power DOWN
-                 // Use localPlayerAim here
-                newPower = Math.max(0, localPlayerAim.power - 2);
-                preventDefault = true;
-                break;
-            case 'ArrowUp': // Now controls Power UP
-                 // Use localPlayerAim here
-                newPower = Math.min(100, localPlayerAim.power + 2);
-                preventDefault = true;
-                break;
-            case ' ': // Spacebar
-                event.preventDefault();
-                handleFire(); // Call hook handler
-                break;
-            case '1': handleSelectAbility('splitter'); break; 
-            case '2': handleSelectAbility('gravity'); break; 
-            case '3': handleSelectAbility('plastic'); break; 
-            default:
-                break;
-        }
+                <div className="absolute bottom-4 left-4 z-10 pointer-events-auto flex flex-col items-start max-w-xs">
+                    <AimingInterface
+                        currentAngle={localAimState.angle}
+                        currentPower={localAimState.power}
+                        onAimChange={handleAimChange}
+                    />
+                </div>
 
-        if (preventDefault) {
-          event.preventDefault();
-        }
-
-        if (newAngle !== undefined || newPower !== undefined) {
-          const updatedAim = {
-            // Use localPlayerAim here for defaults
-            angle: newAngle !== undefined ? newAngle : localPlayerAim.angle,
-            power: newPower !== undefined ? newPower : localPlayerAim.power,
-          };
-          handleAimChange(updatedAim); // Call hook handler
-        }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-        window.removeEventListener('keydown', handleKeyDown);
-    };
-    // Dependencies now include handlers from the hook
-    // Use the actual local player's aim state properties
-    // Optional chaining isn't strictly needed now due to the check at the start, but doesn't hurt
-  }, [handleFire, handleSelectAbility, handleAimChange, localPlayerAim?.angle, localPlayerAim?.power]); 
-
-  // --- Return JSX (Connect UI to hook state/handlers) --- 
-  return (
-    <div className="relative w-full h-dvh bg-black text-white overflow-hidden">
-
-      {/* Player HUDs - Use determined indices */}
-      <div className="absolute top-2 left-2 z-10 pointer-events-auto">
-        <PlayerHUD
-          pubkey={localPlayerPubkey} 
-          currentHp={localPlayerData.hp} // Use local player data from hook
-          maxHp={MAX_HP}
-          isPlayer1={myPlayerIndex === 0} // Determine layout based on index
-          ndk={ndk}
-        />
-      </div>
-      <div className="absolute top-2 right-2 z-10 pointer-events-auto">
-        <PlayerHUD
-          pubkey={opponentPubkey} 
-          currentHp={opponentPlayerData.hp} // Use opponent player data from hook
-          maxHp={MAX_HP}
-          isPlayer1={opponentPlayerIndex === 0} // Determine layout based on index
-          ndk={ndk}
-        />
-      </div>
-
-      {/* Game Canvas Container */}
-      <div className="absolute inset-0 z-0 w-full h-full">
-        {levelData && (
-          <GameRenderer
-            ref={gameRendererRef}
-            levelData={levelData}
-            onPlayerHit={handlePlayerHit}
-            onProjectileResolved={handleProjectileResolved}
-          />
-        )}
-      </div>
-
-      {/* Bottom Control Area - Aiming */} 
-      <div className="absolute bottom-4 left-4 z-10 pointer-events-auto flex flex-col items-start max-w-xs">
-        <AimingInterface
-          // Use local player's aim state, add safety checks for initial render
-          currentAngle={localPlayerAim?.angle ?? 0} 
-          currentPower={localPlayerAim?.power ?? 0}
-          onAimChange={handleAimChange} // Use handler from hook
-        />
-      </div>
-
-      {/* Bottom Control Area - Actions/Fire */} 
-      <div className="absolute bottom-4 right-4 z-10">
-        <ActionButtons
-          onFire={handleFire} // Use handler from hook
-          onAbilitySelect={handleSelectAbility} // Use handler from hook
-          selectedAbility={selectedAbility} // Use state from hook
-          // Pass correct player state data from hook
-          usedAbilities={localPlayerData.usedAbilities} // Use local player data
-          currentHp={localPlayerData.hp} // Use local player data
-          abilityCost={ABILITY_COST}
-          maxAbilityUses={MAX_ABILITY_USES}
-          disabled={false} // TODO: Add disabled logic
-        />
-      </div>
-
-    </div>
-  );
+                <div className="absolute bottom-4 right-4 z-10">
+                    <ActionButtons
+                        onFire={handleFire}
+                        onAbilitySelect={handleSelectAbility}
+                        selectedAbility={selectedAbility}
+                        usedAbilities={localPlayerState.usedAbilities}
+                        currentHp={localPlayerState.hp}
+                        abilityCost={mainSettings.ABILITY_COST_HP}
+                        maxAbilityUsesTotal={mainSettings.MAX_ABILITIES_TOTAL}
+                        maxAbilityUsesPerType={mainSettings.MAX_ABILITIES_PER_TYPE}
+                        disabled={!isMyTurn}
+                    />
+                </div>
+            </div>
+        </div>
+    );
 };
 
 export default GameScreen;

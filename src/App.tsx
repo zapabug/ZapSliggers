@@ -27,6 +27,8 @@ import LobbyScreen from './components/lobby/LobbyScreen';
 // import MainMenuScreen from './components/MainMenuScreen'; // Commented out - File missing
 import PracticeScreen from './components/screens/PracticeScreen'; // Corrected import path
 import { isMobileDevice } from './utils/mobileDetection'; // <-- Import the utility
+import DeveloperSandboxScreen from './components/screens/DeveloperSandboxScreen'; // Import the new screen
+import { NDKUser } from '@nostr-dev-kit/ndk'; // Import NDKUser for type checking
 
 // Remove local relay definition
 // const explicitRelayUrls = [...] 
@@ -42,8 +44,21 @@ import { isMobileDevice } from './utils/mobileDetection'; // <-- Import the util
 // Removed unused mock opponent pubkey
 // const MOCK_OPPONENT_PUBKEY = 'fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52';
 
+// Define the Developer Npub and derive the Pubkey
+const DEV_NPUB = "npub10nxjs7e4vh7a05a0qz8u7x4kdtlq6nk5lugeczddk5l40x5kdysqt2e96x";
+let DEV_PUBKEY: string | null = null;
+try {
+    const devUser = new NDKUser({ npub: DEV_NPUB });
+    DEV_PUBKEY = devUser.pubkey;
+    if (!DEV_PUBKEY) {
+        console.error("CRITICAL ERROR: Failed to derive developer pubkey from npub.");
+    }
+} catch (error) {
+    console.error("CRITICAL ERROR: Failed to instantiate NDKUser for developer npub:", error);
+}
+
 // Define view states
-type AppView = 'login' | 'connecting_ndk' | 'menu' | 'practice' | 'lobby' | 'game';
+type AppView = 'login' | 'connecting_ndk' | 'menu' | 'practice' | 'lobby' | 'game' | 'dev_sandbox';
 
 function App() { 
   // Initialize ndk-hooks with the singleton instance
@@ -99,19 +114,25 @@ function App() {
         setCurrentView('login');
       }
     } else { // NDK is ready AND user is logged in
-      // If we were previously connecting or logging in, move to menu
+      // Determine if current user is the developer
+      const isDeveloper = currentUser?.pubkey === DEV_PUBKEY;
+      
       if (currentView === 'connecting_ndk' || currentView === 'login') {
           console.log(`[View Effect] Logged in and NDK ready (from ${currentView}), setting view to menu`);
           setCurrentView('menu');
       } 
-      // Otherwise, stay in the current logged-in view (menu, practice, lobby, game)
-      // This else block handles the case where we are already logged in and in a valid state.
-      // It prevents resetting the view to 'menu' unnecessarily if the effect re-runs.
-       else {
+      // --- Add check for dev sandbox access --- 
+      // If trying to access dev_sandbox but not the developer, redirect to menu
+      else if (currentView === 'dev_sandbox' && !isDeveloper) {
+          console.warn('[View Effect] Non-developer attempting to access dev_sandbox. Redirecting to menu.');
+          setCurrentView('menu');
+      } 
+      // --- End check ---
+      else {
            console.log(`[View Effect] Logged in and NDK ready, staying in current view: ${currentView}`);
        }
     }
-  }, [isNdkReady, isLoggedIn, currentView]); // Dependencies seem correct now
+  }, [isNdkReady, isLoggedIn, currentView, currentUser?.pubkey]); // Added currentUser?.pubkey dependency
 
   // --- Event Handlers for Navigation/Login --- 
   // REMOVED handleNip46Login as the button now directly calls initiateNip46Login
@@ -126,6 +147,17 @@ function App() {
 
   const handleSelectMultiplayer = () => {
       if (isLoggedIn) setCurrentView('lobby');
+  };
+
+  const handleSelectDevSandbox = () => {
+      // Only allow navigation if logged in AND is the developer
+      if (isLoggedIn && currentUser?.pubkey === DEV_PUBKEY) {
+          setCurrentView('dev_sandbox');
+      } else {
+          console.warn("Attempted to navigate to dev sandbox without required permissions.");
+          // Optionally redirect to menu or show a message
+          setCurrentView('menu');
+      }
   };
 
   const handleBackToMenu = () => {
@@ -160,7 +192,7 @@ function App() {
 
   // --- Render Logic --- 
   const renderContent = () => {
-    console.log(`[App Render] View: ${currentView}, NDK Ready: ${isNdkReady}, Logged In: ${isLoggedIn}, NIP46 Status: ${nip46Status}`);
+    console.log(`[App Render] View: ${currentView}, NDK Ready: ${isNdkReady}, Logged In: ${isLoggedIn}, NIP46 Status: ${nip46Status}, IsDev: ${currentUser?.pubkey === DEV_PUBKEY}`);
 
     // 1. NDK Connecting
     if (currentView === 'connecting_ndk') {
@@ -178,7 +210,7 @@ function App() {
         // --- NIP-46 Flow States ---
 
         // NIP-46 QR Code Display (Desktop Only)
-        if (nip46Status === 'waiting_for_scan' && nip46AuthUrl && !isMobileDevice()) { // Added !isMobileDevice()
+        if (nip46Status === 'waiting_for_scan' && nip46AuthUrl && !isMobileDevice()) {
              return (
                 // Center content, add padding for mobile
                 <div className="w-full h-full flex flex-col items-center justify-center p-4 sm:p-6 text-center">
@@ -210,7 +242,7 @@ function App() {
         }
 
         // NIP-46 Waiting for Mobile App Approval
-        if (nip46Status === 'waiting_for_mobile_approval') { // <-- New status check
+        if (nip46Status === 'waiting_for_mobile_approval') {
              return (
                  <div className="w-full h-full flex flex-col items-center justify-center p-4 sm:p-6 text-center">
                      <p className="text-lg mb-4">Check your Nostr mobile app</p>
@@ -284,81 +316,52 @@ function App() {
         }
     }
 
-    // --- Views accessible only when logged in --- 
-    // Removed redundant check, useEffect should ensure currentView is correct
-    // if (!isLoggedIn || !currentUser || !ndk) {
-    //     console.warn("[App Render] Trying to render authed view but not logged in!");
-    //     return <div className="flex items-center justify-center h-full w-full">Redirecting to login...</div>;
-    // }
-
-    // 3. Main Menu
-    // Assumes currentView will only be 'menu' if logged in
-    if (currentView === 'menu') {
-        // Add null check for currentUser just in case, although useEffect should prevent this
-        if (!currentUser) return <div>Loading user...</div>;
-        // Temporarily render placeholder instead of missing component
-        return (
-            <div className="p-4">
-                <h2 className="text-xl">Main Menu (Placeholder)</h2>
-                <p>User: {currentUser.npub}</p>
-                <button onClick={handleSelectPractice} className="mt-2 px-4 py-2 bg-blue-600 rounded mr-2">Practice (WIP)</button>
-                <button onClick={handleSelectMultiplayer} className="mt-2 px-4 py-2 bg-green-600 rounded">Multiplayer Lobby</button>
+    // --- Logged In Views --- 
+    if (isLoggedIn && currentUser && ndk) {
+      switch (currentView) {
+        case 'menu':
+          return (
+            <div className="w-full h-full flex flex-col items-center justify-center space-y-4 p-4">
+              <h1 className="text-3xl font-bold mb-6 text-purple-300">Klunkstr Menu</h1>
+              <p className="text-gray-400">Logged in as: {currentUser.profile?.displayName || currentUser.profile?.name || currentUser.pubkey.slice(0,10)}...</p>
+              <button onClick={handleSelectPractice} className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded text-white font-semibold">Practice Mode</button>
+              <button onClick={handleSelectMultiplayer} className="px-6 py-3 bg-green-600 hover:bg-green-700 rounded text-white font-semibold">Multiplayer Lobby</button>
+              {currentUser.pubkey === DEV_PUBKEY && (
+                  <button onClick={handleSelectDevSandbox} className="px-6 py-3 bg-yellow-600 hover:bg-yellow-700 rounded text-black font-semibold">Developer Sandbox</button>
+              )}
             </div>
-        );
-        /* Commented out - Missing component
-        return (
-            <MainMenuScreen 
-                currentUser={currentUser} 
-                onSelectPractice={handleSelectPractice}
-                onSelectMultiplayer={handleSelectMultiplayer}
-            />
-        );
-        */
-    }
-
-    // 4. Practice Screen
-    // Assumes currentView will only be 'practice' if logged in
-    if (currentView === 'practice') {
-        // Add null checks just in case
-        if (!currentUser || !ndk) return <div>Loading practice...</div>;
-        // Render the actual PracticeScreen component
-        return <PracticeScreen 
-            ndk={ndk} 
-            currentUser={currentUser} 
-            onBackToMenu={handleBackToMenu} 
-        />;
-    }
-
-    // 5. Multiplayer Lobby Screen
-    // Assumes currentView will only be 'lobby' if logged in
-    if (currentView === 'lobby') {
-        // Add null checks just in case
-        if (!currentUser || !ndk) return <div>Loading lobby...</div>;
-        return (
-            <LobbyScreen 
-                ndk={ndk}
-                currentUser={currentUser}
-                onChallengeAccepted={handleChallengeAccepted}
-                onBackToMenu={handleBackToMenu}
-            />
-        );
-    }
-
-    // 6. Game Screen
-    // Assumes currentView will only be 'game' if logged in
-    if (currentView === 'game' && opponentPubkey && matchId) {
-        // Add null checks just in case
-        if (!currentUser || !ndk) return <div>Loading game...</div>;
-        return (
-            <GameScreen 
-                localPlayerPubkey={currentUser.pubkey} 
-                opponentPubkey={opponentPubkey} 
-                ndk={ndk} 
-                matchId={matchId}
-                onGameEnd={handleGameEnd}
-            />
-        );
-    }
+          );
+        case 'practice':
+          return <PracticeScreen ndk={ndk} currentUser={currentUser} onBackToMenu={handleBackToMenu} />;
+        case 'lobby':
+          return <LobbyScreen ndk={ndk} currentUser={currentUser} onChallengeAccepted={handleChallengeAccepted} onBackToMenu={handleBackToMenu} />;
+        case 'game':
+          if (opponentPubkey && matchId) {
+            return <GameScreen 
+                      ndk={ndk} 
+                      localPlayerPubkey={currentUser.pubkey} 
+                      opponentPubkey={opponentPubkey} 
+                      matchId={matchId} 
+                      onGameEnd={handleGameEnd} 
+                      onBackToMenu={handleBackToMenu}
+                    />;
+          } else {
+            console.warn("[App Render] Trying to render game but opponentPubkey or matchId is undefined");
+            return <div className="flex items-center justify-center h-full w-full">Redirecting to menu...</div>;
+          }
+        case 'dev_sandbox':
+          if (currentUser && ndk && currentUser.pubkey === DEV_PUBKEY) {
+            return <DeveloperSandboxScreen ndk={ndk} currentUser={currentUser} onBackToMenu={handleBackToMenu} />;
+          } else {
+            console.warn("Render attempt for dev_sandbox blocked for non-developer.");
+            setCurrentView('menu');
+            return null;
+          }
+        default:
+           console.error(`[App Render] Reached unexpected state: View=${currentView}, LoggedIn=${isLoggedIn}`);
+           return <div className="flex items-center justify-center h-full w-full">Unexpected application state.</div>;
+      }
+    } 
 
     // Fallback for unexpected states
     console.error(`[App Render] Reached unexpected state: View=${currentView}, LoggedIn=${isLoggedIn}`);

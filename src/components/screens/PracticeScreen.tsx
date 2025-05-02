@@ -1,14 +1,15 @@
 'use strict';
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import NDK, { NDKUser } from '@nostr-dev-kit/ndk'; // Import NDK types
-import GameRenderer, { GameRendererRef } from '../game/GameRenderer'; // Adjust path
+import GameRenderer /*, { GameRendererRef } */ from '../game/GameRenderer'; // Renderer ref not needed directly here
 import AimingInterface from '../ui_overlays/AimingInterface'; // Adjust path
 import { PlayerHUD } from '../ui_overlays/PlayerHUD'; // Adjust path
 import ActionButtons from '../ui_overlays/ActionButtons'; // Adjust path
-import { useGameLogic, MAX_ROUNDS } from '../../hooks/useGameLogic'; // Import hook and MAX_ROUNDS
+import { useGameLogic } from '../../hooks/useGameLogic'; // Import hook only
+import { practiceSettings } from '../../config/gameSettings'; // Import practice settings
 
 // Define opponent Npub
-const OPPONENT_NPUB = "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6";
+const OPPONENT_NPUB = "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6"; // Example Npub
 
 interface PracticeScreenProps {
     ndk: NDK;
@@ -16,18 +17,11 @@ interface PracticeScreenProps {
     onBackToMenu: () => void;
 }
 
-// Define constants (can be moved or shared)
-const MAX_HP = 100;
-const ABILITY_COST = 25;
-const MAX_ABILITY_USES = 3;
-
 const PracticeScreen: React.FC<PracticeScreenProps> = ({ 
     ndk, 
     currentUser, 
     onBackToMenu 
 }) => {
-    const gameRendererRef = useRef<GameRendererRef>(null);
-
     // Get opponent pubkey from npub using NDKUser
     let opponentPubkey: string;
     try {
@@ -58,7 +52,7 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
         onBackToMenu(); // Call the original navigation callback
     }, [onBackToMenu]);
 
-    // --- Use the Game Logic Hook in Practice Mode (copied from previous correct state) --- 
+    // --- Use the Game Logic Hook with Practice Settings --- 
     const {
         playerStates,
         currentPlayerIndex, // Use this to indicate whose turn it is visually
@@ -70,12 +64,14 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
         handleAimChange,
         handleFire,
         handleSelectAbility,
-        handlePlayerHit,
-        handleProjectileResolved
+        // Get handles for renderer
+        physicsHandles,
+        shotTracerHandlers,
     } = useGameLogic({
-        mode: 'practice', 
+        settings: practiceSettings, // Pass the imported practice settings
+        mode: 'practice',
         localPlayerPubkey: currentUser.pubkey,
-        gameRendererRef,
+        opponentPubkey: opponentPubkey, // Pass opponent pubkey
         onGameEnd: handlePracticeGameEnd, // Use the wrapped callback
     });
 
@@ -155,7 +151,7 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
                 </h1>
                 {/* Display Score and Round (copied from previous correct state) */}
                 <div className="ml-auto text-lg font-semibold text-yellow-300 flex items-center space-x-4 pr-4">
-                    <span>Round: {currentRound} / {MAX_ROUNDS}</span>
+                    <span>Round: {currentRound} / {3 /* MAX_ROUNDS_INTERNAL */}</span>
                     <span>Score: {score[0]}</span>
                 </div>
             </div>
@@ -167,7 +163,7 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
                     <PlayerHUD
                         pubkey={currentUser.pubkey} // Player 1 (local user)
                         currentHp={playerStates[0].hp} // Use index 0 state
-                        maxHp={MAX_HP}
+                        maxHp={practiceSettings.MAX_HP}
                         isPlayer1={true}
                         ndk={ndk}
                     />
@@ -176,7 +172,7 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
                     <PlayerHUD
                         pubkey={opponentPubkey} // Player 2 (use derived opponent pubkey)
                         currentHp={playerStates[1].hp} // Use index 1 state
-                        maxHp={MAX_HP}
+                        maxHp={practiceSettings.MAX_HP}
                         isPlayer1={false}
                         ndk={ndk}
                     />
@@ -184,12 +180,10 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
 
                 {/* Game Canvas Container */}
                 <div className="absolute inset-0 z-0 w-full h-full">
-                    {levelData && (
+                    {levelData && physicsHandles && (
                         <GameRenderer
-                            ref={gameRendererRef}
-                            levelData={levelData}
-                            onPlayerHit={handlePlayerHit}
-                            onProjectileResolved={handleProjectileResolved}
+                            physicsHandles={physicsHandles}
+                            shotTracerHandlers={shotTracerHandlers}
                         />
                     )}
                 </div>
@@ -212,8 +206,10 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
                         // Pass state of the *current turn's* player
                         usedAbilities={activePlayerState.usedAbilities}
                         currentHp={activePlayerState.hp}
-                        abilityCost={ABILITY_COST}
-                        maxAbilityUses={MAX_ABILITY_USES}
+                        // Use settings for cost/limits
+                        abilityCost={practiceSettings.ABILITY_COST_HP}
+                        maxAbilityUsesTotal={practiceSettings.MAX_ABILITIES_TOTAL}
+                        maxAbilityUsesPerType={practiceSettings.MAX_ABILITIES_PER_TYPE}
                         disabled={false} // No disabled logic needed for practice
                     />
                 </div>

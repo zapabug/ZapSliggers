@@ -12,21 +12,24 @@ src/
 ├── components/
 │   ├── ChallengeHandler.tsx # Handles Nostr DM challenge logic (Uses manual NDK subscribe/publish)
 │   ├── game/
-│   │   ├── GameRenderer.tsx # Renders game state onto Canvas (Uses physics/viewport/init/tracer/asset hooks)
-│   │   └── GameScreen.tsx   # Main PvP game view container (Uses useGameLogic hook)
+│   │   ├── GameRenderer.tsx # Renders game state onto Canvas (Accepts handles from useGameLogic)
+│   │   └── GameScreen.tsx   # Main PvP game view container (Uses useGameLogic hook with mainSettings)
 │   ├── lobby/
 │   │   ├── LobbyScreen.tsx  # Screen shown after login (Hosts ChallengeHandler)
 │   │   └── LobbyPlayground.tsx # Standalone interactive single-player simulation (not used by LobbyScreen currently)
 │   ├── screens/        # Contains full-screen components like PracticeScreen
-│   │   └── PracticeScreen.tsx # Main Practice mode view container (Uses useGameLogic hook)
+│   │   └── PracticeScreen.tsx # Main Practice mode view container (Uses useGameLogic hook with practiceSettings)
 │   └── ui_overlays/
-│       ├── ActionButtons.tsx # Fire button, Ability buttons
+│       ├── ActionButtons.tsx # Fire button, Ability buttons (Accepts settings/limits as props)
 │       ├── AimingInterface.tsx # Joystick, Power slider
-│       ├── PlayerHUD.tsx     # Displays player info (Uses UserProfileDisplay)
+│       ├── PlayerHUD.tsx     # Displays player info (Uses UserProfileDisplay, accepts maxHp prop)
 │       └── UserProfileDisplay.tsx # Fetches and displays Nostr profile info (Uses manual ndk.fetchProfile)
+├── config/             # Configuration files
+│   └── gameSettings.ts   # Defines GameSettingsProfile interface and exports settings profiles (main, practice, custom)
 ├── docs/               # Project documentation (like this file)
 │   ├── Build.md
 │   ├── Gameplay.md
+│   ├── Gamemodes.md    # Describes different game modes and their settings
 │   ├── layout.md       # This file
 │   ├── Planning.md
 │   ├── testGameplay.md # Test plan for multiplayer sync
@@ -34,12 +37,12 @@ src/
 ├── hooks/              # Custom React hooks
 │   ├── useAuth.ts      # Centralized Auth Hook: Manages NDK initialization (via useNDKInit), login state (NIP-07/NIP-46), and provides NDK instance/auth details to the app.
 │   ├── useNDKInit.ts   # Internal Hook: Initializes and manages the NDK singleton instance connection state (used by useAuth).
-│   ├── useShotTracers.ts # Manages state and logic for active/historical projectile trails
-│   ├── useMatterPhysics.ts    # Encapsulates Matter.js engine setup & physics loop
-│   ├── useDynamicViewport.ts  # Manages dynamic camera panning/zooming
-│   ├── useGameInitialization.ts # Handles initial random placement of ships/planets
-│   ├── useGameAssets.ts       # Handles loading game image assets
-│   └── useGameLogic.ts       # Encapsulates core game state/logic. Multiplayer mode uses manual NDK subscribe/publish for basic turn sync.
+│   ├── useShotTracers.ts # Manages state and logic for active/historical projectile trails (passed to GameRenderer via useGameLogic)
+│   ├── useMatterPhysics.ts    # Encapsulates Matter.js engine setup & physics loop (Accepts GameSettingsProfile)
+│   ├── useDynamicViewport.ts  # Manages dynamic camera panning/zooming (Used by GameRenderer)
+│   ├── useGameInitialization.ts # Handles initial random placement of ships/planets (Accepts GameSettingsProfile, returns levelData/regenerateLevel)
+│   ├── useGameAssets.ts       # Handles loading game image assets (Used by GameRenderer)
+│   └── useGameLogic.ts       # Encapsulates core game state/logic (Accepts GameSettingsProfile, passes it to physics/init hooks). Multiplayer mode uses manual NDK subscribe/publish.
 ├── index.css           # Global styles, Tailwind directives
 ├── lib/                # Copied or external libraries adapted for the project
 │   └── applesauce-nip46/ # Implementation of NIP-46 based on Applesauce signer code
@@ -69,6 +72,9 @@ src/
 *   **`main.tsx`**:
     *   Creates the global NDK singleton instance (`ndkInstance`) with explicit relays.
     *   Renders the root `App` component.
+*   **`src/config/gameSettings.ts`**:
+    *   Defines the `GameSettingsProfile` interface.
+    *   Exports different settings objects (`mainSettings`, `practiceSettings`, `defaultCustomSettings`) used by different game modes. Centralizes gameplay parameters.
 *   **`LobbyScreen.tsx` (`src/components/lobby/`)**:
     *   Displayed after successful login.
     *   Contains the `ChallengeHandler` component for managing Nostr challenges.
@@ -76,31 +82,35 @@ src/
 *   **`PracticeScreen.tsx` (`src/components/screens/`)**:
     *   Container for the practice game mode.
     *   Receives `ndk` and `currentUser` as props.
-    *   Uses the `useGameLogic` hook with `mode: 'practice'`.
+    *   Uses the `useGameLogic` hook with `mode: 'practice'` and `settings: practiceSettings`.
+    *   Passes handles from `useGameLogic` to `GameRenderer` and `ActionButtons`/`PlayerHUD`/`AimingInterface`.
 *   **`GameScreen.tsx` (`src/components/game/`)**:
     *   Container for the active PvP game match.
     *   Receives `ndk`, `localPlayerPubkey`, `opponentPubkey`, `matchId` as props.
-    *   Uses the `useGameLogic` hook with `mode: 'multiplayer'`.
+    *   Uses the `useGameLogic` hook with `mode: 'multiplayer'` and `settings: mainSettings`.
+    *   Passes handles from `useGameLogic` to `GameRenderer` and `ActionButtons`/`PlayerHUD`/`AimingInterface`.
 *   **`GameRenderer.tsx` (`src/components/game/`)**:
     *   Core canvas rendering component.
-    *   Independent of direct NDK usage.
+    *   Accepts `physicsHandles` and `shotTracerHandlers` props from its parent screen (`PracticeScreen` or `GameScreen`).
+    *   Uses `useDynamicViewport` and `useGameAssets`.
+    *   Independent of direct NDK usage or game logic.
 *   **`ChallengeHandler.tsx` (`src/components/`)**:
     *   Manages the Nostr DM (`kind:4`) challenge handshake.
     *   Uses passed `ndk` prop for manual event publishing (`ndkEvent.publish()`) and subscription (`ndk.subscribe`).
 *   **UI Overlay Components (`src/components/ui_overlays/`)**:
-    *   `PlayerHUD`: Uses `UserProfileDisplay`.
+    *   `PlayerHUD`: Uses `UserProfileDisplay`, accepts `maxHp` prop (from settings).
     *   `UserProfileDisplay`: Uses passed `ndk` prop for manual profile fetching (`ndk.fetchProfile()`).
-    *   `AimingInterface`, `ActionButtons`: Primarily UI, interact with `useGameLogic` state/handlers.
+    *   `AimingInterface`, `ActionButtons`: Primarily UI, interact with `useGameLogic` state/handlers. `ActionButtons` accepts cost/limits from settings via props.
 
 ## Custom Hooks (`src/hooks/`)
 
 *   **`useAuth.ts`**: The primary hook for authentication and NDK access. Initializes NDK (via `useNDKInit`), manages NIP-07 (`NDKNip07Signer`) and NIP-46 (`NostrConnectSignerWrapper`) signers/state, handles login/logout, and provides `ndk`, `currentUser`, `isLoggedIn`, etc., to the application.
 *   **`useNDKInit.ts`**: Helper hook called by `useAuth`. Manages the NDK singleton connection state and provides the initialized `ndkInstance`.
-*   **`useGameLogic.ts`**: Encapsulates game state/logic. Receives `ndk` prop for multiplayer mode to handle turn synchronization via manual NDK subscription (`ndk.subscribe`) and publishing (`ndkEvent.publish()`).
-*   **`useShotTracers.ts`**: Manages shot trail state.
-*   **`useMatterPhysics.ts`**: Abstracts Matter.js setup/loop.
-*   **`useDynamicViewport.ts`**: Abstracts camera/zoom logic.
-*   **`useGameInitialization.ts`**: Handles initial random placement.
-*   **`useGameAssets.ts`**: Abstracts asset loading.
+*   **`useGameLogic.ts`**: Encapsulates game state/logic. Accepts a `GameSettingsProfile` prop and passes it to `useGameInitialization` and `useMatterPhysics`. Returns game state, physics/tracer handles, and UI interaction callbacks. Receives `ndk` prop for multiplayer mode to handle turn synchronization via manual NDK subscription (`ndk.subscribe`) and publishing (`ndkEvent.publish()`).
+*   **`useShotTracers.ts`**: Manages shot trail state. Its handlers are returned by `useGameLogic`.
+*   **`useMatterPhysics.ts`**: Abstracts Matter.js setup/loop. Accepts a `GameSettingsProfile` prop for physics parameters. Its handles are returned by `useGameLogic`.
+*   **`useDynamicViewport.ts`**: Abstracts camera/zoom logic. Used internally by `GameRenderer`.
+*   **`useGameInitialization.ts`**: Handles initial random placement based on a `GameSettingsProfile`. Returns `levelData` and `regenerateLevel` function, used by `useGameLogic`.
+*   **`useGameAssets.ts`**: Abstracts asset loading. Used internally by `GameRenderer`.
 
 *Note: The `src/screens/` directory seems redundant or unused. Key screens like `PracticeScreen` are in `src/components/screens/`.* 

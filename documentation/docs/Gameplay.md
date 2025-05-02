@@ -4,7 +4,7 @@ This document outlines the core gameplay loop and dynamics for Klunkstr.
 
 **Current Status (Implementation):**
 *   Core game state management and logic handlers (aim, fire, abilities, hit detection, round structure, scoring) extracted to `useGameLogic` hook.
-*   `PracticeScreen` uses `useGameLogic` in `'practice'` mode, providing a turn-based local gameplay loop on a **2D Canvas**. This mode now features:
+*   `PracticeScreen` uses `useGameLogic` in `'practice'` mode. ***Status: Broken (Rendering issues after refactor).*** Expected: Provides a turn-based local gameplay loop on a **2D Canvas** featuring:
     *   Best of 3 rounds format.
     *   Scoring based on round wins.
     *   HP tie-breaker if scores are tied after 3 rounds.

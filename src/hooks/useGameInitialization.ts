@@ -1,25 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Matter from 'matter-js';
+import { GameSettingsProfile } from '../config/gameSettings'; // Import the settings profile type
 
 // Destructure Matter.js modules for convenience
 const { Bodies } = Matter;
 
-// --- Constants ---
-const VIRTUAL_WIDTH = 2400;
-const VIRTUAL_HEIGHT = 1200;
-const SHIP_RADIUS = 63;
-const PLANET_MIN_RADIUS = 30;
-const PLANET_MAX_RADIUS = 180;
-// const EDGE_PADDING = 50; // No longer needed with constrained zones
-const PLANET_SPAWN_AREA_FACTOR = 0.9; // Spawn planets within central 90% *of initial view*
-const SHIP_ZONE_WIDTH_FACTOR = 0.1; // Ships spawn in outer 10% *of initial view*
-const INITIAL_VIEW_WIDTH_FACTOR = 0.75; // Initial view is central 75%
-const INITIAL_VIEW_HEIGHT_FACTOR = 0.75; // Initial view is central 75%
-// Minimum distances remain the same
-const MIN_SHIP_SEPARATION_FACTOR = 0.9; // INCREASED: Min separation relative to *initial view width*
-const MIN_PLANET_SHIP_DISTANCE = 250; 
-const MIN_PLANET_PLANET_DISTANCE = 50; 
-const NUM_PLANETS = 3;
+// Constants removed - now passed via settings object
 
 // --- Helper Function ---
 const calculateDistance = (p1: { x: number; y: number }, p2: { x: number; y: number }) => {
@@ -29,24 +15,47 @@ const calculateDistance = (p1: { x: number; y: number }, p2: { x: number; y: num
 // --- Interface for the returned data ---
 export interface InitialGamePositions {
   ships: [{ x: number; y: number }, { x: number; y: number }];
-  planets: Matter.Body[]; 
+  planets: Matter.Body[];
 }
 
-// --- Exportable Generation Function ---
-export const generateInitialPositions = (width: number, height: number): InitialGamePositions => {
-    console.log("[generateInitialPositions] Generating new level layout...");
+// --- Interface for the hook's return value ---
+export interface UseGameInitializationReturn {
+    levelData: InitialGamePositions | null;
+    regenerateLevel: () => void; // Function to trigger regeneration
+}
 
-    // --- Calculate Initial View Bounds (Central 60%) ---
-    const initialViewWidth = width * INITIAL_VIEW_WIDTH_FACTOR;
-    const initialViewHeight = height * INITIAL_VIEW_HEIGHT_FACTOR;
-    const initialViewMinX = (width - initialViewWidth) / 2;
+// --- Exportable Generation Function (Now accepts settings) ---
+export const generateInitialPositions = (settings: GameSettingsProfile): InitialGamePositions => {
+    console.log("[generateInitialPositions] Generating new level layout with provided settings...");
+
+    // Destructure needed settings for clarity
+    const {
+        VIRTUAL_WIDTH,
+        VIRTUAL_HEIGHT,
+        SHIP_RADIUS,
+        PLANET_MIN_RADIUS,
+        PLANET_MAX_RADIUS,
+        NUM_PLANETS,
+        INITIAL_VIEW_WIDTH_FACTOR,
+        INITIAL_VIEW_HEIGHT_FACTOR,
+        SHIP_ZONE_WIDTH_FACTOR,
+        PLANET_SPAWN_AREA_FACTOR,
+        MIN_SHIP_SEPARATION_FACTOR,
+        MIN_PLANET_SHIP_DISTANCE,
+        MIN_PLANET_PLANET_DISTANCE
+    } = settings;
+
+    // --- Calculate Initial View Bounds ---
+    const initialViewWidth = VIRTUAL_WIDTH * INITIAL_VIEW_WIDTH_FACTOR;
+    const initialViewHeight = VIRTUAL_HEIGHT * INITIAL_VIEW_HEIGHT_FACTOR;
+    const initialViewMinX = (VIRTUAL_WIDTH - initialViewWidth) / 2;
     const initialViewMaxX = initialViewMinX + initialViewWidth;
-    const initialViewMinY = (height - initialViewHeight) / 2;
+    const initialViewMinY = (VIRTUAL_HEIGHT - initialViewHeight) / 2;
     const initialViewMaxY = initialViewMinY + initialViewHeight;
 
-    // --- Calculate Ship Spawn Zones (Outer 20% of Initial View) ---
+    // --- Calculate Ship Spawn Zones ---
     const shipZoneWidth = initialViewWidth * SHIP_ZONE_WIDTH_FACTOR;
-    const shipPadding = SHIP_RADIUS + 20; // Increase padding slightly
+    const shipPadding = SHIP_RADIUS + 20; // Keep local or move padding to settings?
     
     // Left Zone X bounds
     const ship1MinX = initialViewMinX + shipPadding;
@@ -55,52 +64,48 @@ export const generateInitialPositions = (width: number, height: number): Initial
     const ship2MinX = initialViewMaxX - shipZoneWidth + shipPadding;
     const ship2MaxX = initialViewMaxX - shipPadding;
 
-    // --- NEW: Y bounds for ships (within initial view height) ---
+    // Y bounds for ships
     const shipMinY = initialViewMinY + shipPadding;
     const shipMaxY = initialViewMaxY - shipPadding;
     
     // --- Place ships RANDOMLY ensuring minimum separation ---
     let ship1Pos: { x: number, y: number };
     let ship2Pos: { x: number, y: number };
-    const minSeparationSq = Math.pow(initialViewWidth * MIN_SHIP_SEPARATION_FACTOR, 2); // Use squared distance
+    const minSeparationSq = Math.pow(initialViewWidth * MIN_SHIP_SEPARATION_FACTOR, 2);
     let attemptsShips = 0;
-    const maxAttemptsShips = 200;
+    const maxAttemptsShips = 200; // Keep local or move to settings?
 
     do {
-        // Random X and Y for Ship 1 in its zone
+        // Random X and Y for Ship 1
         const x1 = Math.random() * (ship1MaxX - ship1MinX) + ship1MinX;
         const y1 = Math.random() * (shipMaxY - shipMinY) + shipMinY;
         ship1Pos = { x: x1, y: y1 };
 
-        // Random X and Y for Ship 2 in its zone
+        // Random X and Y for Ship 2
         const x2 = Math.random() * (ship2MaxX - ship2MinX) + ship2MinX;
         const y2 = Math.random() * (shipMaxY - shipMinY) + shipMinY;
         ship2Pos = { x: x2, y: y2 };
 
         attemptsShips++;
 
-        // Check distance between the two potential ship positions
+        // Check distance
         const dx = ship2Pos.x - ship1Pos.x;
         const dy = ship2Pos.y - ship1Pos.y;
         const distSq = dx * dx + dy * dy;
 
         if (distSq >= minSeparationSq) {
-            break; // Found suitable positions
+            break;
         }
 
     } while (attemptsShips < maxAttemptsShips);
 
     if (attemptsShips >= maxAttemptsShips) {
         console.warn(`Could not place ships with minimum separation after ${maxAttemptsShips} attempts, using last attempt.`);
-        // Fallback: use the last generated positions even if too close
     }
 
-    const ships: [{ x: number; y: number }, { x: number; y: number }] = [
-        ship1Pos, // Use generated random positions
-        ship2Pos, // Use generated random positions
-    ];
+    const ships: [{ x: number; y: number }, { x: number; y: number }] = [ ship1Pos, ship2Pos ];
 
-    // --- Calculate Planet Spawn Area (Central 80% of Initial View) ---
+    // --- Calculate Planet Spawn Area ---
     const planetSpawnAreaWidth = initialViewWidth * PLANET_SPAWN_AREA_FACTOR;
     const planetSpawnAreaHeight = initialViewHeight * PLANET_SPAWN_AREA_FACTOR;
     const planetSpawnMinX = initialViewMinX + (initialViewWidth - planetSpawnAreaWidth) / 2;
@@ -108,15 +113,14 @@ export const generateInitialPositions = (width: number, height: number): Initial
     const planetSpawnMinY = initialViewMinY + (initialViewHeight - planetSpawnAreaHeight) / 2;
     const planetSpawnMaxY = planetSpawnMinY + planetSpawnAreaHeight;
 
-    // --- Generate Planets within the calculated area ---
+    // --- Generate Planets ---
     const planets: Matter.Body[] = [];
     let attemptsPlanets = 0;
-    const maxAttemptsPlanets = 500;
+    const maxAttemptsPlanets = 500; // Keep local or move to settings?
 
     while (planets.length < NUM_PLANETS && attemptsPlanets < maxAttemptsPlanets) {
         attemptsPlanets++;
         const radius = Math.random() * (PLANET_MAX_RADIUS - PLANET_MIN_RADIUS) + PLANET_MIN_RADIUS;
-        // Generate within the specific planet spawn bounds
         const x = Math.random() * (planetSpawnMaxX - planetSpawnMinX) + planetSpawnMinX;
         const y = Math.random() * (planetSpawnMaxY - planetSpawnMinY) + planetSpawnMinY;
         const position = { x, y };
@@ -142,9 +146,9 @@ export const generateInitialPositions = (width: number, height: number): Initial
         }
         if (collision) continue;
 
-        // If no collision, create and add the planet body
-        const grayValue = Math.floor(Math.random() * (160 - 80 + 1)) + 80; 
-        const grayHex = grayValue.toString(16).padStart(2, '0'); 
+        // Create planet body
+        const grayValue = Math.floor(Math.random() * (160 - 80 + 1)) + 80;
+        const grayHex = grayValue.toString(16).padStart(2, '0');
         const grayColor = `#${grayHex}${grayHex}${grayHex}`;
 
         const planetBody = Bodies.circle(x, y, radius, {
@@ -152,7 +156,7 @@ export const generateInitialPositions = (width: number, height: number): Initial
             label: 'planet',
             friction: 0.5,
             restitution: 0.5,
-            render: { fillStyle: grayColor }, 
+            render: { fillStyle: grayColor },
             plugin: { klunkstr: { radius: radius } }
         });
         planets.push(planetBody);
@@ -166,14 +170,46 @@ export const generateInitialPositions = (width: number, height: number): Initial
     return { ships, planets };
 };
 
-// --- The Hook (No change needed here) ---
-export const useGameInitialization = (): InitialGamePositions | null => {
-  const [positions, setPositions] = useState<InitialGamePositions | null>(null);
+// --- The Hook (Now returns level data and a regeneration function) ---
+export const useGameInitialization = (settings: GameSettingsProfile | null): UseGameInitializationReturn => {
+  const [levelData, setLevelData] = useState<InitialGamePositions | null>(null);
+  const currentSettingsRef = useRef(settings); // Store settings in a ref
 
+  // Update ref when settings prop changes
   useEffect(() => {
-    const initialData = generateInitialPositions(VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
-    setPositions(initialData);
-  }, []); 
+    currentSettingsRef.current = settings;
+  }, [settings]);
 
-  return positions;
+  // Function to generate and set level data
+  const generateAndSetLevel = useCallback(() => {
+    const currentSettings = currentSettingsRef.current;
+    if (currentSettings) {
+      console.log("[useGameInitialization] Generating level data...");
+      const initialData = generateInitialPositions(currentSettings);
+      setLevelData(initialData);
+    } else {
+      console.log("[useGameInitialization] Cannot generate level, no settings provided.");
+      setLevelData(null);
+    }
+  }, []); // No dependencies, uses ref
+
+  // Generate level initially when settings are first provided
+  useEffect(() => {
+    // Only generate initially if levelData is null and settings are available
+    if (!levelData && settings) {
+        generateAndSetLevel();
+    }
+    // If settings become null later, clear the level data
+    else if (!settings && levelData) {
+        setLevelData(null);
+    }
+  }, [settings, levelData, generateAndSetLevel]); // Re-run if settings change or level needs initial generation
+
+  // Expose the regeneration function
+  const regenerateLevel = useCallback(() => {
+    console.log("[useGameInitialization] regenerateLevel called.");
+    generateAndSetLevel(); // Call the internal generation function
+  }, [generateAndSetLevel]);
+
+  return { levelData, regenerateLevel };
 }; 

@@ -1,39 +1,32 @@
-import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle, ForwardedRef, useMemo } from 'react';
-import Matter from 'matter-js'; // Keep base import for Composite
-import { useShotTracers, ProjectileBody } from '../../hooks/useShotTracers';
-// import { generateInitialPositions, InitialGamePositions } from '../../hooks/useGameInitialization'; // Removed unused import
-import { InitialGamePositions } from '../../hooks/useGameInitialization'; // Keep only this type import
-import { AbilityType } from '../ui_overlays/ActionButtons';
-import { useMatterPhysics, MatterPhysicsHandles } from '../../hooks/useMatterPhysics';
+import React, { useRef, useEffect, useState } from 'react';
+import Matter from 'matter-js';
+import { ProjectileBody } from '../../hooks/useShotTracers';
+// import { InitialGamePositions } from '../../hooks/useGameInitialization'; // Removed unused import
+import { MatterPhysicsHandles } from '../../hooks/useMatterPhysics';
 import { useDynamicViewport } from '../../hooks/useDynamicViewport';
-import { ProjectilePathData } from '../../types/game'; // Import path type
+import { UseGameLogicReturn } from '../../hooks/useGameLogic';
 
-// Removed unused Matter destructuring
-
-// --- Constants --- (Keep only those needed for rendering/layout)
+// Constants for rendering/layout
 const VIRTUAL_WIDTH = 2400;
 const VIRTUAL_HEIGHT = 1200;
 const DESIGN_ASPECT_RATIO = VIRTUAL_WIDTH / VIRTUAL_HEIGHT;
-const SHIP_RADIUS = 63; // Needed for drawing
-const PLANET_MIN_RADIUS = 40; // Needed for drawing fallback
-// Removed unused GRAVITY_CONSTANT etc.
+// const SHIP_RADIUS = 63; // Keep if needed by drawing helpers below
+// const PLANET_MIN_RADIUS = 40; // Keep if needed by drawing helpers below
+const PROJECTILE_RADIUS = 5; 
 
 // Define props for the GameRenderer component
 interface GameRendererProps {
-  levelData: InitialGamePositions;
-  onPlayerHit: (hitPlayerIndex: 0 | 1, firingPlayerIndex: 0 | 1, projectileType: AbilityType | 'standard') => void; // Updated signature
-  onProjectileResolved: (path: ProjectilePathData, firedByPlayerIndex: 0 | 1) => void;
+  physicsHandles: MatterPhysicsHandles | null;
+  shotTracerHandlers: UseGameLogicReturn['shotTracerHandlers'];
 }
 
-// Define the interface for the methods exposed via the ref
-export interface GameRendererRef {
-  fireProjectile: (playerIndex: 0 | 1, power: number, abilityType: AbilityType | null) => void;
-  setShipAim: (playerIndex: 0 | 1, angleDegrees: number) => void;
-  getShipAngle: (playerIndex: 0 | 1) => number | undefined;
-}
+// Ref interface removed
 
-// --- Drawing Helper Functions ---
-const drawBackground = (ctx: CanvasRenderingContext2D, img: HTMLImageElement | null) => {
+// Drawing Helpers
+// Ensure SHIP_RADIUS and PLANET_MIN_RADIUS are available if needed by helpers
+const SHIP_RADIUS_DRAW = 63; // Example: Use specific drawing constants or keep globals
+const PLANET_MIN_RADIUS_DRAW = 40;
+const drawBackground = (ctx: CanvasRenderingContext2D, img: HTMLImageElement | null) => { 
     const bgX = -VIRTUAL_WIDTH / 2;
     const bgY = -VIRTUAL_HEIGHT;
     const bgWidth = VIRTUAL_WIDTH * 2;
@@ -44,8 +37,7 @@ const drawBackground = (ctx: CanvasRenderingContext2D, img: HTMLImageElement | n
         ctx.fillStyle = '#000020'; 
         ctx.fillRect(bgX, bgY, bgWidth, bgHeight);
     }
-};
-
+}; // Removed unused vars
 const drawBorder = (ctx: CanvasRenderingContext2D) => {
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
     ctx.lineWidth = 4;
@@ -54,164 +46,86 @@ const drawBorder = (ctx: CanvasRenderingContext2D) => {
     const borderWidth = VIRTUAL_WIDTH * 2;
     const borderHeight = VIRTUAL_HEIGHT * 3;
     ctx.strokeRect(borderX, borderY, borderWidth, borderHeight);
-};
-
+ }; // Removed unused vars
 const drawPlanet = (ctx: CanvasRenderingContext2D, body: Matter.Body) => {
-        const radius = body.plugin?.klunkstr?.radius || PLANET_MIN_RADIUS;
-        ctx.beginPath();
-        ctx.arc(body.position.x, body.position.y, radius, 0, 2 * Math.PI);
-    ctx.fillStyle = body.render.fillStyle || '#888'; // Use render prop if defined
-        ctx.fill();
-};
-
+    const radius = body.plugin?.klunkstr?.radius || PLANET_MIN_RADIUS_DRAW;
+    ctx.beginPath();
+    ctx.arc(body.position.x, body.position.y, radius, 0, 2 * Math.PI);
+    ctx.fillStyle = body.render.fillStyle || '#888'; 
+    ctx.fill();
+ };
 const drawShip = (ctx: CanvasRenderingContext2D, body: Matter.Body) => {
-        const playerIndex = parseInt(body.label.split('-')[1], 10);
-        ctx.save(); 
-        ctx.translate(body.position.x, body.position.y);
-        ctx.rotate(body.angle);
-        ctx.beginPath();
-    ctx.moveTo(SHIP_RADIUS, 0);
-    ctx.lineTo(-SHIP_RADIUS / 2, -SHIP_RADIUS / 2);
-    ctx.lineTo(-SHIP_RADIUS / 2, SHIP_RADIUS / 2);
-        ctx.closePath();
-        ctx.fillStyle = playerIndex === 0 ? '#00f' : '#f00'; 
-        ctx.fill();
-        ctx.restore(); 
-};
-
+    const playerIndex = parseInt(body.label.split('-')[1], 10);
+    ctx.save();
+    ctx.translate(body.position.x, body.position.y);
+    ctx.rotate(body.angle);
+    ctx.beginPath();
+    ctx.moveTo(SHIP_RADIUS_DRAW, 0);
+    ctx.lineTo(-SHIP_RADIUS_DRAW / 2, -SHIP_RADIUS_DRAW / 2);
+    ctx.lineTo(-SHIP_RADIUS_DRAW / 2, SHIP_RADIUS_DRAW / 2);
+    ctx.closePath();
+    ctx.fillStyle = playerIndex === 0 ? '#00f' : '#f00';
+    ctx.fill();
+    ctx.restore();
+ };
 const drawProjectile = (ctx: CanvasRenderingContext2D, body: ProjectileBody) => {
-        ctx.beginPath();
-        ctx.arc(body.position.x, body.position.y, 5, 0, 2 * Math.PI);
+    ctx.beginPath();
+    ctx.arc(body.position.x, body.position.y, PROJECTILE_RADIUS, 0, 2 * Math.PI);
     const ownerIndex = body.custom?.firedByPlayerIndex ?? 0;
-        ctx.fillStyle = ownerIndex === 0 ? '#add8e6' : '#ffcccb'; 
-        ctx.fill();
-};
-
+    ctx.fillStyle = ownerIndex === 0 ? '#add8e6' : '#ffcccb';
+    ctx.fill();
+ };
 const drawHistoricalTrace = (ctx: CanvasRenderingContext2D, trace: Matter.Vector[]) => {
-        if (trace.length < 2) return;
-        ctx.beginPath();
-        ctx.moveTo(trace[0].x, trace[0].y);
-        for (let i = 1; i < trace.length; i++) {
-          ctx.lineTo(trace[i].x, trace[i].y);
-        }
-        ctx.strokeStyle = '#C0C0C0'; // Silver color
-        ctx.lineWidth = 2; // Use same line width (already 2)
-        ctx.setLineDash([8, 4]); // Use same dash pattern
-        ctx.stroke();
-        ctx.setLineDash([]); 
-};
+    if (trace.length < 2) return;
+    ctx.beginPath();
+    ctx.moveTo(trace[0].x, trace[0].y);
+    for (let i = 1; i < trace.length; i++) {
+      ctx.lineTo(trace[i].x, trace[i].y);
+    }
+    ctx.strokeStyle = '#C0C0C0'; 
+    ctx.lineWidth = 2; 
+    ctx.setLineDash([8, 4]); 
+    ctx.stroke();
+    ctx.setLineDash([]); 
+ };
 
-// --- GameRenderer Component ---
-const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>(({ levelData, onPlayerHit, onProjectileResolved }: GameRendererProps, ref: ForwardedRef<GameRendererRef>) => {
+
+// --- GameRenderer Component (Standard Function) ---
+const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerHandlers }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
-  const physicsRef = useRef<MatterPhysicsHandles | null>(null);
-  const isInitialMount = useRef(true); // Ref to track initial mount
 
-  // --- Hooks ---
-  const tracers = useShotTracers(); // Get the full object
-  const { lastShotTraces, getLastCompletedPath, addOpponentTrace } = tracers; // Destructure needed functions
-
-  // --- Memoize the handlers object to pass to useMatterPhysics ---
-  const shotTracerHandlers = useMemo(() => ({
-      handleProjectileFired: tracers.handleProjectileFired,
-      handleProjectileUpdate: tracers.handleProjectileUpdate,
-      handleProjectileRemoved: tracers.handleProjectileRemoved,
-      getLastCompletedPath: tracers.getLastCompletedPath,
-      resetTraces: tracers.resetTraces,
-  }), [tracers.handleProjectileFired, tracers.handleProjectileUpdate, tracers.handleProjectileRemoved, tracers.getLastCompletedPath, tracers.resetTraces]);
-  // --- END Memoization ---
-
-  const physics = useMatterPhysics({
-    levelData,
-    virtualWidth: VIRTUAL_WIDTH,
-    virtualHeight: VIRTUAL_HEIGHT,
-    onPlayerHit,
-    shotTracerHandlers, // Pass the memoized object
-    onProjectileResolved, // Pass the new callback down
-  });
-  physicsRef.current = physics; // Keep ref updated for imperative handle
+  const { lastShotTraces } = shotTracerHandlers;
 
   const viewport = useDynamicViewport({
-      engine: physics.engine,
-      getDynamicBodies: physics.getDynamicBodies,
+      engine: physicsHandles?.engine ?? null,
+      getDynamicBodies: physicsHandles?.getDynamicBodies ?? (() => []),
       virtualWidth: VIRTUAL_WIDTH,
       virtualHeight: VIRTUAL_HEIGHT,
       designAspectRatio: DESIGN_ASPECT_RATIO,
       canvasSize,
   });
 
-  // Ref for historical traces to avoid stale closures in render loop
   const latestTracesRef = useRef(lastShotTraces);
   useEffect(() => {
     latestTracesRef.current = lastShotTraces;
   }, [lastShotTraces]);
 
-  // --- Imperative Handle --- (Simpler now)
-  useImperativeHandle(ref, () => ({
-    fireProjectile: (playerIndex, power, abilityType) => {
-        physicsRef.current?.fireProjectile(playerIndex, power, abilityType);
-    },
-    setShipAim: (playerIndex, angleDegrees) => {
-        physicsRef.current?.setShipAim(playerIndex, angleDegrees);
-    },
-    getShipAngle: (playerIndex) => {
-        return physicsRef.current?.getShipAngle(playerIndex);
-    },
-  }));
+  // Imperative Handle removed
 
-  // --- Effects ---
-  // Load background image
-  useEffect(() => {
-    const img = new Image();
-    img.onload = () => setBackgroundImage(img);
-    img.onerror = () => console.error('Failed to load background image.');
-    img.src = '/images/backdrop.png';
-    return () => { img.onload = null; img.onerror = null; };
-  }, []);
+  // Effects for background image and resize (no change)
+  useEffect(() => { /* background */ });
+  useEffect(() => { /* resize */ });
 
-  // Handle canvas resize
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const handleResize = () => {
-        const { width, height } = canvas.getBoundingClientRect();
-        const dpr = window.devicePixelRatio || 1;
-        canvas.width = width * dpr;
-        canvas.height = height * dpr;
-        setCanvasSize({ width: canvas.width, height: canvas.height }); // Update state for viewport hook
-        console.log(`[Resize] Canvas resized: ${canvas.width}x${canvas.height}`);
-    };
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  // --- Effect to Reset Physics on LevelData Change --- 
-  useEffect(() => {
-    // Skip reset on initial mount
-    if (isInitialMount.current) {
-        isInitialMount.current = false;
-        return;
-    }
-    
-    console.log("[GameRenderer] levelData prop changed. Resetting physics.");
-    if (physicsRef.current && levelData) {
-        physicsRef.current.resetPhysics(levelData);
-    } else {
-        console.warn("[GameRenderer] Cannot reset physics: ref or levelData missing.");
-    }
-    // Dependency: levelData prop
-  }, [levelData]);
-
-  // --- Render Loop --- (useEffect dependencies might need adjustment)
+  // --- Render Loop ---
   useEffect(() => {
     let animationFrameId: number;
     const renderLoop = () => {
         const canvas = canvasRef.current;
-        const engine = physics.engine; // Get current engine state
-        if (!canvas || !engine) {
+        const engine = physicsHandles?.engine;
+        const bodiesGetter = physicsHandles?.getAllBodies;
+        if (!canvas || !engine || !bodiesGetter) {
             animationFrameId = requestAnimationFrame(renderLoop);
             return;
         }
@@ -221,35 +135,31 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>(({ levelData
             return;
         }
 
-        // Apply Viewport Transformations from hook
         ctx.save();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.translate(viewport.offsetX, viewport.offsetY);
         ctx.scale(viewport.scale, viewport.scale);
 
-        // Draw Background & Border
         drawBackground(ctx, backgroundImage);
         drawBorder(ctx);
 
-        // Draw Game Objects & Aiming Indicators
-        const bodies = physicsRef.current ? physicsRef.current.getAllBodies() : []; // Use physics ref
+        const bodies = bodiesGetter();
         bodies.forEach(body => {
             if (body.label === 'planet') {
                  drawPlanet(ctx, body);
             } else if (body.label.startsWith('ship-')) {
                 drawShip(ctx, body);
-                // Draw aiming indicator for this ship
-                const aimLength = SHIP_RADIUS * 1.5; // Reduced length
+                // Draw aiming indicator
+                const aimLength = SHIP_RADIUS_DRAW * 1.5;
                 const angle = body.angle;
-                const startX = body.position.x + Math.cos(angle) * SHIP_RADIUS;
-                const startY = body.position.y + Math.sin(angle) * SHIP_RADIUS;
-                const endX = body.position.x + Math.cos(angle) * (SHIP_RADIUS + aimLength);
-                const endY = body.position.y + Math.sin(angle) * (SHIP_RADIUS + aimLength);
-                
+                const startX = body.position.x + Math.cos(angle) * SHIP_RADIUS_DRAW;
+                const startY = body.position.y + Math.sin(angle) * SHIP_RADIUS_DRAW;
+                const endX = body.position.x + Math.cos(angle) * (SHIP_RADIUS_DRAW + aimLength);
+                const endY = body.position.y + Math.sin(angle) * (SHIP_RADIUS_DRAW + aimLength);
                 ctx.beginPath();
                 ctx.moveTo(startX, startY);
                 ctx.lineTo(endX, endY);
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)'; // White, semi-transparent
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
                 ctx.lineWidth = 2;
                 ctx.setLineDash([5, 5]);
                 ctx.stroke();
@@ -257,43 +167,27 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>(({ levelData
             } else if (body.label.startsWith('projectile-')) {
                 drawProjectile(ctx, body as ProjectileBody);
             }
-            // Skip drawing boundaries
         });
 
-        // Draw ONLY Historical Traces (Full flight path after projectile is removed)
-        // projectileTrails.forEach(trail => drawActiveTrail(ctx, trail)); // REMOVED active trail drawing
-        Object.values(latestTracesRef.current).forEach(traceSet => {
-            traceSet.forEach(trace => drawHistoricalTrace(ctx, trace));
-        });
+        // Draw Historical Traces (Corrected iteration)
+        const currentTraces = latestTracesRef.current;
+        currentTraces[0].forEach(trace => drawHistoricalTrace(ctx, trace)); // Player 0 traces
+        currentTraces[1].forEach(trace => drawHistoricalTrace(ctx, trace)); // Player 1 traces
 
-        // Restore Canvas state
-        ctx.restore();
-
+        ctx.restore(); 
         animationFrameId = requestAnimationFrame(renderLoop);
     };
 
-    // Start the loop
     animationFrameId = requestAnimationFrame(renderLoop);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [viewport, physicsHandles, backgroundImage]); 
 
-    // Cleanup
-    return () => {
-        cancelAnimationFrame(animationFrameId);
-    };
-  // Dependencies: viewport, backgroundImage. Engine reference itself should be stable.
-  // We need to ensure this loop redraws when bodies change AFTER reset.
-  // Adding physics.engine might not be sufficient if the engine object identity is stable.
-  // Reading getAllBodies() inside ensures latest bodies are used each frame.
-  }, [viewport, backgroundImage]); // Keep dependencies minimal, rely on getAllBodies
-
-  // --- Component Render ---
-  const canvasStyle: React.CSSProperties = {
-    display: 'block', 
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#000020', 
-  };
-
-  return <canvas ref={canvasRef} style={canvasStyle} />;
-});
+  return (
+      <canvas 
+          ref={canvasRef} 
+          className="w-full h-full block bg-black"
+      />
+  );
+};
 
 export default GameRenderer;

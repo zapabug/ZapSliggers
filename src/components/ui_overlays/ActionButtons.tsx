@@ -11,24 +11,15 @@ interface ActionButtonsProps {
   usedAbilities: Set<AbilityType>;
   currentHp: number;
   abilityCost: number;
-  maxAbilityUses: number;
+  maxAbilityUsesTotal: number;
+  maxAbilityUsesPerType: number;
   disabled: boolean; // General disabled state (e.g., not player's turn)
 }
 
-// Placeholder SVG function (replace with actual SVGs or an icon library)
-const AbilityIcon: React.FC<{ ability: AbilityType }> = ({ ability }) => {
-  // Note: No icon needed for 'splitter_fragment' as it's not selectable
-  switch (ability) {
-    case 'splitter':
-      return <span className="text-xs">🔱</span>; // Placeholder for Splitter
-    case 'gravity':
-      return <span className="text-xs">🧲</span>; // Placeholder for Gravity Pull
-    case 'plastic':
-      return <span className="text-xs">🪁</span>; // Placeholder for Plastic (Low Gravity)
-    default:
-      return null;
-  }
-};
+// Removed unused AbilityIcon component
+// const AbilityIcon: React.FC<{ ability: AbilityType }> = ({ ability }) => {
+//   // ... icon logic ...
+// };
 
 const ActionButtons: React.FC<ActionButtonsProps> = (props) => {
   const {
@@ -38,6 +29,8 @@ const ActionButtons: React.FC<ActionButtonsProps> = (props) => {
     usedAbilities,
     currentHp,
     abilityCost,
+    maxAbilityUsesTotal,
+    maxAbilityUsesPerType,
     disabled,
   } = props;
 
@@ -81,9 +74,15 @@ const ActionButtons: React.FC<ActionButtonsProps> = (props) => {
       {/* Ability Buttons Origin - Positioned absolutely, offset from the corner */}
       <div className="absolute bottom-8 right-16 z-10 w-0 h-0">
         {availableAbilities.map((ability) => {
-          const isUsed = usedAbilities.has(ability);
+          // Calculate if used max times for this specific type
+          const abilitiesOfTypeUsed = Array.from(usedAbilities).filter(used => used === ability).length;
+          const isUsedMaxPerType = abilitiesOfTypeUsed >= maxAbilityUsesPerType;
+          // Calculate if max total abilities have been used
+          const isUsedMaxTotal = usedAbilities.size >= maxAbilityUsesTotal;
+          // Check HP
           const hasEnoughHp = currentHp >= abilityCost;
-          const isButtonDisabled = disabled || isUsed || !hasEnoughHp;
+          // Determine final disabled state
+          const isButtonDisabled = disabled || isUsedMaxPerType || isUsedMaxTotal || !hasEnoughHp;
           const isSelected = selectedAbility === ability;
 
           let baseBgColor = 'bg-purple-600 hover:bg-purple-700 bg-opacity-75';
@@ -111,9 +110,10 @@ const ActionButtons: React.FC<ActionButtonsProps> = (props) => {
                 top: '0px',
                 left: '0px'
               }}
-              title={`${ability.charAt(0).toUpperCase() + ability.slice(1)} (Cost: ${abilityCost} HP) - ${isButtonDisabled ? 'Unavailable' : 'Available'}`}
+              title={`${ability.charAt(0).toUpperCase() + ability.slice(1)} (Cost: ${abilityCost} HP) - Used ${abilitiesOfTypeUsed}/${maxAbilityUsesPerType} times (Total: ${usedAbilities.size}/${maxAbilityUsesTotal}) - ${isButtonDisabled ? 'Unavailable' : 'Available'}`}
             >
-              <AbilityIcon ability={ability} />
+              {/* <AbilityIcon ability={ability} /> */}
+              <span className="text-xs">{ability.slice(0,3)}</span> {/* TEMP: Show text */}
             </button>
           );
         })}

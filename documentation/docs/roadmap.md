@@ -16,7 +16,7 @@
    10. **Challenges (`ChallengeHandler`):** Implement basic DM challenge handling. - *Done*.
    11. **Viewport/Camera (`useDynamicViewport`):** Implement adaptive zoom/pan. - *Done*.
    12. **PWA Setup:** Configure `vite-plugin-pwa`. - *Configured*
-   13. **Practice Mode:** Implement full practice mode logic (Best of 3 rounds, scoring, HP tie-breaker, alternating start, opponent display). - *Done*
+   13. **Practice Mode:** Implement full practice mode logic (Best of 3 rounds, scoring, HP tie-breaker, alternating start, opponent display). - ***Broken (Needs Debugging Post-Refactor)***
 
 **Phase 2: Nostr Integration & Gameplay Completion (Current Focus)**
 

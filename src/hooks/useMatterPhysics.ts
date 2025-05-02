@@ -4,6 +4,7 @@ import { ProjectileBody } from './useShotTracers'; // Assuming ProjectileBody ex
 import { InitialGamePositions } from './useGameInitialization';
 import { AbilityType } from '../components/ui_overlays/ActionButtons';
 import { ProjectilePathData } from '../types/game'; // Import path type
+import { GameSettingsProfile } from '../config/gameSettings'; // Import the settings profile type
 
 // Define the expected shape for shotTracerHandlers prop
 interface ShotTracerHandlers {
@@ -16,22 +17,11 @@ interface ShotTracerHandlers {
 
 const { Engine, Runner, Bodies, World, Composite, Vector, Body, Events } = Matter;
 
-// Constants from GameRenderer relevant to physics
-const SHIP_RADIUS = 63; // Sets the size (radius) for player ship bodies. Used for ship creation and collision detection.
-const PLANET_MIN_RADIUS = 40; // Default radius used for planets in gravity calculations if a specific radius isn't found.
-const GRAVITY_CONSTANT = 0.35; // Multiplier controlling the overall strength of gravitational pull from planets.
-const GRAVITY_AOE_BONUS_FACTOR = 0.2; // Factor applied to increase a planet's effective gravitational range based on its size.
-const PLASTIC_GRAVITY_FACTOR = 0.85; // Factor by which planet gravity is reduced for 'plastic' projectiles.
-const SHIP_GRAVITY_RANGE = SHIP_RADIUS * 4; // Range within which 'gravity' projectile is pulled by opponent ship.
-const SHIP_GRAVITY_CONSTANT = 0.3; // Strength of the opponent ship's pull on 'gravity' projectiles.
-const DEFAULT_FRICTION_AIR = 0.002; // Default air friction for standard projectiles & fragments
-const PLASTIC_FRICTION_AIR = 0.008;  // Increased air friction (drag) for plastic projectiles.
-const GRAVITY_FRICTION_AIR = 0.005; // Slightly increased air friction (drag) for gravity projectiles.
+// Constants removed - now passed via settings object
 
 interface UseMatterPhysicsProps {
-  levelData: InitialGamePositions;
-  virtualWidth: number;
-  virtualHeight: number;
+  settings: GameSettingsProfile | null; // Add settings prop
+  levelData: InitialGamePositions | null; // Allow levelData to be null initially
   shotTracerHandlers: ShotTracerHandlers;
   onPlayerHit: (hitPlayerIndex: 0 | 1, firingPlayerIndex: 0 | 1, projectileType: AbilityType | 'standard') => void;
   onProjectileResolved: (path: ProjectilePathData, firedByPlayerIndex: 0 | 1) => void;
@@ -54,29 +44,29 @@ export interface MatterPhysicsHandles {
 }
 
 export const useMatterPhysics = ({
+  settings,
   levelData: initialLevelData,
-  virtualWidth,
-  virtualHeight,
   shotTracerHandlers,
   onPlayerHit,
-  onProjectileResolved, // Destructure new prop
+  onProjectileResolved,
 }: UseMatterPhysicsProps): MatterPhysicsHandles => {
   const engineRef = useRef<Matter.Engine | null>(null);
   const runnerRef = useRef<Matter.Runner | null>(null);
   const shipBodiesRef = useRef<(Matter.Body | null)[]>([null, null]);
   const currentLevelDataRef = useRef(initialLevelData);
+  const currentSettingsRef = useRef(settings); // Ref to hold current settings
 
-  // --- Ref to store the latest onPlayerHit callback --- 
+  // --- Ref to store the latest callbacks --- 
   const onPlayerHitRef = useRef<OnPlayerHitCallback>(onPlayerHit);
-  // --- Ref for the new callback ---
   const onProjectileResolvedRef = useRef<OnProjectileResolvedCallback>(onProjectileResolved);
+  const shotTracerHandlersRef = useRef<ShotTracerHandlers>(shotTracerHandlers);
 
   // --- Effect to keep the refs updated --- 
   useEffect(() => { onPlayerHitRef.current = onPlayerHit; }, [onPlayerHit]);
-  useEffect(() => { onProjectileResolvedRef.current = onProjectileResolved; }, [onProjectileResolved]); // Update effect for new callback
-  useEffect(() => { currentLevelDataRef.current = initialLevelData; }, [initialLevelData]);
-  const shotTracerHandlersRef = useRef<ShotTracerHandlers>(shotTracerHandlers);
+  useEffect(() => { onProjectileResolvedRef.current = onProjectileResolved; }, [onProjectileResolved]);
   useEffect(() => { shotTracerHandlersRef.current = shotTracerHandlers; }, [shotTracerHandlers]);
+  useEffect(() => { currentLevelDataRef.current = initialLevelData; }, [initialLevelData]);
+  useEffect(() => { currentSettingsRef.current = settings; }, [settings]); // Update settings ref
 
   // --- Helper to remove projectile and notify resolved ---
   const removeProjectileAndNotify = useCallback((projectile: ProjectileBody, world: Matter.World) => {
@@ -149,10 +139,27 @@ export const useMatterPhysics = ({
     });
   }, [removeProjectileAndNotify]); // Use helper
 
-  // --- Physics Update Logic ---
+  // --- Physics Update Logic (Needs Settings) ---
   const updateProjectilesAndApplyGravity = useCallback(() => {
     const currentEngine = engineRef.current;
-    if (!currentEngine) return;
+    const localSettings = currentSettingsRef.current; // Get settings from ref
+    if (!currentEngine || !localSettings) return; // Ensure settings are available
+
+    // Destructure settings needed within this callback
+    const {
+        PLANET_MIN_RADIUS,
+        GRAVITY_AOE_BONUS_FACTOR,
+        VIRTUAL_WIDTH, // Assuming virtualWidth is constant or comes from settings
+        GRAVITY_CONSTANT,
+        PLASTIC_GRAVITY_FACTOR,
+        SHIP_GRAVITY_RANGE_FACTOR,
+        SHIP_RADIUS,
+        SHIP_GRAVITY_CONSTANT,
+        SPLITTER_FRAGMENT_RADIUS,
+        DEFAULT_FRICTION_AIR
+    } = localSettings;
+
+    const SHIP_GRAVITY_RANGE_SQ = Math.pow(SHIP_RADIUS * SHIP_GRAVITY_RANGE_FACTOR, 2);
 
     const bodiesToRemove: ProjectileBody[] = [];
     const bodiesToAdd: Matter.Body[] = [];
@@ -165,7 +172,7 @@ export const useMatterPhysics = ({
         // --- SPLITTER LOGIC ---
         if (
           projectileBody.custom?.abilityType === 'splitter' &&
-          !projectileBody.custom?.hasSplit && // Check if not already split
+          !projectileBody.custom?.hasSplit &&
           Date.now() - (projectileBody.custom?.createdAt ?? 0) > 1500
         ) {
           const originalPos = Vector.clone(projectileBody.position);
@@ -187,12 +194,12 @@ export const useMatterPhysics = ({
           // Create 3 fragments
           for (let i = 0; i < 3; i++) {
             const fragmentLabel = `${originalLabel}-frag${i}`;
-            const fragment: ProjectileBody = Bodies.circle(originalPos.x, originalPos.y, 4, { // Smaller radius for fragments
+            const fragment: ProjectileBody = Bodies.circle(originalPos.x, originalPos.y, SPLITTER_FRAGMENT_RADIUS, {
               label: fragmentLabel,
-              frictionAir: 0.005,
+              frictionAir: DEFAULT_FRICTION_AIR, // Fragments use default friction
               restitution: 0.6,
-              density: 0.04, // Slightly lower density for fragments
-              collisionFilter: { group: -1 } // Prevent fragments colliding with each other
+              density: 0.04, 
+              collisionFilter: { group: -1 }
             }) as ProjectileBody;
 
             fragment.custom = {
@@ -231,18 +238,16 @@ export const useMatterPhysics = ({
           if (staticBody.label === 'planet') {
              const distanceVector = Vector.sub(staticBody.position, projectileBody.position);
              const distanceSq = Vector.magnitudeSquared(distanceVector);
-             if (distanceSq > 100) { // Min distance^2
+             if (distanceSq > 100) { 
                  const planetRadius = staticBody.plugin?.klunkstr?.radius || PLANET_MIN_RADIUS;
-                 const effectiveRadius = planetRadius * (1 + GRAVITY_AOE_BONUS_FACTOR * (planetRadius / virtualWidth));
+                 const effectiveRadius = planetRadius * (1 + GRAVITY_AOE_BONUS_FACTOR * (planetRadius / VIRTUAL_WIDTH));
                  
                  // Calculate base force
                  let forceMagnitude = (GRAVITY_CONSTANT * projectileBody.mass * effectiveRadius) / distanceSq;
                  
-                 // --- Adjust force based on ability type ---
                  if (projectileBody.custom?.abilityType === 'plastic') {
                      forceMagnitude *= PLASTIC_GRAVITY_FACTOR;
                  }
-                 // --- End ability adjustment ---
 
                  const forceVector = Vector.mult(Vector.normalise(distanceVector), forceMagnitude);
                  Body.applyForce(projectileBody, projectileBody.position, forceVector);
@@ -261,10 +266,9 @@ export const useMatterPhysics = ({
                 const shipDistanceVector = Vector.sub(opponentShipBody.position, projectileBody.position);
                 const shipDistanceSq = Vector.magnitudeSquared(shipDistanceVector);
 
-                // Check if within range
-                if (shipDistanceSq > 100 && shipDistanceSq < (SHIP_GRAVITY_RANGE * SHIP_GRAVITY_RANGE)) { 
-                    // Apply force pulling projectile towards opponent ship
-                    // Using opponent ship mass and SHIP_GRAVITY_CONSTANT
+                // Use calculated SHIP_GRAVITY_RANGE_SQ from settings
+                if (shipDistanceSq > 100 && shipDistanceSq < SHIP_GRAVITY_RANGE_SQ) { 
+                    // Use SHIP_GRAVITY_CONSTANT from settings
                     const shipForceMagnitude = (SHIP_GRAVITY_CONSTANT * projectileBody.mass * opponentShipBody.mass) / shipDistanceSq;
                     const shipForceVector = Vector.mult(Vector.normalise(shipDistanceVector), shipForceMagnitude);
                     Body.applyForce(projectileBody, projectileBody.position, shipForceVector);
@@ -296,15 +300,19 @@ export const useMatterPhysics = ({
             removeProjectileAndNotify(proj, currentEngine.world);
         });
     }
-  }, [removeProjectileAndNotify]); // Use helper
+  }, [removeProjectileAndNotify]); // Still only depends on this stable callback
 
-  // --- Function to Initialize/Reset the Matter.js World ---
+  // --- Function to Initialize/Reset the Matter.js World (Needs Settings) ---
   const initializeWorld = useCallback((levelData: InitialGamePositions | undefined) => {
     const engine = engineRef.current;
-    if (!engine) {
-        console.error("[Physics Hook] Engine not available during world initialization.");
+    const localSettings = currentSettingsRef.current; // Get settings from ref
+    if (!engine || !localSettings) {
+        console.error("[Physics Hook] Engine or Settings not available during world initialization.");
         return;
     }
+    // Destructure settings needed here
+    const { SHIP_RADIUS, VIRTUAL_WIDTH, VIRTUAL_HEIGHT } = localSettings;
+
     if (!levelData || !levelData.ships || levelData.ships.length < 2 || !levelData.planets) {
         console.error("[Physics Hook] Invalid or undefined levelData provided to initializeWorld:", levelData);
         World.clear(engine.world, false);
@@ -314,7 +322,7 @@ export const useMatterPhysics = ({
         return;
     }
 
-    console.log("[Physics Hook] Initializing/Resetting World with valid data...");
+    console.log("[Physics Hook] Initializing/Resetting World with valid data and settings...");
 
     World.clear(engine.world, false);
     Events.off(engine, 'beforeUpdate');
@@ -331,13 +339,13 @@ export const useMatterPhysics = ({
     shipBodiesRef.current = [ship1Body, ship2Body];
 
     const wallThickness = 50;
-    const extendedWidth = virtualWidth * 2;
-    const extendedHeight = virtualHeight * 3;
+    const extendedWidth = VIRTUAL_WIDTH * 2;
+    const extendedHeight = VIRTUAL_HEIGHT * 3;
     const boundaries = [
-        Bodies.rectangle(virtualWidth / 2, -virtualHeight, extendedWidth, wallThickness, { isStatic: true, label: 'boundary' }),
-        Bodies.rectangle(virtualWidth / 2, virtualHeight * 2, extendedWidth, wallThickness, { isStatic: true, label: 'boundary' }),
-        Bodies.rectangle(-virtualWidth / 2, virtualHeight / 2, wallThickness, extendedHeight, { isStatic: true, label: 'boundary' }),
-        Bodies.rectangle(virtualWidth * 1.5, virtualHeight / 2, wallThickness, extendedHeight, { isStatic: true, label: 'boundary' })
+        Bodies.rectangle(VIRTUAL_WIDTH / 2, -VIRTUAL_HEIGHT, extendedWidth, wallThickness, { isStatic: true, label: 'boundary' }),
+        Bodies.rectangle(VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT * 2, extendedWidth, wallThickness, { isStatic: true, label: 'boundary' }),
+        Bodies.rectangle(-VIRTUAL_WIDTH / 2, VIRTUAL_HEIGHT / 2, wallThickness, extendedHeight, { isStatic: true, label: 'boundary' }),
+        Bodies.rectangle(VIRTUAL_WIDTH * 1.5, VIRTUAL_HEIGHT / 2, wallThickness, extendedHeight, { isStatic: true, label: 'boundary' })
     ];
 
     const allBodies = [ship1Body, ship2Body, ...levelData.planets, ...boundaries];
@@ -347,7 +355,8 @@ export const useMatterPhysics = ({
     Events.on(engine, 'collisionStart', handleCollisions);
 
     console.log("[Physics Hook] World setup complete.");
-  }, [virtualWidth, virtualHeight, shotTracerHandlersRef, handleCollisions, updateProjectilesAndApplyGravity]);
+    // Dependencies still okay as they use refs or are stable callbacks
+  }, [handleCollisions, updateProjectilesAndApplyGravity]);
 
   // --- Main Setup and Cleanup useEffect ---
   useEffect(() => {
@@ -360,11 +369,12 @@ export const useMatterPhysics = ({
     const runner = Runner.create();
     runnerRef.current = runner;
 
-    if (currentLevelDataRef.current) {
+    // Check if settings and initial data are available before initializing
+    if (currentSettingsRef.current && currentLevelDataRef.current) {
         initializeWorld(currentLevelDataRef.current);
     } else {
-        console.warn("[Physics Hook] Initial levelData is undefined. World will be initialized when valid data is provided via resetPhysics.");
-        World.clear(engine.world, false);
+        console.warn("[Physics Hook] Initial settings or levelData undefined. World will be initialized when valid data is provided via resetPhysics.");
+        if (engineRef.current) World.clear(engineRef.current.world, false);
         shipBodiesRef.current = [null, null];
     }
 
@@ -384,49 +394,56 @@ export const useMatterPhysics = ({
         runnerRef.current = null;
         shipBodiesRef.current = [null, null];
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Depends only on initializeWorld (stable callback) now
   }, [initializeWorld]);
 
   // --- Exposed Control Functions ---
   const fireProjectile = useCallback((playerIndex: 0 | 1, power: number, abilityType: AbilityType | null) => {
     const engine = engineRef.current;
+    const localSettings = currentSettingsRef.current; // Get settings from ref
     const shipBody = shipBodiesRef.current[playerIndex];
-    if (!engine || !shipBody) return;
+    if (!engine || !shipBody || !localSettings) return;
+
+    // Destructure settings needed here
+    const {
+        SHIP_RADIUS,
+        DEFAULT_FRICTION_AIR,
+        PLASTIC_FRICTION_AIR,
+        GRAVITY_FRICTION_AIR,
+        STANDARD_PROJECTILE_RADIUS
+    } = localSettings;
 
     const angle = shipBody.angle;
-    const speed = 10 + power * 1.5; // Base speed + power scaled by 1.5x
+    const speed = 10 + power * 1.5; 
     const velocity = Vector.mult(Vector.rotate({ x: 1, y: 0 }, angle), speed);
 
-    // Start position slightly in front of the ship
+    // Use SHIP_RADIUS from settings
     const startOffset = Vector.mult(Vector.rotate({ x: 1, y: 0 }, angle), SHIP_RADIUS * 1.1);
     const startPosition = Vector.add(shipBody.position, startOffset);
 
-    // Determine frictionAir based on ability type
+    // Determine frictionAir based on ability type using settings
     let frictionAir = DEFAULT_FRICTION_AIR;
     if (abilityType === 'plastic') {
         frictionAir = PLASTIC_FRICTION_AIR;
     } else if (abilityType === 'gravity') {
         frictionAir = GRAVITY_FRICTION_AIR;
     }
-    // Splitter projectiles use default friction initially
 
-    const projectile: ProjectileBody = Bodies.circle(startPosition.x, startPosition.y, 5, {
+    // Use STANDARD_PROJECTILE_RADIUS from settings
+    const projectile: ProjectileBody = Bodies.circle(startPosition.x, startPosition.y, STANDARD_PROJECTILE_RADIUS, {
         label: `projectile-${playerIndex}-${Date.now()}`,
-        frictionAir: frictionAir, // Apply calculated air friction
+        frictionAir: frictionAir,
         restitution: 0.6,
-        density: 0.05, // Adjust density as needed
-        collisionFilter: { group: -1 } // Prevent projectiles colliding with each other
+        density: 0.05, 
+        collisionFilter: { group: -1 }
     }) as ProjectileBody;
-
-    const projectileLabel = `projectile-${playerIndex}-${Date.now()}`;
-    projectile.label = projectileLabel; // Assign label separately
 
     // Assign custom properties and initialize trail *after* creation
     projectile.custom = {
         firedByPlayerIndex: playerIndex,
         abilityType: abilityType, // Assign null if abilityType is null, otherwise assign the AbilityType
         createdAt: Date.now(),
-        ownerShipLabel: projectileLabel, // Add the missing required property
+        ownerShipLabel: `projectile-${playerIndex}-${Date.now()}`, // Add the missing required property
         // Explicitly set hasSplit: false for splitter, undefined otherwise
         hasSplit: abilityType === 'splitter' ? false : undefined,
     };
@@ -439,7 +456,7 @@ export const useMatterPhysics = ({
     shotTracerHandlersRef.current.handleProjectileFired(projectile);
     console.log(`[Physics] Fired projectile ${projectile.id} by P${playerIndex}, Power: ${power}, Ability: ${abilityType || 'None'}`);
 
-  }, [shotTracerHandlersRef]); // Removed engine from deps, using ref
+  }, []); // Depends only on refs now
 
   const setShipAim = useCallback((playerIndex: 0 | 1, angleDegrees: number) => {
     const shipBody = shipBodiesRef.current[playerIndex];
@@ -455,13 +472,14 @@ export const useMatterPhysics = ({
 
   const resetPhysics = useCallback((newLevelData: InitialGamePositions) => {
       console.log("[Physics Hook] resetPhysics called.");
-      if (!newLevelData) {
-          console.error("[Physics Hook] Attempted resetPhysics with undefined newLevelData.");
+      const localSettings = currentSettingsRef.current; // Check settings too
+      if (!newLevelData || !localSettings) {
+          console.error("[Physics Hook] Attempted resetPhysics with undefined newLevelData or missing settings.");
           return;
       }
       // Update the ref just in case anything else relies on it
       currentLevelDataRef.current = newLevelData;
-      // Directly initialize world with the new data
+      // Directly initialize world with the new data (initializeWorld uses settings ref)
       initializeWorld(newLevelData);
   }, [initializeWorld]); // Dependency is stable initializeWorld
 

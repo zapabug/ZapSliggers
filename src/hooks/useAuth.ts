@@ -17,7 +17,7 @@ const DEFAULT_NIP46_BUNKER_IDENTIFIER = 'bunker://ed199f5e5ad67c6c907b0ac31fb28f
 const LOCALSTORAGE_NIP46_BUNKER_URI = 'nip46_bunker_uri'; // Store the full bunker URI
 
 export type LoginMethod = 'none' | 'nip07' | 'nip46';
-// Add status for QR code flow
+// Update Nip46Status type to include the new mobile state
 export type Nip46Status = 'idle' | 'connecting' | 'connected' | 'failed' | 'disconnected' | 'waiting_for_scan' | 'waiting_for_mobile_approval';
 
 export interface UseAuthReturn {
