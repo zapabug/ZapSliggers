@@ -40,3 +40,28 @@ This document describes how to test the current, simplified multiplayer function
 *   **Limitation (Local Win Condition):** Hitting the opponent ship *in your local simulation* will trigger the win condition callback (`onGameEnd`) locally, likely returning you to the menu. This won't affect the other player's screen.
 
 This test confirms the Nostr challenge flow (using manual NDK calls in `ChallengeHandler`), the mapping of local controls, and the basic **network synchronization of fire actions** within the `GameScreen` using the `useGameLogic` hook (which also uses manual NDK calls) in `'multiplayer'` mode.
+
+## Troubleshooting Mobile DM Sending Failures
+
+If challenges or acceptances sent *from* a mobile device (especially using NIP-46) are not received by the opponent, even though the mobile app logs suggest the event was created/encrypted, investigate the following:
+
+1.  **Mobile Relay Connections:**
+    *   Check the mobile browser's developer console. Are there errors related to WebSocket disconnections or failures to connect to specific relays?
+    *   Ensure both clients share at least one reliable, common relay that permits Kind 4 DMs. Mobile network instability can make relay connections less reliable.
+
+2.  **Mobile Signer Status (NIP-46):**
+    *   Is the mobile signer app (e.g., Amber, Nostr Wallet Connect) still running in the foreground or background? Mobile OS can aggressively close apps.
+    *   Did the connection between Klunkstr and the signer app time out or get closed by the OS? Check the console for NIP-46 related errors (`NostrConnectSignerWrapper` logs, connection closed messages).
+    *   Try keeping the signer app active in the foreground when sending the DM.
+
+3.  **Detailed Mobile Console Logs:**
+    *   When sending a challenge/acceptance from mobile, look closely at the console logs *immediately following* the "Manual NIP-04 encryption... successful" message.
+    *   Are there any errors related to `event.publish()`, the specific signer (`NostrConnectSignerWrapper`), or WebSocket communication right after attempting to publish? NDK's publish is often fire-and-forget, but errors might still surface.
+
+4.  **Verify Event on Relays:**
+    *   After the mobile app logs that the challenge/acceptance was sent, copy the logged `nevent` ID.
+    *   Use an external Nostr client or block explorer (like `astral.ninja`, `nostree.me`, `nos.social`) to search for that specific `nevent` ID on the relays you have configured in Klunkstr.
+    *   Does the event appear on *any* of the relays shortly after sending? If not, the publish definitely failed. If it appears on some but not others, it indicates relay propagation issues.
+
+5.  **Signer Comparison (If Possible):**
+    *   If you can use a NIP-07 extension in your mobile browser, try logging in via NIP-07 on mobile and sending a challenge. Does it arrive? This helps isolate if the problem is specific to the NIP-46 signing path on mobile.
