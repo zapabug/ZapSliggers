@@ -3,6 +3,7 @@ import GameRenderer, { GameRendererRef } from '../game/GameRenderer';
 import ActionButtons, { AbilityType } from '../ui_overlays/ActionButtons';
 // import PlayerInfo from '../ui_overlays/PlayerInfo'; // REMOVE: Assuming a PlayerInfo component
 import { useGameInitialization } from '../../hooks/useGameInitialization'; // ADD: Import hook, REMOVE: InitialGamePositions
+import { ProjectilePathData } from '../../types/game'; // ADD: Import type
 
 // --- Roman Numeral Conversion (Keep) ---
 const toRoman = (num: number): string => {
@@ -201,7 +202,6 @@ const GameScreen: React.FC = () => {
         // Perform all state resets
         setPlayerHp([INITIAL_HP, INITIAL_HP]);
         setRoundUsedAbilities([new Set(), new Set()]);
-        gameRendererRef.current?.resetGame(); // Reset physics/map layout
         setCurrentPlayerIndex(0);
         setSelectedAbility(null);
         setCurrentPower(1.0);
@@ -212,6 +212,13 @@ const GameScreen: React.FC = () => {
         console.log(`[GameScreen Effect] State reset complete. Switching gameState to playing.`);
     }
   }, [gameState]);
+
+  // --- ADD: Placeholder for projectile resolution handler ---
+  const handleProjectileResolved = useCallback((path: ProjectilePathData, firedByPlayerIndex: 0 | 1) => {
+    // TODO: Implement logic to use this path data later for synchronization or other features.
+    console.log(`[GameScreen] Projectile from Player ${firedByPlayerIndex + 1} resolved. Path length: ${path.length}`);
+  }, []);
+  // --- END ADD ---
 
   // --- Render Logic --- //
   const renderContent = () => {
@@ -278,6 +285,7 @@ const GameScreen: React.FC = () => {
           ref={gameRendererRef} 
           levelData={levelData}
           onPlayerHit={handlePlayerHit} 
+          onProjectileResolved={handleProjectileResolved}
         />
       ) : (
         <div>Loading Level...</div>

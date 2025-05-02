@@ -56,6 +56,17 @@ interface ChallengeHandlerProps {
     setRecipientNpubOrHex: (value: string) => void;
 }
 
+// --- Constants ---
+const CHALLENGE_EXPIRY_MS = 3 * 60 * 1000;
+const LOCALSTORAGE_KEY = 'klunkstr_active_sent_challenge';
+
+// --- Type for stored challenge data ---
+interface StoredChallenge {
+    opponentPubkey: string;
+    eventId: string;
+    timestamp: number; // Timestamp when challenge was sent
+}
+
 export function ChallengeHandler({
     loggedInPubkey,
     ndk,
@@ -64,23 +75,98 @@ export function ChallengeHandler({
     setRecipientNpubOrHex
 }: ChallengeHandlerProps) {
     const [error, setError] = useState<string | null>(null);
-    const [activeSentChallenge, setActiveSentChallenge] = useState<{ opponentPubkey: string, eventId: string } | null>(null);
+    const [activeSentChallenge, setActiveSentChallenge] = useState<StoredChallenge | null>(null); // Use StoredChallenge type
     const [activeReceivedChallenge, setActiveReceivedChallenge] = useState<{ challengerPubkey: string, eventId: string } | null>(null);
     const sentChallengeTimeoutRef = React.useRef<number | null>(null);
     const receivedChallengeTimeoutRef = React.useRef<number | null>(null);
     const subscriptionRef = useRef<NDKSubscription | null>(null);
+    const activeSentChallengeRef = useRef(activeSentChallenge); // ADD: Ref for timeout check
 
-    const clearTimeouts = useCallback(() => {
+    // ADD: Effect to keep ref updated
+    useEffect(() => {
+        activeSentChallengeRef.current = activeSentChallenge;
+    }, [activeSentChallenge]);
+
+    const clearSentChallengeState = useCallback(() => {
         if (sentChallengeTimeoutRef.current) {
             clearTimeout(sentChallengeTimeoutRef.current);
             sentChallengeTimeoutRef.current = null;
         }
+        setActiveSentChallenge(null);
+        try {
+            localStorage.removeItem(LOCALSTORAGE_KEY);
+        } catch (e) {
+            console.error("[ChallengeHandler] Failed to remove item from localStorage:", e);
+        }
+    }, []);
+
+    const clearReceivedChallengeState = useCallback(() => {
         if (receivedChallengeTimeoutRef.current) {
             clearTimeout(receivedChallengeTimeoutRef.current);
             receivedChallengeTimeoutRef.current = null;
         }
+        setActiveReceivedChallenge(null);
     }, []);
 
+    const clearTimeouts = useCallback(() => {
+        // Only clear refs, state/localStorage handled by specific clear functions
+        if (sentChallengeTimeoutRef.current) clearTimeout(sentChallengeTimeoutRef.current);
+        if (receivedChallengeTimeoutRef.current) clearTimeout(receivedChallengeTimeoutRef.current);
+        sentChallengeTimeoutRef.current = null;
+        receivedChallengeTimeoutRef.current = null;
+    }, []);
+
+    // --- Effect to Load Pending Challenge on Mount ---
+    useEffect(() => {
+        console.log("[ChallengeHandler] Mount Effect: Checking for pending sent challenge...");
+        let restoredChallenge: StoredChallenge | null = null;
+        try {
+            const storedData = localStorage.getItem(LOCALSTORAGE_KEY);
+            console.log(`[ChallengeHandler] Raw data from localStorage for ${LOCALSTORAGE_KEY}:`, storedData);
+            if (storedData) {
+                const challenge: StoredChallenge = JSON.parse(storedData);
+                console.log("[ChallengeHandler] Parsed challenge data:", challenge);
+                // Basic validation
+                if (challenge && challenge.opponentPubkey && challenge.eventId && challenge.timestamp) {
+                    const timeElapsed = Date.now() - challenge.timestamp;
+                     console.log(`[ChallengeHandler] Time elapsed since challenge sent: ${timeElapsed}ms`);
+                    if (timeElapsed < CHALLENGE_EXPIRY_MS) {
+                        const remainingTime = CHALLENGE_EXPIRY_MS - timeElapsed;
+                        console.log(`[ChallengeHandler] Found VALID pending challenge ${challenge.eventId}. Restoring with ${remainingTime.toFixed(0)}ms remaining.`);
+                        // setActiveSentChallenge(challenge); // Defer setting state
+                        restoredChallenge = challenge;
+
+                        // Restart expiry timer
+                        sentChallengeTimeoutRef.current = setTimeout(() => {
+                            console.log(`[ChallengeHandler] Restored sent challenge ${challenge.eventId} expired.`);
+                            clearSentChallengeState();
+                        }, remainingTime);
+                    } else {
+                        console.log(`[ChallengeHandler] Found EXPIRED pending challenge ${challenge.eventId}. Clearing storage.`);
+                        localStorage.removeItem(LOCALSTORAGE_KEY);
+                    }
+                } else {
+                     console.warn("[ChallengeHandler] Invalid data structure found in localStorage. Clearing.", challenge);
+                     localStorage.removeItem(LOCALSTORAGE_KEY);
+                }
+            } else {
+                 console.log("[ChallengeHandler] No pending challenge data found in localStorage.");
+            }
+        } catch (e) {
+            console.error("[ChallengeHandler] Failed to load or parse challenge from localStorage:", e);
+            localStorage.removeItem(LOCALSTORAGE_KEY); // Clear potentially corrupt data
+        }
+
+        // Set state outside the main try-catch, only if a valid challenge was found
+        if (restoredChallenge) {
+            setActiveSentChallenge(restoredChallenge);
+             console.log("[ChallengeHandler] Restored challenge state set.");
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // Run only on mount
+    // --- END Load Effect ---
+
+    // WRAP handleDMEvent in useCallback
     const handleDMEvent = useCallback(async (event: NDKEvent) => {
         if (!loggedInPubkey || event.pubkey === loggedInPubkey) return;
 
@@ -142,10 +228,9 @@ export function ChallengeHandler({
                 const isAcceptMessage = (payload && payload.type === 'accept') || content.toLowerCase() === 'accept';
                 if (isAcceptMessage) {
                     console.log(`[ChallengeHandler] Received ACCEPTANCE ${event.encode()} for our challenge ${currentActiveSentChallenge.eventId} from ${event.pubkey}`);
-                    clearTimeouts();
                     const opponentPubkey = currentActiveSentChallenge.opponentPubkey;
                     const matchIdentifier = currentActiveSentChallenge.eventId;
-                    setActiveSentChallenge(null);
+                    clearSentChallengeState(); // Clear state AND localStorage
                     onChallengeAccepted(opponentPubkey, matchIdentifier);
                     return;
                 }
@@ -155,16 +240,17 @@ export function ChallengeHandler({
             if (isChallengeMessage && !challengeTag) {
                 if (!currentActiveSentChallenge && !currentActiveReceivedChallenge) {
                     console.log(`[ChallengeHandler] Received new CHALLENGE ${event.encode()} from ${event.pubkey}`);
-                    if (receivedChallengeTimeoutRef.current) clearTimeout(receivedChallengeTimeoutRef.current);
+                    clearReceivedChallengeState(); // Clear any lingering received timeout
 
                     const newReceivedChallenge = { challengerPubkey: event.pubkey, eventId: event.encode() };
                     setActiveReceivedChallenge(newReceivedChallenge);
 
                     receivedChallengeTimeoutRef.current = setTimeout(() => {
                         console.log(`[ChallengeHandler] Incoming challenge ${event.encode()} expired.`);
+                        // Only clear if it's still the active one
                         setActiveReceivedChallenge(current => (current?.eventId === newReceivedChallenge.eventId ? null : current));
                         receivedChallengeTimeoutRef.current = null;
-                    }, 3 * 60 * 1000);
+                    }, CHALLENGE_EXPIRY_MS);
                 } else {
                     console.log(`[ChallengeHandler] Ignoring new challenge ${event.encode()} while already in an active challenge state.`);
                 }
@@ -174,12 +260,23 @@ export function ChallengeHandler({
         } catch (err) {
             console.error(`[ChallengeHandler] Failed to process DM ${event.encode()}:`, err);
         }
-    }, [ndk, loggedInPubkey, clearTimeouts, onChallengeAccepted, activeSentChallenge, activeReceivedChallenge]);
+    }, [
+        // Add ALL dependencies read inside handleDMEvent
+        loggedInPubkey,
+        ndk,
+        activeSentChallenge,
+        activeReceivedChallenge,
+        clearSentChallengeState,
+        onChallengeAccepted,
+        clearReceivedChallengeState // Added missing dependency
+    ]);
 
+    // WRAP handleEose in useCallback (even though it does nothing now, good practice)
     const handleEose = useCallback(() => {
          // console.log('[ChallengeHandler] DM subscription EOSE received.');
     }, []);
 
+    // Now subscribeToDMs should be stable if its dependencies are stable
     const subscribeToDMs = useCallback(() => {
         if (!loggedInPubkey || !ndk) return null;
 
@@ -202,35 +299,30 @@ export function ChallengeHandler({
         subscriptionRef.current = newSub;
         return newSub;
 
-    }, [ndk, loggedInPubkey, handleDMEvent, handleEose]);
+    }, [ndk, loggedInPubkey, handleDMEvent, handleEose]); // Dependencies are now stable callbacks
 
+    // --- Main Subscription Effect ---
     useEffect(() => {
         console.log("[ChallengeHandler] Main Effect: Setting up initial DM subscription.");
-        subscribeToDMs();
+        subscribeToDMs(); // Call subscribe, it handles the ref internally
 
         return () => {
-            console.log('[ChallengeHandler] Main Effect Cleanup: Stopping final DM subscription.');
-            subscriptionRef.current?.stop();
+            console.log('[ChallengeHandler] Main Effect Cleanup: Stopping final DM subscription and clearing state.');
+            subscriptionRef.current?.stop(); // Stop the ref'd subscription on unmount
             subscriptionRef.current = null;
-            clearTimeouts();
+            clearSentChallengeState();
+            clearReceivedChallengeState();
         };
-    }, [loggedInPubkey, subscribeToDMs, clearTimeouts]);
+    // Dependencies now include stable callbacks
+    // We trigger via subscribeToDMs callback identity if needed, but mainly via loggedInPubkey change
+    }, [loggedInPubkey, subscribeToDMs, clearSentChallengeState, clearReceivedChallengeState]);
+    // --- End Main Subscription Effect ---
 
-    useEffect(() => {
-        if (!loggedInPubkey) return;
-
-        console.log("[ChallengeHandler] Interval Effect: Setting up periodic refresh (30s).");
-        const intervalId = setInterval(() => {
-            console.log("[ChallengeHandler] Interval: Refreshing DM subscription...");
-            subscribeToDMs();
-        }, 30000);
-
-        return () => {
-            console.log("[ChallengeHandler] Interval Effect Cleanup: Clearing interval.");
-            clearInterval(intervalId);
-        };
-
-    }, [loggedInPubkey, subscribeToDMs]);
+    // Restore Manual Refresh Handler and related useEffect
+    const handleManualRefresh = useCallback(() => {
+        console.log("[ChallengeHandler] Manual refresh triggered.");
+        subscribeToDMs(); // Re-subscribe (stops previous sub inside)
+    }, [subscribeToDMs]);
 
     const handleSendChallenge = useCallback(async () => {
         const currentSigner = ndk?.signer;
@@ -284,24 +376,60 @@ export function ChallengeHandler({
 
             await event.publish();
             const sentEventId = event.encode();
+            const sentTimestamp = Date.now();
 
             console.log(`Challenge sent to ${recipientHexPubkey}, event ID: ${sentEventId}`);
-            const newChallenge = { opponentPubkey: recipientHexPubkey, eventId: sentEventId };
+            const newChallenge: StoredChallenge = { // Use StoredChallenge type
+                 opponentPubkey: recipientHexPubkey,
+                 eventId: sentEventId,
+                 timestamp: sentTimestamp
+            };
+
+            // Clear any previous state *before* setting new state
+            clearSentChallengeState();
+            clearReceivedChallengeState();
+
             setActiveSentChallenge(newChallenge);
             setRecipientNpubOrHex('');
 
+            // --- Save to localStorage ---
+            try {
+                localStorage.setItem(LOCALSTORAGE_KEY, JSON.stringify(newChallenge));
+                 console.log(`[ChallengeHandler] Saved challenge ${sentEventId} to localStorage.`);
+            } catch (e) {
+                console.error("[ChallengeHandler] Failed to save challenge to localStorage:", e);
+                // Don't necessarily error out the whole process, but log it.
+            }
+            // --- End Save ---
+
+            // --- Start expiry timer ---
             sentChallengeTimeoutRef.current = setTimeout(() => {
                 console.log(`[ChallengeHandler] Sent challenge ${sentEventId} expired.`);
-                setActiveSentChallenge(current => (current?.eventId === sentEventId ? null : current));
+                // Check if the expiring challenge is still the active one before clearing state & localStorage
+                // Use the ref here to avoid dependency array issue
+                if (activeSentChallengeRef.current?.eventId === sentEventId) {
+                    clearSentChallengeState();
+                }
                 sentChallengeTimeoutRef.current = null;
-            }, 3 * 60 * 1000);
+            }, CHALLENGE_EXPIRY_MS);
 
         } catch (e) {
             console.error("Failed to send challenge:", e);
             setError(`Failed to send challenge: ${e instanceof Error ? e.message : String(e)}`);
-            setActiveSentChallenge(null);
+            clearSentChallengeState(); // Also clear potential localStorage if send fails partially
         }
-    }, [ndk, loggedInPubkey, recipientNpubOrHex, activeSentChallenge, activeReceivedChallenge, setRecipientNpubOrHex, clearTimeouts]);
+    }, [
+        ndk,
+        loggedInPubkey,
+        recipientNpubOrHex,
+        // activeSentChallenge, // REMOVE: No longer needed, use ref in timeout
+        // activeReceivedChallenge, // No longer needed directly, check before calling
+        setRecipientNpubOrHex,
+        // clearTimeouts, // Use specific clear functions now
+        clearSentChallengeState,
+        clearReceivedChallengeState,
+        // activeSentChallenge // FIX: Re-add activeSentChallenge as it IS read in the timeout callback -- REMOVE AGAIN
+    ]);
 
     const handleAcceptChallenge = useCallback(async () => {
         const currentSigner = ndk?.signer;
@@ -344,23 +472,23 @@ export function ChallengeHandler({
             const acceptanceEventId = event.encode();
             console.log(`Acceptance sent to ${challengerPubkey} for challenge ${originalChallengeId}. Acceptance event ID: ${acceptanceEventId}`);
 
-            clearTimeouts();
+            clearReceivedChallengeState(); // Clear received state AND timeout
             const matchIdentifier = originalChallengeId;
             const opponent = challengerPubkey;
-            setActiveReceivedChallenge(null);
             onChallengeAccepted(opponent, matchIdentifier);
 
         } catch (e) {
             console.error("Failed to send acceptance:", e);
             setError(`Failed to send acceptance: ${e instanceof Error ? e.message : String(e)}`);
         }
-    }, [ndk, loggedInPubkey, activeReceivedChallenge, onChallengeAccepted, clearTimeouts]);
+    }, [ndk, loggedInPubkey, activeReceivedChallenge, onChallengeAccepted, clearReceivedChallengeState]);
 
     const handleDismissChallenge = useCallback(() => {
+        if (!activeReceivedChallenge) return; // Prevent multiple calls
         console.log(`[ChallengeHandler] Dismissing incoming challenge: ${activeReceivedChallenge?.eventId}`);
-        clearTimeouts();
-        setActiveReceivedChallenge(null);
-    }, [activeReceivedChallenge, clearTimeouts]);
+        clearReceivedChallengeState();
+        // setActiveReceivedChallenge(null); // Done by clearReceivedChallengeState
+    }, [activeReceivedChallenge, clearReceivedChallengeState]);
 
     const canInteract = loggedInPubkey && !activeSentChallenge && !activeReceivedChallenge;
     const isWaitingForAcceptance = !!activeSentChallenge;
@@ -368,7 +496,18 @@ export function ChallengeHandler({
 
     return (
         <div className="p-4 border rounded border-gray-600">
-            <h2 className="text-xl font-semibold mb-3">Challenge a Player</h2>
+            {/* Restore Manual Refresh Button and surrounding div */}
+             <div className="flex justify-between items-center mb-3">
+                 <h2 className="text-xl font-semibold">Challenge a Player</h2>
+                 {loggedInPubkey && (
+                     <button
+                        onClick={handleManualRefresh}
+                        className="px-3 py-1 bg-gray-600 rounded hover:bg-gray-500 text-sm"
+                     >
+                         Refresh DMs
+                     </button>
+                 )}
+             </div>
 
             {canInteract && (
                 <div className="flex items-center space-x-2 mb-2">

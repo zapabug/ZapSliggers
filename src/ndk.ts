@@ -12,7 +12,7 @@ export const explicitRelayUrls = [
   'wss://relay.damus.io',
   'wss://nos.lol',
   'wss://relay.primal.net',
-  'wss://relay.nostrcheck.me',
+  `wss://nostr.mom`,
   // Add the game-specific community relay
   'wss://relay.degmods.com',
 ];
