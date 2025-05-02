@@ -48,6 +48,18 @@ export class NostrConnectSignerWrapper implements NDKSigner {
         return this._user.pubkey;
     }
 
+    // Expose nip04 from underlying signer
+    public get nip04() {
+        // Add null check for safety, though signer should be initialized in constructor
+        return this.signer?.nip04;
+    }
+
+    // Expose nip44 from underlying signer
+    public get nip44() {
+        // Add null check for safety
+        return this.signer?.nip44;
+    }
+
     constructor(options: NostrConnectWrapperOptions & { bunkerUri?: string }) {
         this.ndk = options.ndk;
         this.options = options;

@@ -32,4 +32,24 @@ These issues require installing the `nanoid` dependency and resolving the underl
 - **Unresolved Linter Error (as of wrapper creation):**
   - `Line 8: Cannot find module 'src/lib/applesauce-nip46/wrapper' or its corresponding type declarations.`
 
-This error persists despite the file `src/lib/applesauce-nip46/wrapper.ts` existing. It likely indicates an issue with TypeScript module resolution caching or configuration (`tsconfig.json`). Restarting the TypeScript server/IDE or verifying `tsconfig.json` settings is recommended. 
+This error persists despite the file `src/lib/applesauce-nip46/wrapper.ts` existing. It likely indicates an issue with TypeScript module resolution caching or configuration (`tsconfig.json`). Restarting the TypeScript server/IDE or verifying `tsconfig.json` settings is recommended.
+
+## `src/lib/applesauce-nip46/wrapper.ts`
+
+- **Resolved Issue:** Type errors occurred when attempting to directly access `nip04` or `nip44` properties on an instance of `NostrConnectSignerWrapper` (e.g., `wrapper.nip44.decrypt(...)`).
+- **Cause:** While the wrapper's internal `encrypt`/`decrypt` methods correctly delegated to the underlying `NostrConnectSigner`'s `nip04`/`nip44` methods, the wrapper class itself did not explicitly expose these `nip04` and `nip44` objects as public properties.
+- **Resolution:** Added public getters for `nip04` and `nip44` to the `NostrConnectSignerWrapper` class, which return the corresponding objects from the internal `this.signer` instance. This makes the properties available on the wrapper's type signature and allows direct use.
+
+```typescript
+// Added to NostrConnectSignerWrapper class:
+
+// Expose nip04 from underlying signer
+public get nip04() {
+    return this.signer?.nip04;
+}
+
+// Expose nip44 from underlying signer
+public get nip44() {
+    return this.signer?.nip44;
+}
+``` 

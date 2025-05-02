@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { nip19 } from 'nostr-tools';
 import NDK, { NDKEvent, NDKKind, NDKFilter, NDKSubscription, NDKUser } from '@nostr-dev-kit/ndk';
+import { NostrConnectSignerWrapper } from '../lib/applesauce-nip46/wrapper';
 
 interface ChallengePayload {
     type: 'challenge';
@@ -48,9 +49,21 @@ export function ChallengeHandler({
             if (event.pubkey === loggedInPubkey) return;
 
             console.log('[ChallengeHandler] Received potential DM event:', event.encode());
+            console.log('[ChallengeHandler] Incoming DM event content:', event.content);
             try {
-                await event.decrypt();
-                const content = event.content.trim();
+                // Manual Decryption Attempt using NIP-44 via signer
+                const nip46Signer = ndk.signer as NostrConnectSignerWrapper;
+
+                if (!nip46Signer?.nip44?.decrypt) {
+                    throw new Error("Signer does not support NIP-44 decryption.");
+                }
+                console.log(`[ChallengeHandler] Attempting manual NIP-44 decrypt with signer for sender ${event.pubkey}`);
+                // NIP-44 decrypt requires the *other* party's pubkey
+                const decryptedContent = await nip46Signer.nip44.decrypt(event.pubkey, event.content);
+                console.log("[ChallengeHandler] Manual NIP-44 decryption successful.");
+
+                // Use the manually decrypted content
+                const content = decryptedContent.trim();
                 let payload: ChallengePayload | AcceptPayload | null = null;
                 try { payload = JSON.parse(content); } catch { /* Ignore if not JSON */ }
 
@@ -80,7 +93,8 @@ export function ChallengeHandler({
                 }
 
             } catch (err) {
-                console.error(`[ChallengeHandler] Failed to process DM ${event.encode()}:`, err);
+                // Update error context
+                console.error(`[ChallengeHandler] Failed to process DM ${event.encode()} (manual decrypt attempt):`, err);
             }
         });
 
@@ -136,6 +150,16 @@ export function ChallengeHandler({
                  console.warn("Could not immediately get recipient user object, proceeding with hexpubkey.");
              }
 
+            console.log('[ChallengeHandler] Recipient NDKUser object:', recipientUser);
+            try {
+                if (ndk?.signer) {
+                    console.log('[ChallengeHandler] Checking ndk.signer.pubkey synchronously:', ndk.signer.pubkey);
+                } else {
+                    console.warn('[ChallengeHandler] ndk.signer is undefined when checking pubkey (send challenge).');
+                }
+            } catch (e) {
+                console.error('[ChallengeHandler] Error accessing ndk.signer.pubkey:', e);
+            }
             await event.encrypt(recipientUser);
             await event.publish();
             const sentEventId = event.encode();
@@ -172,6 +196,16 @@ export function ChallengeHandler({
 
             const challengerUser = ndk.getUser({ hexpubkey: challengerPubkey });
 
+            console.log('[ChallengeHandler] Challenger NDKUser object:', challengerUser);
+            try {
+                if (ndk?.signer) {
+                    console.log('[ChallengeHandler] Checking ndk.signer.pubkey synchronously:', ndk.signer.pubkey);
+                } else {
+                    console.warn('[ChallengeHandler] ndk.signer is undefined when checking pubkey (accept challenge).');
+                }
+            } catch (e) {
+                console.error('[ChallengeHandler] Error accessing ndk.signer.pubkey:', e);
+            }
             await event.encrypt(challengerUser);
             await event.publish();
             const acceptanceEventId = event.encode();
