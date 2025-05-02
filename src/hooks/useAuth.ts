@@ -298,6 +298,7 @@ export const useAuth = (): UseAuthReturn => {
             // 2. Generate the nostrconnect URI
             const metadata = { name: "Klunkstr" }; // Basic metadata
             const authUrl = tempSigner.getNostrConnectURI(metadata);
+            console.log(`[useAuth QR Flow] Generated authUrl: ${authUrl}, Type: ${typeof authUrl}`);
             setNip46AuthUrl(authUrl);
             console.log("[useAuth] Generated NIP-46 Auth URL for QR code.");
             // Status is already 'waiting_for_scan'

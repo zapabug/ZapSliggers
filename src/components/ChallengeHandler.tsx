@@ -81,11 +81,17 @@ export function ChallengeHandler({
     const receivedChallengeTimeoutRef = React.useRef<number | null>(null);
     const subscriptionRef = useRef<NDKSubscription | null>(null);
     const activeSentChallengeRef = useRef(activeSentChallenge); // ADD: Ref for timeout check
+    const activeReceivedChallengeRef = useRef(activeReceivedChallenge); // <-- ADD Ref
 
     // ADD: Effect to keep ref updated
     useEffect(() => {
         activeSentChallengeRef.current = activeSentChallenge;
     }, [activeSentChallenge]);
+
+    // <-- ADD Effect to keep received challenge ref updated
+    useEffect(() => {
+        activeReceivedChallengeRef.current = activeReceivedChallenge;
+    }, [activeReceivedChallenge]);
 
     const clearSentChallengeState = useCallback(() => {
         if (sentChallengeTimeoutRef.current) {
@@ -220,9 +226,11 @@ export function ChallengeHandler({
             try { payload = JSON.parse(content); } catch { /* Ignore if not JSON */ }
 
             const challengeTag = event.tags.find(t => t[0] === 't');
+            console.log(`[ChallengeHandler] DM Event ${event.encode()} Tags:`, JSON.stringify(event.tags), "Found t-tag:", challengeTag);
 
-            const currentActiveSentChallenge = activeSentChallenge;
-            const currentActiveReceivedChallenge = activeReceivedChallenge;
+            // <-- Use refs instead of state variables here
+            const currentActiveSentChallenge = activeSentChallengeRef.current;
+            const currentActiveReceivedChallenge = activeReceivedChallengeRef.current;
 
             if (currentActiveSentChallenge && event.pubkey === currentActiveSentChallenge.opponentPubkey && challengeTag && challengeTag[1] === currentActiveSentChallenge.eventId) {
                 const isAcceptMessage = (payload && payload.type === 'accept') || content.toLowerCase() === 'accept';
@@ -238,6 +246,7 @@ export function ChallengeHandler({
 
             const isChallengeMessage = (payload && payload.type === 'challenge') || content.toLowerCase() === 'challenge';
             if (isChallengeMessage && !challengeTag) {
+                // <-- Use ref here
                 if (!currentActiveSentChallenge && !currentActiveReceivedChallenge) {
                     console.log(`[ChallengeHandler] Received new CHALLENGE ${event.encode()} from ${event.pubkey}`);
                     clearReceivedChallengeState(); // Clear any lingering received timeout
@@ -252,7 +261,8 @@ export function ChallengeHandler({
                         receivedChallengeTimeoutRef.current = null;
                     }, CHALLENGE_EXPIRY_MS);
                 } else {
-                    console.log(`[ChallengeHandler] Ignoring new challenge ${event.encode()} while already in an active challenge state.`);
+                     // <-- Use ref here (optional, for logging consistency)
+                    console.log(`[ChallengeHandler] Ignoring new challenge ${event.encode()} while already in an active challenge state (Sent: ${!!currentActiveSentChallenge}, Received: ${!!currentActiveReceivedChallenge}).`);
                 }
                 return;
             }
@@ -264,11 +274,11 @@ export function ChallengeHandler({
         // Add ALL dependencies read inside handleDMEvent
         loggedInPubkey,
         ndk,
-        activeSentChallenge,
-        activeReceivedChallenge,
-        clearSentChallengeState,
-        onChallengeAccepted,
-        clearReceivedChallengeState // Added missing dependency
+        // activeSentChallenge, // REMOVE
+        // activeReceivedChallenge, // REMOVE
+        clearSentChallengeState, // Keep (stable callback)
+        onChallengeAccepted,     // Keep (prop)
+        clearReceivedChallengeState // Keep (stable callback)
     ]);
 
     // WRAP handleEose in useCallback (even though it does nothing now, good practice)
@@ -279,6 +289,7 @@ export function ChallengeHandler({
     // Now subscribeToDMs should be stable if its dependencies are stable
     const subscribeToDMs = useCallback(() => {
         if (!loggedInPubkey || !ndk) return null;
+        console.log("[ChallengeHandler][subscribeToDMs] CALLED. loggedInPubkey:", loggedInPubkey);
 
         subscriptionRef.current?.stop();
         console.log('[ChallengeHandler] Stopping previous DM subscription (if any).');
@@ -303,16 +314,18 @@ export function ChallengeHandler({
 
     // --- Main Subscription Effect ---
     useEffect(() => {
-        console.log("[ChallengeHandler] Main Effect: Setting up initial DM subscription.");
+        console.log("[ChallengeHandler][Main Effect RUNNING] loggedInPubkey:", loggedInPubkey, "subscribeToDMs changed:", subscribeToDMs !== subscriptionRef.current?.on);
         subscribeToDMs(); // Call subscribe, it handles the ref internally
 
-        return () => {
+        const cleanup = () => {
             console.log('[ChallengeHandler] Main Effect Cleanup: Stopping final DM subscription and clearing state.');
             subscriptionRef.current?.stop(); // Stop the ref'd subscription on unmount
             subscriptionRef.current = null;
             clearSentChallengeState();
             clearReceivedChallengeState();
         };
+
+        return cleanup;
     // Dependencies now include stable callbacks
     // We trigger via subscribeToDMs callback identity if needed, but mainly via loggedInPubkey change
     }, [loggedInPubkey, subscribeToDMs, clearSentChallengeState, clearReceivedChallengeState]);
