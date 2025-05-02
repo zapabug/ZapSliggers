@@ -163,17 +163,8 @@ function App() {
     if (currentView === 'login') {
         // --- NIP-46 Flow States ---
 
-        // NIP-46 Connecting state (After scan approval)
-        if (loginMethod === 'nip46' && nip46Status === 'connecting') {
-            return (
-                <div className="w-full h-full flex flex-col items-center justify-center p-4">
-                    <p className="text-xl text-gray-400">Connecting via NIP-46...</p>
-                    {authError && <p className="text-red-500 text-xs mt-2">{authError.message}</p>}
-                </div>
-            );
-        }
         // NIP-46 QR Code / Waiting state (After clicking 'Connect with Mobile')
-        else if (loginMethod === 'nip46' && nip46Status === 'waiting' && nip46AuthUrl) {
+        if (loginMethod === 'nip46' && nip46Status === 'requesting' && nip46AuthUrl) {
              return (
                 // Center content, add padding for mobile
                 <div className="w-full h-full flex flex-col items-center justify-center p-4 sm:p-6 text-center">
@@ -239,8 +230,9 @@ function App() {
                         </p>
                         <button 
                             // Directly initiate flow, passing empty string to signal QR generation (assumption)
-                            onClick={() => initiateNip46Login('')} 
-                            disabled={nip46Status === 'connecting' || nip46Status === 'waiting'} 
+                            onClick={() => initiateNip46Login(/* Intentionally empty to use default/no specific bunker */)} 
+                            // Disable button while requesting connection
+                            disabled={nip46Status === 'requesting'} 
                             className="w-full px-4 sm:px-6 py-2 sm:py-3 rounded font-semibold text-white transition-colors bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 text-sm sm:text-base" /* Adjusted padding/text */
                         >
                             Connect with Mobile App (NIP-46)

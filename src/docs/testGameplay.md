@@ -25,16 +25,18 @@ This document describes how to test the current, simplified multiplayer function
     *   User 2 clicks the "Accept Challenge" button.
 5.  **Transition to Game:**
     *   **Both** User 1 and User 2 should automatically transition from the `LobbyScreen` to the `GameScreen`.
-6.  **Verify Local Control:**
+6.  **Verify Control & Basic Sync:**
     *   Observe the ship colors/positions. Based on the `useGameLogic` implementation (sorting pubkeys), the user whose pubkey comes first alphabetically will be Player 0 (typically Blue, left side), and the other will be Player 1 (typically Red, right side).
-    *   **User 1:** Use the keyboard controls (arrows, spacebar, number keys for abilities) or UI elements. Verify that only the ship assigned to Player 0 responds to User 1's input.
-    *   **User 2:** Use the keyboard controls or UI elements. Verify that only the ship assigned to Player 1 responds to User 2's input.
+    *   **User 1:** Use the keyboard controls (**Left/Right arrows for aim angle, Up/Down arrows for power**, spacebar for fire, number keys for abilities) or UI elements. Verify that only the ship assigned to Player 0 responds to User 1's *aiming* input.
+    *   **User 2:** Use the keyboard controls or UI elements. Verify that only the ship assigned to Player 1 responds to User 2's *aiming* input.
+    *   **User 1 Fires:** User 1 uses the spacebar or Fire button. Verify the projectile appears on **both** User 1's and User 2's screens. Verify HP cost is deducted locally if an ability was used.
+    *   **User 2 Fires:** User 2 uses the spacebar or Fire button. Verify the projectile appears on **both** User 2's and User 1's screens. Verify HP cost is deducted locally if an ability was used.
     *   Check that the `ActionButtons` UI (HP cost, ability availability) reflects the state of the locally controlled ship.
 
 **Expected Outcome & Known Limitations:**
 
-*   **Success:** Both players transition to the game screen, and each player can independently aim and fire *their own* assigned ship using local controls.
-*   **Limitation (No Network Sync):** Shots fired by User 1 will *only* appear and interact with the simulation on User 1's screen. Shots fired by User 2 will *only* appear and interact on User 2's screen. There is **no synchronization** of projectiles or game state between the two clients at this stage.
+*   **Success:** Both players transition to the game screen. Each player can independently aim *their own* assigned ship using local controls. When a player fires, the projectile appears on **both** clients due to basic Nostr event synchronization (`kind:30079`), and ability costs are deducted locally.
+*   **Limitation (Partial Network Sync):** While fire actions are synchronized, the *results* of those actions (projectile movement, collisions, damage, win conditions) are still simulated **independently** on each client. A hit on User 1's screen will not register on User 2's screen.
 *   **Limitation (Local Win Condition):** Hitting the opponent ship *in your local simulation* will trigger the win condition callback (`onGameEnd`) locally, likely returning you to the menu. This won't affect the other player's screen.
 
-This test confirms the Nostr challenge flow and the basic mapping of local controls to the correct player ship within the `GameScreen` using the `useGameLogic` hook in `'multiplayer'` mode.
+This test confirms the Nostr challenge flow, the mapping of local controls, and the basic **network synchronization of fire actions** within the `GameScreen` using the `useGameLogic` hook in `'multiplayer'` mode.

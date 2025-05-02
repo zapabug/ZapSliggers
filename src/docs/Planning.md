@@ -195,3 +195,22 @@
 **VibeStorm Response:** Acknowledged current status. Confirmed plan to update documentation (`Build.md`, `Gameplay.md`, `Planning.md`, `roadmap.md`) to reflect the implemented Klunkstr core, remove replica-phase language, and highlight the shift in focus towards Nostr features and testing.
 **Decisions:** Documentation updated to represent the current state where local Klunkstr mechanics are implemented. Focus shifted to integrating Nostr (login testing, matchmaking flow, turn sync) and payments (NUT-18 backend).
 **Steps Explained:** Outlined the documentation update process across all relevant files.
+
+## Interaction 24: Basic Network Sync & Control Update (Current Date Placeholder)
+**User Input:** Implement basic multiplayer sync based on `testGameplay.md`, swap keyboard controls, fix practice mode inversion.
+**VibeStorm Response:** 
+    1. Modified `useGameLogic.ts`:
+        - Added `ndk`, `matchId` props.
+        - Changed `handleFire` in multiplayer to publish a `kind:30079` event with aim/ability data, tagged with `matchId` and opponent `pubkey`.
+        - Implemented optimistic local firing and state updates.
+        - Added `useSubscribe` (`ndk-hooks`) to listen for opponent's `kind:30079` events.
+        - Added effect to process received opponent fire events, call `fireProjectile`, and update opponent state.
+    2. Modified `GameScreen.tsx`:
+        - Passed `ndk` and `matchId` to `useGameLogic`.
+        - Updated `handleKeyDown` to swap controls (Left/Right for angle, Up/Down for power).
+    3. Modified `PracticeScreen.tsx`:
+        - Updated `handleKeyDown` to swap controls.
+        - Added logic to invert angle controls (`Left`/`Right`) when `currentPlayerIndex === 1`.
+        - Added `currentPlayerIndex` to `useEffect` dependencies.
+**Decisions:** Basic fire action synchronization implemented using Nostr `kind:30079` events. Keyboard controls updated (Angle=LR, Power=UD). Player 2 practice mode aim inversion fixed.
+**Steps Explained:** Detailed modifications to `useGameLogic`, `GameScreen`, and `PracticeScreen` to implement event publishing/subscription and update keyboard handlers. Updated documentation (`testGameplay.md`, `Gameplay.md`, `Build.md`) to reflect new sync status and controls.

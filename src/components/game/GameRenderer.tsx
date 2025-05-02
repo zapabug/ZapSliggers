@@ -6,6 +6,7 @@ import { InitialGamePositions } from '../../hooks/useGameInitialization'; // Kee
 import { AbilityType } from '../ui_overlays/ActionButtons';
 import { useMatterPhysics, MatterPhysicsHandles } from '../../hooks/useMatterPhysics';
 import { useDynamicViewport } from '../../hooks/useDynamicViewport';
+import { ProjectilePathData } from '../../types/game'; // Import path type
 
 // Removed unused Matter destructuring
 
@@ -21,6 +22,7 @@ const PLANET_MIN_RADIUS = 40; // Needed for drawing fallback
 interface GameRendererProps {
   levelData: InitialGamePositions;
   onPlayerHit: (hitPlayerIndex: 0 | 1, firingPlayerIndex: 0 | 1, projectileType: AbilityType | 'standard') => void; // Updated signature
+  onProjectileResolved: (path: ProjectilePathData, firedByPlayerIndex: 0 | 1) => void;
 }
 
 // Define the interface for the methods exposed via the ref
@@ -100,7 +102,7 @@ const drawHistoricalTrace = (ctx: CanvasRenderingContext2D, trace: Matter.Vector
 };
 
 // --- GameRenderer Component ---
-const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>(({ levelData, onPlayerHit }: GameRendererProps, ref: ForwardedRef<GameRendererRef>) => {
+const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>(({ levelData, onPlayerHit, onProjectileResolved }: GameRendererProps, ref: ForwardedRef<GameRendererRef>) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
@@ -109,7 +111,7 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>(({ levelData
 
   // --- Hooks ---
   const tracers = useShotTracers(); // Get the full object
-  const { lastShotTraces } = tracers; // Only destructure lastShotTraces
+  const { lastShotTraces, getLastCompletedPath, addOpponentTrace } = tracers; // Destructure needed functions
 
   // --- Memoize the handlers object to pass to useMatterPhysics ---
   const shotTracerHandlers = useMemo(() => ({
@@ -126,6 +128,7 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>(({ levelData
     virtualHeight: VIRTUAL_HEIGHT,
     onPlayerHit,
     shotTracerHandlers, // Pass the memoized object
+    onProjectileResolved, // Pass the new callback down
   });
   physicsRef.current = physics; // Keep ref updated for imperative handle
 

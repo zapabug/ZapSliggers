@@ -71,6 +71,7 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
         handleFire,
         handleSelectAbility,
         handlePlayerHit,
+        handleProjectileResolved
     } = useGameLogic({
         mode: 'practice', 
         localPlayerPubkey: currentUser.pubkey,
@@ -192,8 +193,9 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
                     {levelData && (
                         <GameRenderer
                             ref={gameRendererRef}
-                            levelData={levelData} // Use level data from hook
-                            onPlayerHit={handlePlayerHit} // Use hit handler from hook
+                            levelData={levelData}
+                            onPlayerHit={handlePlayerHit}
+                            onProjectileResolved={handleProjectileResolved}
                         />
                     )}
                 </div>

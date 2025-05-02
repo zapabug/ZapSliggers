@@ -1,32 +1,24 @@
 'use strict';
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { GameRendererRef } from '../components/game/GameRenderer'; // Adjust path if needed
 import { AbilityType } from '../components/ui_overlays/ActionButtons'; // Adjust path if needed
 import { InitialGamePositions, generateInitialPositions } from './useGameInitialization'; // Assuming this is in the same hooks folder
 import NDK, { NDKEvent, NDKFilter, NDKKind } from '@nostr-dev-kit/ndk'; 
 import { useSubscribe } from '@nostr-dev-kit/ndk-hooks'; 
+import {
+    PlayerState,
+    FireActionEvent,
+    ShotResolvedEvent,
+    GameNostrEventContent,
+    ProjectilePathData
+} from '../types/game';
+import { useShotTracers } from './useShotTracers'; // Import useShotTracers
 
 // Constants can be defined here or passed as props
 const MAX_HP = 100;
 const ABILITY_COST = 25;
 const MAX_ABILITY_USES = 3;
 export const MAX_ROUNDS = 3; // Re-add export
-
-// Define the structure for game action events
-interface GameActionEvent {
-    type: 'fire';
-    aim: { angle: number; power: number };
-    ability: AbilityType | null;
-    // Add sender pubkey to verify source
-    senderPubkey: string; 
-}
-
-// Player State structure
-export interface PlayerState {
-    hp: number;
-    usedAbilities: Set<AbilityType>;
-    isVulnerable: boolean;
-}
 
 // Input Props for the hook
 export interface UseGameLogicProps {
@@ -48,13 +40,15 @@ export interface UseGameLogicReturn {
     currentAim: { angle: number; power: number };
     selectedAbility: AbilityType | null;
     levelData: InitialGamePositions;
-    score: [number, number]; // Re-add score
-    currentRound: number; // Re-add current round
+    score: [number, number];
+    currentRound: number;
     handleAimChange: (aim: { angle: number; power: number }) => void;
     handleFire: () => void;
     handleSelectAbility: (abilityType: AbilityType) => void;
+    myPlayerIndex: 0 | 1;
+    // Expose the internal callbacks needed by GameRenderer
     handlePlayerHit: (hitPlayerIndex: 0 | 1, firingPlayerIndex: 0 | 1, projectileType: AbilityType | 'standard') => void;
-    myPlayerIndex: 0 | 1; // Expose the calculated index for the local player
+    handleProjectileResolved: (path: ProjectilePathData, firedByPlayerIndex: 0 | 1) => void;
 }
 
 export function useGameLogic({
@@ -91,6 +85,9 @@ export function useGameLogic({
         };
     }, [mode, localPlayerPubkey, opponentPubkey]);
 
+    // --- Hooks ---
+    const tracers = useShotTracers(); // Instantiate shot tracers hook
+
     // --- State --- 
     const [levelData, setLevelData] = useState<InitialGamePositions>(() =>
         initialLevelData || generateInitialPositions(2400, 1200)
@@ -105,7 +102,11 @@ export function useGameLogic({
     const [score, setScore] = useState<[number, number]>([0, 0]); // Re-add score
     const [currentRound, setCurrentRound] = useState<number>(1); // Re-add current round
 
-     // --- Effect to Sync Aim State on Turn Change (Practice Mode Only) --- 
+    // --- Refs --- (Optional: if needed for callbacks)
+    const playerStatesRef = useRef(playerStates);
+    useEffect(() => { playerStatesRef.current = playerStates; }, [playerStates]);
+
+    // --- Effect to Sync Aim State on Turn Change (Practice Mode Only) --- 
     useEffect(() => {
         if (mode !== 'practice') return; // Only run in practice mode
 
@@ -192,8 +193,65 @@ export function useGameLogic({
         }
     }, [mode, currentRound, score, onGameEnd, playerStates]); // Ensure all dependencies are correct
 
+    // --- NDK Subscription (Multiplayer Only) ---
+    const filter = useMemo((): NDKFilter | undefined => {
+        if (mode !== 'multiplayer' || !matchId || !opponentPubkey) return undefined;
+        return {
+            kinds: [30079 as NDKKind],
+            authors: [opponentPubkey],
+            '#d': [matchId],
+            since: Math.floor(Date.now() / 1000) - 60,
+        };
+    }, [mode, matchId, opponentPubkey]);
+
+    const { events: opponentEvents } = useSubscribe(
+        filter ? [filter] : [], // 1st arg: Filters array
+        { // 2nd arg: Options object
+            closeOnEose: false,
+            groupable: false,
+        },
+        ndk ? [ndk] : undefined // 3rd arg: NDK instance (wrapped in array)
+    );
+
+    // --- Effect to Handle Incoming Opponent Events ---
+    useEffect(() => {
+        if (mode !== 'multiplayer' || !gameRendererRef.current || !opponentPubkey) return;
+
+        opponentEvents.forEach(event => {
+            try {
+                const content: GameNostrEventContent = JSON.parse(event.content);
+
+                // Basic validation
+                if (content.matchId !== matchId || content.senderPubkey !== opponentPubkey) {
+                    console.warn(`[useGameLogic] Received event from unexpected source/match. Ignoring.`, event);
+                    return;
+                }
+
+                if (content.type === 'fire') {
+                    console.log(`[useGameLogic] Received opponent FIRE event`, content);
+                    const opponentIndex = myPlayerIndex === 0 ? 1 : 0;
+                    const scaledPower = content.aim.power / 20;
+                    // Simulate opponent's shot locally
+                    gameRendererRef.current?.fireProjectile(
+                        opponentIndex,
+                        scaledPower,
+                        content.ability as AbilityType | null // Assuming AbilityType is string enum or similar
+                    );
+                } else if (content.type === 'shotResolved') {
+                    console.log(`[useGameLogic] Received opponent SHOT_RESOLVED event`, content);
+                    const opponentIndex = myPlayerIndex === 0 ? 1 : 0;
+                    // Add the received path to the tracer history for the opponent
+                    tracers.addOpponentTrace(opponentIndex, content.path);
+                }
+
+            } catch (error) {
+                console.error("[useGameLogic] Failed to parse opponent event content:", error, event);
+            }
+        });
+
+    }, [opponentEvents, mode, matchId, opponentPubkey, gameRendererRef, myPlayerIndex, tracers.addOpponentTrace]);
+
     // --- Handle Player Hit Callback --- 
-    // Restore logic to call handleRoundCompletion
     const handlePlayerHit = useCallback((hitPlayerIndex: 0 | 1, firingPlayerIndex: 0 | 1, projectileType: AbilityType | 'standard') => {
         if (hitPlayerIndex === firingPlayerIndex) {
             console.log(`!!! Player ${firingPlayerIndex} (Mode: ${mode}) hit themselves! Round Lost!`);
@@ -217,7 +275,7 @@ export function useGameLogic({
             }
             return newStates;
         });
-    }, [handleRoundCompletion, mode]); // Update dependencies
+    }, [handleRoundCompletion, mode]);
 
     // --- Aim Change Handler --- 
     // TODO: In multiplayer, maybe send aim updates via ephemeral events? For now, only send fire.
@@ -230,16 +288,17 @@ export function useGameLogic({
 
     // --- Fire Handler --- 
     // Modify to send Nostr event in multiplayer
-    const handleFire = useCallback(async () => { // Make async for publish
+    const handleFire = useCallback(() => {
         const actingPlayerIndex = mode === 'practice' ? currentPlayerIndex : myPlayerIndex;
         const actingPlayerState = playerStates[actingPlayerIndex];
-        const abilityToFire = selectedAbility; // Capture selected ability at time of fire
+        const abilityToFire = selectedAbility;
+        const currentAimState = currentAim; // Capture state at time of call
 
-        console.log(`[useGameLogic] Fire initiated by Player ${actingPlayerIndex} (Mode: ${mode}). HP: ${actingPlayerState.hp}, Aim:`, currentAim, `Ability: ${abilityToFire || 'None'}`);
+        console.log(`[useGameLogic] Fire initiated by Player ${actingPlayerIndex} (Mode: ${mode}). Aim:`, currentAimState, `Ability: ${abilityToFire || 'None'}`);
 
         // --- Practice Mode Logic (unchanged) ---
         if (mode === 'practice') {
-            const scaledPower = currentAim.power / 20;
+            const scaledPower = currentAimState.power / 20;
 
             if (abilityToFire) {
                 if (actingPlayerState.hp <= ABILITY_COST) {
@@ -274,73 +333,48 @@ export function useGameLogic({
 
         // --- Multiplayer Mode Logic ---
         if (mode === 'multiplayer' && ndk && matchId && opponentPubkey) {
-            console.log(`[useGameLogic] Publishing fire event for match ${matchId}`);
+            const scaledPower = currentAimState.power / 20;
+            // Local simulation first
+            gameRendererRef.current?.fireProjectile(actingPlayerIndex, scaledPower, abilityToFire);
+            console.log(`[useGameLogic] Locally fired for P${actingPlayerIndex}`);
 
-            // Check for suicide condition *before* publishing
-            if (abilityToFire && actingPlayerState.hp <= ABILITY_COST) {
-                 console.error(`!!! Player ${actingPlayerIndex} (Mode: ${mode}) SUICIDE! Tried ${abilityToFire} with ${actingPlayerState.hp} HP.`);
-                 // Note: In multiplayer, local suicide doesn't immediately end the round for the opponent.
-                 // We still might need to publish this action if it's required for sync,
-                 // or handle it purely locally if local simulation determines the outcome.
-                 // For now, prevent firing and handle locally.
-                 setTimeout(() => handleRoundCompletion(null), 0); // Trigger local end
-                 setSelectedAbility(null); // Clear selection
-                 return; 
-            }
-
-            const fireAction: GameActionEvent = {
+            // Send FIRE event over Nostr
+            const eventData: FireActionEvent = {
                 type: 'fire',
-                aim: { ...currentAim }, // Send a copy of the aim state
-                ability: abilityToFire,
-                senderPubkey: localPlayerPubkey, // Include sender pubkey
+                matchId: matchId,
+                senderPubkey: localPlayerPubkey,
+                aim: { angle: currentAimState.angle, power: currentAimState.power }, // Send raw aim
+                ability: abilityToFire as string | null,
             };
 
-            const event = new NDKEvent(ndk);
-            event.kind = 30079; // Custom ephemeral kind for game actions
-            event.content = JSON.stringify(fireAction);
-            event.tags = [
-                ['d', matchId], // Game ID
-                ['p', opponentPubkey] // Tag opponent so they can subscribe easily
+            const ndkEvent = new NDKEvent(ndk);
+            ndkEvent.kind = 30079 as NDKKind;
+            ndkEvent.content = JSON.stringify(eventData);
+            ndkEvent.tags = [
+                ['d', matchId],
+                ['p', opponentPubkey],
             ];
 
-            try {
-                // Don't await, let NDK handle background publish & optimistic update
-                event.publish(); 
-                console.log(`[useGameLogic] Published fire event ${event.id}`);
+            ndkEvent.publish();
+            console.log("[useGameLogic] Published FIRE event.");
 
-                // Optimistically update local state *after* successful publish intent
-                // This includes applying HP cost and ability usage locally immediately
-                if (abilityToFire) {
-                    setPlayerStates(currentStates => {
-                        const newStates: [PlayerState, PlayerState] = [
-                            { ...currentStates[0], usedAbilities: new Set(currentStates[0].usedAbilities) },
-                            { ...currentStates[1], usedAbilities: new Set(currentStates[1].usedAbilities) }
-                        ];
-                        const playerToUpdate = newStates[actingPlayerIndex];
-                        // Ensure HP cost is applied locally
-                        playerToUpdate.hp -= ABILITY_COST; 
-                        playerToUpdate.usedAbilities.add(abilityToFire);
-                        playerToUpdate.isVulnerable = playerToUpdate.usedAbilities.size >= 2;
-                        return newStates;
-                    });
-                     setSelectedAbility(null); // Clear selection after firing ability
-                }
-
-                // Optimistically render the shot locally using gameRendererRef
-                // This gives immediate feedback to the firing player
-                const scaledPower = currentAim.power / 20;
-                gameRendererRef.current?.fireProjectile(actingPlayerIndex, scaledPower, abilityToFire);
-
-
-            } catch (error) {
-                console.error("[useGameLogic] Failed to publish fire event:", error);
-                // Handle error, maybe show a message to the user
-            }
+            // Reset ability selection after firing (multiplayer)
+            setSelectedAbility(null);
         }
 
     }, [
-        mode, myPlayerIndex, currentPlayerIndex, playerStates, currentAim, selectedAbility, 
-        handleRoundCompletion, gameRendererRef, ndk, matchId, opponentPubkey, localPlayerPubkey // Add new dependencies
+        mode,
+        currentPlayerIndex,
+        myPlayerIndex,
+        playerStates,
+        selectedAbility,
+        currentAim,
+        gameRendererRef,
+        handleRoundCompletion,
+        ndk,
+        matchId,
+        opponentPubkey,
+        localPlayerPubkey,
     ]);
 
     // --- Select Ability Handler --- 
@@ -363,93 +397,49 @@ export function useGameLogic({
         });
     }, [mode, myPlayerIndex, currentPlayerIndex, selectedAbility]);
 
-    // --- Subscribe to Opponent Actions (Multiplayer Mode Only) ---
-    const subscriptionFilter: NDKFilter | undefined = useMemo(() => {
-        if (mode !== 'multiplayer' || !matchId || !opponentPubkey) return undefined;
-        // Use NDKKind for the kind number
-        const gameActionKind = 30079 as NDKKind; 
-        return {
-            kinds: [gameActionKind],
-            '#d': [matchId],
-            authors: [opponentPubkey], // Only listen to opponent's events
-        };
-    }, [mode, matchId, opponentPubkey]);
+    // --- Handle Projectile Resolved Callback (from GameRenderer -> Physics) ---
+    const handleProjectileResolved = useCallback((path: ProjectilePathData, firedByPlayerIndex: 0 | 1) => {
+        if (mode !== 'multiplayer' || !ndk || !matchId) return; // Only send in multiplayer
 
-    const { events: opponentActions } = useSubscribe(
-        subscriptionFilter ? [subscriptionFilter] : [], // Pass filter array or empty array
-        { closeOnEose: false, groupable: false }, // Keep listening
-        // Provide dependency array, useSubscribe gets ndk instance implicitly
-        [subscriptionFilter] 
-    );
+        // Only send path if it was OUR shot that just resolved
+        if (firedByPlayerIndex === myPlayerIndex) {
+            console.log(`[useGameLogic] Local player (P${myPlayerIndex}) shot resolved. Sending path...`, path.length);
 
-    // --- Process Received Opponent Actions ---
-    useEffect(() => {
-        if (mode !== 'multiplayer' || !opponentPubkey) return;
+            const eventData: ShotResolvedEvent = {
+                type: 'shotResolved',
+                matchId: matchId,
+                senderPubkey: localPlayerPubkey,
+                path: path,
+            };
 
-        // Explicitly type the event parameter
-        opponentActions.forEach((event: NDKEvent) => { 
-            console.log(`[useGameLogic] Received event ${event.id} from opponent ${opponentPubkey}:`, event.content);
-            try {
-                const action = JSON.parse(event.content) as GameActionEvent;
+            const ndkEvent = new NDKEvent(ndk);
+            ndkEvent.kind = 30079 as NDKKind;
+            ndkEvent.content = JSON.stringify(eventData);
+            ndkEvent.tags = [
+                ['d', matchId],
+                ['p', opponentPubkey!], // Tag opponent
+            ];
 
-                // Basic validation
-                if (action.type === 'fire' && action.senderPubkey === opponentPubkey) {
-                    const opponentIndex = myPlayerIndex === 0 ? 1 : 0;
-                    const opponentState = playerStates[opponentIndex];
-
-                    console.log(`[useGameLogic] Processing opponent fire action:`, action);
-                    
-                    // Check for opponent suicide *remotely*
-                    if (action.ability && opponentState.hp <= ABILITY_COST) {
-                        console.warn(`!!! Opponent ${opponentPubkey} triggered SUICIDE remotely with ${action.ability} at ${opponentState.hp} HP. Ending round.`);
-                         // Opponent hitting themselves means local player wins the round.
-                        setTimeout(() => handleRoundCompletion(myPlayerIndex), 0); 
-                        // Potentially update opponent state to reflect HP cost if needed, though round ends.
-                        // setPlayerStates(...apply HP cost...) 
-                        return; // Stop processing this event
-                    }
-
-                    // Apply opponent's action to the game state
-                    const scaledPower = action.aim.power / 20;
-                    gameRendererRef.current?.fireProjectile(opponentIndex, scaledPower, action.ability);
-
-                    // Update opponent's state based on their action
-                    if (action.ability) {
-                        setPlayerStates(currentStates => {
-                            const newStates: [PlayerState, PlayerState] = [
-                                { ...currentStates[0], usedAbilities: new Set(currentStates[0].usedAbilities) },
-                                { ...currentStates[1], usedAbilities: new Set(currentStates[1].usedAbilities) }
-                            ];
-                            const playerToUpdate = newStates[opponentIndex];
-                            playerToUpdate.hp -= ABILITY_COST; // Apply cost based on received event
-                            playerToUpdate.usedAbilities.add(action.ability as AbilityType); // Add used ability
-                            playerToUpdate.isVulnerable = playerToUpdate.usedAbilities.size >= 2;
-                            return newStates;
-                        });
-                    }
-                } else {
-                     console.warn(`[useGameLogic] Received invalid or unexpected action from ${event.pubkey}:`, action);
-                }
-            } catch (error) {
-                console.error("[useGameLogic] Failed to parse opponent action event:", event.content, error);
-            }
-        });
-
-    }, [opponentActions, mode, opponentPubkey, myPlayerIndex, playerStates, handleRoundCompletion, gameRendererRef]); // Add dependencies
+            // No need to await, NDK handles publishing optimistically
+            ndkEvent.publish();
+            console.log("[useGameLogic] Published SHOT_RESOLVED event.");
+        }
+    }, [mode, ndk, matchId, localPlayerPubkey, opponentPubkey, myPlayerIndex]);
 
     // Return states and handlers
     return {
         playerStates,
-        currentPlayerIndex, // Still needed for practice mode UI/logic
+        currentPlayerIndex,
         currentAim,
         selectedAbility,
         levelData,
-        score, // Re-add score
-        currentRound, // Re-add current round
+        score,
+        currentRound,
         handleAimChange,
         handleFire,
         handleSelectAbility,
-        handlePlayerHit,
         myPlayerIndex,
+        handlePlayerHit,
+        handleProjectileResolved,
     };
 } 

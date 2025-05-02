@@ -10,17 +10,18 @@ This document outlines the core gameplay loop and dynamics for Klunkstr.
     *   HP tie-breaker if scores are tied after 3 rounds.
     *   Alternating starting player each round.
     *   Opponent profile display based on a predefined Npub.
-*   `GameScreen` uses `useGameLogic` in `'multiplayer'` mode. This currently allows simultaneous local control (each player controls their assigned ship) but **does not synchronize turns or shots over the network**.
+    *   **Keyboard controls updated:** Left/Right for angle, Up/Down for power. Player 2 controls inverted.
+*   `GameScreen` uses `useGameLogic` in `'multiplayer'` mode. This currently allows simultaneous local control (each player controls their assigned ship). **Basic network sync for fire actions (`kind:30079`) implemented.**
 *   Physics engine (`matter-js` via hooks) handles custom planetary gravity (size-based), basic collisions (planet/boundary), projectile timeout, and dynamic viewport.
 *   Random level generation (`useGameInitialization`) places ships and planets.
-*   Aiming controls (rotation/power via UI/keyboard) and firing are functional (routed via `useGameLogic`).
+*   Aiming controls (**Left/Right for angle, Up/Down for power** via UI/keyboard) and firing are functional (routed via `useGameLogic`).
 *   Active/Historical shot tracers (`useShotTracers`) are displayed.
 *   Basic Klunkstr rules are partially implemented within `useGameLogic`: HP system used as ability resource, ability selection UI/logic works, standard hits trigger win callback.
 *   Nostr login (`useAuth`) is implemented.
 *   Lobby screen (`LobbyScreen`) displays user ID and hosts the challenge component.
 *   Nostr Challenge/Acceptance handshake (`ChallengeHandler`) via DMs (`kind:4`) successfully transitions both players to `GameScreen`.
 *   **Remaining Implementation Focus:**
-    *   Nostr Network Synchronization for `GameScreen`: Sending/receiving moves (`kind:30079`), resolving turns based on network events.
+    *   Nostr Network Synchronization for `GameScreen`: **Refine action sync (aiming?), implement turn structure, sync collision results/game state**.
     *   Full Klunkstr Rules: Ability effects (Splitter, Gravity, Plastic implementation), round/match win conditions, Sudden Death mechanics.
     *   Wagering: Payment integration (NUT-18).
     *   Visuals: Rendering actual ship/planet sprites, particle effects.
@@ -45,14 +46,14 @@ This document outlines the core gameplay loop and dynamics for Klunkstr.
 **3. Turn Flow (Target: Simultaneous Turns - Approx. 60s):**
    - **A. Aiming Phase (Practice Mode: Turn-based, Multiplayer Mode: Simultaneous Local Input):**
      - Players aim concurrently.
-     - Controls: Rotate ship (Keyboard Up/Down, Joystick), adjust Power (Keyboard Left/Right, Slider), select Ability (Buttons), Fire (Spacebar/Button).
+     - Controls: Rotate ship (**Keyboard Left/Right**, Joystick), adjust Power (**Keyboard Up/Down**, Slider), select Ability (Buttons), Fire (Spacebar/Button).
      - No trajectory preview.
      - Last 10 shot traces visible.
      - (Future: Submit move via Nostr `kind:30079` before timer ends).
    - **B. Resolution Phase (Currently Local/Immediate per Client):**
      - (Future: Triggered after both players submit moves or timer expires).
      - **Practice:** Projectile added for current player. Turn switches to opponent. Collision detection determines round winner based on HP reduction (or self-hit). Logic handles scoring, round advancement (up to 3 rounds), tie-breakers, and alternating starting player.
-     - **Multiplayer (Current):** Projectile added locally for player providing input. **No network sync.**
+     - **Multiplayer (Current):** Fire actions sent/received via Nostr `kind:30079`. Both local optimistic rendering and rendering of received opponent actions trigger `fireProjectile`. **Collision detection and results are still purely local.**
      - **Visuals:** Distinct projectile colors/trails. Ability visuals TBD. Active trail (solid line). *(Goal: Particles)*.
      - **Simulation:** Physics engine calculates paths under planetary gravity.
      - **Collision Detection (Current Implementation):**

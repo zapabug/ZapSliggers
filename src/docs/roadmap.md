@@ -26,7 +26,12 @@
     2.  **Nostr Login Testing:** Debug and verify login flows (`useAuth`) on mobile devices.
     3.  **Matchmaking:** Implement full DM (`kind:4`) challenge flow (Accept/Reject) in `ChallengeHandler`/`LobbyScreen`.
     4.  **Wagering (NUT-18):** Define and implement backend service API, integrate frontend flow for payment requests/verification.
-    5.  **Turn Synchronization:** Implement sending/receiving moves (`kind:30079`), synchronize game state for simultaneous resolution.
+    5.  **Turn Synchronization (Full):** 
+        *   Implement robust turn state management (Aiming, Waiting, Resolving). 
+        *   Send/Receive move submissions (`kind:30079`) and coordinate start of resolution phase.
+        *   Synchronize simulation results: Send/Receive completed path data (`kind:30079`) for opponent historical traces. 
+        *   Ensure game state (HP changes, hits) is consistently updated based on synchronized results.
+        *   Handle turn timers.
     6.  **Klunkstr Rules Completion:** Implement ability physics effects, full win conditions (HP/Vulnerability), Vulnerability state, ability limits, turn timer/limits, Sudden Death.
     7.  **Lobby Refinement:** Potentially refine challenge UI.
 

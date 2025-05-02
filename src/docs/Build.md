@@ -11,7 +11,7 @@
    - **Game NPub** `npub10nxjs7e4vh7a05a0qz8u7x4kdtlq6nk5lugeczddk5l40x5kdysqt2e96x`
 
 **2. Features:**
-   **Current Implementation (Local Klunkstr Core):**
+   **Current Implementation (Local Klunkstr Core + Basic Sync):**
    - **Rendering:** 2D rendering on HTML Canvas via `GameRenderer.tsx`. Uses `useGameAssets` for loading. Placeholder shapes currently drawn. Adaptive camera/viewport implemented (`useDynamicViewport`).
    - **Physics (`useMatterPhysics`):** `matter-js` engine running. World gravity disabled. Tuned planetary gravity implemented (force based on effective radius scaling with planet size). Basic projectile-planet/boundary collisions handled. Projectile timeout functional (45s).
    - **Level Setup (`useGameInitialization`):** Random initial placement of ships (in side zones) and planets (in central zone) respecting distance constraints. Wider virtual viewport (2400x1200).
@@ -22,12 +22,13 @@
    - **Authentication (`useAuth`):** NIP-07/NIP-46/nsec login logic implemented.
    - **Lobby (`LobbyScreen`, `LobbyPlayground`):** Basic lobby structure exists with interactive playground.
    - **Challenges (`ChallengeHandler`):** Basic Nostr DM challenge sending/receiving implemented.
+   - **Multiplayer Sync (Basic):** Fire actions synchronized via Nostr events (`kind:30079`) using `useGameLogic` and `useSubscribe`.
 
    **Target Features (To Be Implemented/Completed):**
    - **Visuals:** Render actual sprites/assets for ships, planets, projectiles, effects.
    - **Klunkstr Gameplay:** Implement ability *effects* (Splitter, Gravity, Plastic). Implement full win conditions (based on HP/Vulnerability). Implement Vulnerability state. Enforce match-level ability limits (3 total, 1/type). Implement turn structure (timer, 5-shot limit), round scoring (Best of 3), and Sudden Death mechanics.
    - **Advanced Levels:** Add Gas Giants, moving planets.
-   - **Nostr Integration:** Full matchmaking flow (Accept/Reject challenges). Turn synchronization (`kind:30079`). Robust error handling.
+   - **Nostr Integration:** Full matchmaking flow (Accept/Reject challenges). **Refine/Complete Turn/State synchronization (`kind:30079`)**. Robust error handling.
    - **Wagering (Mandatory):** NUT-18 backend service integration (API definition, frontend flow, verification).
    - **UX:** Finalize UI controls, add tutorials/tooltips, refine PWA behavior.
    - **Testing:** Thorough testing, especially mobile login flows.
@@ -150,7 +151,7 @@
      - **Nostr Login:** Test and debug login flow (`useAuth`) thoroughly on mobile devices.
      - **Matchmaking:** Implement full challenge accept/reject flow in `ChallengeHandler`/`LobbyScreen`.
      - **Wagering:** Define/Implement Backend Service API and frontend integration.
-     - **Turn Sync:** Implement sending/receiving moves (`kind:30079`) and synchronizing game state.
+     - **Turn/State Sync:** Refine/complete synchronization of game state (collisions, turns, aiming?) using `kind:30079`.
    - **Klunkstr Gameplay Completion:**
      - Implement ability physics effects.
      - Implement full win conditions (HP/Vulnerability based).

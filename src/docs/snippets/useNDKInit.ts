@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import ndk from '../ndk'; // Import the singleton instance
-import NDK, { NDKRelay } from '@nostr-dev-kit/ndk';
+import NDK from '@nostr-dev-kit/ndk';
 
 interface UseNDKInitReturn {
   isReady: boolean;
@@ -23,6 +23,7 @@ export const useNDKInit = (): UseNDKInitReturn => {
 
   useEffect(() => {
     let isMounted = true; // Prevent state updates on unmounted component
+    let firstConnectListener: (() => void) | null = null; // Store listener for removal
 
     const connectNDK = async () => {
       console.log('useNDKInit: Attempting NDK connection...');
@@ -47,44 +48,29 @@ export const useNDKInit = (): UseNDKInitReturn => {
                 setIsReady(false);
                 setIsAttemptingConnection(false);
                 // Clean up listener if connection promise failed
-                if (firstConnectHandlerAttached.current) {
-                    ndk.pool.removeAllListeners("relay:connect"); // Remove all listeners for these events
-                    ndk.pool.removeAllListeners("relay:disconnect");
-                    ndk.pool.removeAllListeners("notice");
-                    firstConnectHandlerAttached.current = false;
+                if (firstConnectListener) {
+                    ndk.pool.off("relay:connect", firstConnectListener);
                 }
             }
         });
 
-        // --- START: Add detailed relay status listeners ---
-        if (!firstConnectHandlerAttached.current) { // Attach these only once
-            const handleRelayConnect = (relay: NDKRelay) => {
-                console.log(`[useNDKInit] Relay CONNECTED: ${relay.url}`);
-                // Existing logic to set isReady on first connect
-                if (isMounted && !isReady) {
+        // Define the listener function only once
+        if (!firstConnectHandlerAttached.current) {
+            firstConnectListener = () => {
+                console.log("useNDKInit: First relay:connect event detected.");
+                if (isMounted && !isReady) { // Set ready only once
                     setIsReady(true);
                     setIsAttemptingConnection(false);
+                    // Optionally remove the listener now that we're ready
+                    // ndk.pool.off("relay:connect", firstConnectListener!);
                 }
             };
 
-            const handleRelayDisconnect = (relay: NDKRelay) => {
-                console.warn(`[useNDKInit] Relay DISCONNECTED: ${relay.url}`);
-                // Optional: Check if ALL relays disconnected and set isReady to false?
-                // For now, just log the disconnect.
-            };
-
-            const handleRelayNotice = (relay: NDKRelay, notice: string) => {
-                 console.warn(`[useNDKInit] Relay NOTICE from ${relay.url}: ${notice}`);
-            }
-
-            // Attach listeners
-            ndk.pool.on("relay:connect", handleRelayConnect);
-            ndk.pool.on("relay:disconnect", handleRelayDisconnect);
-            ndk.pool.on("notice", handleRelayNotice); // Listen for notices too
+            // Attach the listener
+            ndk.pool.on("relay:connect", firstConnectListener);
             firstConnectHandlerAttached.current = true;
-            console.log('useNDKInit: Attached detailed relay status listeners (connect, disconnect, notice).');
+            console.log('useNDKInit: Attached relay:connect listener.');
         }
-        // --- END: Add detailed relay status listeners ---
 
       } catch (error) {
         // Catch synchronous errors from ndk.connect() if any (unlikely)
@@ -104,12 +90,10 @@ export const useNDKInit = (): UseNDKInitReturn => {
     return () => {
       isMounted = false;
       // Remove listener on unmount if it was attached
-      if (firstConnectHandlerAttached.current) {
-          console.log('useNDKInit: Cleaning up detailed relay status listeners.');
-          ndk.pool.removeAllListeners("relay:connect"); // Remove all listeners for these events
-          ndk.pool.removeAllListeners("relay:disconnect");
-          ndk.pool.removeAllListeners("notice");
-          firstConnectHandlerAttached.current = false;
+      if (firstConnectListener && firstConnectHandlerAttached.current) {
+          console.log('useNDKInit: Cleaning up relay:connect listener.');
+          ndk.pool.off("relay:connect", firstConnectListener);
+          firstConnectHandlerAttached.current = false; // Reset for potential future remounts
       }
       // Singleton NDK is not disconnected here.
     };

@@ -48,6 +48,7 @@ const GameScreen: React.FC<GameScreenProps> = ({
     handleFire,
     handleSelectAbility,
     handlePlayerHit,
+    handleProjectileResolved,
     myPlayerIndex // Get the index determined by the hook
   } = useGameLogic({
       mode: 'multiplayer', 
@@ -171,8 +172,9 @@ const GameScreen: React.FC<GameScreenProps> = ({
         {levelData && (
           <GameRenderer
             ref={gameRendererRef}
-            levelData={levelData} // Use level data from hook
-            onPlayerHit={handlePlayerHit} // Use hit handler from hook
+            levelData={levelData}
+            onPlayerHit={handlePlayerHit}
+            onProjectileResolved={handleProjectileResolved}
           />
         )}
       </div>

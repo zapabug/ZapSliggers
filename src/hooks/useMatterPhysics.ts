@@ -3,12 +3,14 @@ import Matter from 'matter-js';
 import { ProjectileBody } from './useShotTracers'; // Assuming ProjectileBody export
 import { InitialGamePositions } from './useGameInitialization';
 import { AbilityType } from '../components/ui_overlays/ActionButtons';
+import { ProjectilePathData } from '../types/game'; // Import path type
 
 // Define the expected shape for shotTracerHandlers prop
 interface ShotTracerHandlers {
     handleProjectileFired: (projectile: ProjectileBody) => void;
     handleProjectileUpdate: (projectile: ProjectileBody) => void;
     handleProjectileRemoved: (projectile: ProjectileBody) => void;
+    getLastCompletedPath: () => ProjectilePathData | null;
     resetTraces: () => void;
 }
 
@@ -32,10 +34,13 @@ interface UseMatterPhysicsProps {
   virtualHeight: number;
   shotTracerHandlers: ShotTracerHandlers;
   onPlayerHit: (hitPlayerIndex: 0 | 1, firingPlayerIndex: 0 | 1, projectileType: AbilityType | 'standard') => void;
+  onProjectileResolved: (path: ProjectilePathData, firedByPlayerIndex: 0 | 1) => void;
 }
 
 // --- Add Ref type for the callback ---
 type OnPlayerHitCallback = (hitPlayerIndex: 0 | 1, firingPlayerIndex: 0 | 1, projectileType: AbilityType | 'standard') => void;
+// --- Add Ref type for the new callback --- 
+type OnProjectileResolvedCallback = (path: ProjectilePathData, firedByPlayerIndex: 0 | 1) => void;
 
 export interface MatterPhysicsHandles {
   engine: Matter.Engine | null;
@@ -54,6 +59,7 @@ export const useMatterPhysics = ({
   virtualHeight,
   shotTracerHandlers,
   onPlayerHit,
+  onProjectileResolved, // Destructure new prop
 }: UseMatterPhysicsProps): MatterPhysicsHandles => {
   const engineRef = useRef<Matter.Engine | null>(null);
   const runnerRef = useRef<Matter.Runner | null>(null);
@@ -62,20 +68,40 @@ export const useMatterPhysics = ({
 
   // --- Ref to store the latest onPlayerHit callback --- 
   const onPlayerHitRef = useRef<OnPlayerHitCallback>(onPlayerHit);
+  // --- Ref for the new callback ---
+  const onProjectileResolvedRef = useRef<OnProjectileResolvedCallback>(onProjectileResolved);
 
-  // --- Effect to keep the ref updated --- 
-  useEffect(() => {
-      onPlayerHitRef.current = onPlayerHit;
-  }, [onPlayerHit]);
-
-  // Keep level data REF in sync (using prop directly now for reset)
-  useEffect(() => { 
-      currentLevelDataRef.current = initialLevelData; 
-  }, [initialLevelData]);
-
-  // Ref to store the latest shotTracerHandlers
+  // --- Effect to keep the refs updated --- 
+  useEffect(() => { onPlayerHitRef.current = onPlayerHit; }, [onPlayerHit]);
+  useEffect(() => { onProjectileResolvedRef.current = onProjectileResolved; }, [onProjectileResolved]); // Update effect for new callback
+  useEffect(() => { currentLevelDataRef.current = initialLevelData; }, [initialLevelData]);
   const shotTracerHandlersRef = useRef<ShotTracerHandlers>(shotTracerHandlers);
   useEffect(() => { shotTracerHandlersRef.current = shotTracerHandlers; }, [shotTracerHandlers]);
+
+  // --- Helper to remove projectile and notify resolved ---
+  const removeProjectileAndNotify = useCallback((projectile: ProjectileBody, world: Matter.World) => {
+    const tracerHandlers = shotTracerHandlersRef.current;
+    if (!projectile.custom) {
+        console.warn(`[Physics] Cannot remove projectile ${projectile.id}: missing custom data.`);
+        World.remove(world, projectile);
+        return;
+    }
+    const playerIndex = projectile.custom.firedByPlayerIndex;
+
+    // Call the tracer handler first to store the path
+    tracerHandlers.handleProjectileRemoved(projectile);
+
+    // Now get the stored path
+    const path = tracerHandlers.getLastCompletedPath();
+
+    // Remove from world
+    World.remove(world, projectile);
+
+    // If a path was stored, notify the game logic
+    if (path) {
+        onProjectileResolvedRef.current(path, playerIndex);
+    }
+  }, []); // Dependencies? shotTracerHandlersRef, onProjectileResolvedRef are refs. Ok.
 
   // --- Collision Handling Logic ---
   const handleCollisions = useCallback((event: Matter.IEventCollision<Matter.Engine>) => {
@@ -90,46 +116,38 @@ export const useMatterPhysics = ({
         else if (bodyB.label.startsWith('projectile-')) { projectile = bodyB as ProjectileBody; otherBody = bodyA; }
 
         if (projectile && otherBody) {
-            if (!projectile.custom) {
-                console.warn(`[Collision] Projectile ${projectile.id} missing custom data.`);
-                shotTracerHandlers.handleProjectileRemoved(projectile);
-                World.remove(currentEngine.world, projectile);
-                return;
-            }
-
-            const firedByPlayerIndex = projectile.custom.firedByPlayerIndex;
-            const projectileType = projectile.custom.abilityType || 'standard';
-            let projectileRemoved = false;
+            const firedByPlayerIndex = projectile.custom?.firedByPlayerIndex;
+            const projectileType = projectile.custom?.abilityType || 'standard';
+            let shouldRemove = false;
 
             if (otherBody.label === 'planet') {
                 console.log(`[Collision] Proj ${projectile.id} hit planet ${otherBody.id}`);
-                shotTracerHandlers.handleProjectileRemoved(projectile);
-                World.remove(currentEngine.world, projectile);
-                projectileRemoved = true;
+                shouldRemove = true;
             } else if (otherBody.label.startsWith('ship-')) {
                 const hitPlayerIndex = parseInt(otherBody.label.split('-')[1], 10) as 0 | 1;
-                console.log(`[Collision] Proj ${projectile.id} (P${firedByPlayerIndex}, Type: ${projectileType}) hit P${hitPlayerIndex}`);
-                // --- Use the ref to call the latest callback --- 
-                onPlayerHitRef.current(hitPlayerIndex, firedByPlayerIndex, projectileType);
-                
-                shotTracerHandlers.handleProjectileRemoved(projectile);
-                World.remove(currentEngine.world, projectile);
-                projectileRemoved = true;
+                if (firedByPlayerIndex === undefined) {
+                    console.warn('[Collision] Projectile hit ship but firing player index unknown!');
+                } else {
+                    console.log(`[Collision] Proj ${projectile.id} (P${firedByPlayerIndex}, Type: ${projectileType}) hit P${hitPlayerIndex}`);
+                    onPlayerHitRef.current(hitPlayerIndex, firedByPlayerIndex, projectileType);
+                }
+                shouldRemove = true;
             } else if (otherBody.label === 'boundary') {
                 console.log(`[Collision] Proj ${projectile.id} hit boundary`);
-                shotTracerHandlers.handleProjectileRemoved(projectile);
-                World.remove(currentEngine.world, projectile);
-                projectileRemoved = true;
+                shouldRemove = true;
+            } else if (otherBody.label.startsWith('projectile-')) {
+                 // Ignore projectile-projectile collisions for now
+            } else {
+                console.warn(`[Collision Warning] Proj ${projectile.id} collided with unhandled body: ${otherBody.label}. Removing.`);
+                shouldRemove = true;
             }
 
-            if (!projectileRemoved) {
-                 console.warn(`[Collision Warning] Proj ${projectile.id} collided with unhandled body: ${otherBody.label}. Removing.`);
-                 shotTracerHandlers.handleProjectileRemoved(projectile);
-                 World.remove(currentEngine.world, projectile);
+            if (shouldRemove) {
+                 removeProjectileAndNotify(projectile, currentEngine.world);
             }
         }
     });
-  }, [shotTracerHandlers]);
+  }, [removeProjectileAndNotify]); // Use helper
 
   // --- Physics Update Logic ---
   const updateProjectilesAndApplyGravity = useCallback(() => {
@@ -148,7 +166,7 @@ export const useMatterPhysics = ({
         if (
           projectileBody.custom?.abilityType === 'splitter' &&
           !projectileBody.custom?.hasSplit && // Check if not already split
-          Date.now() - projectileBody.custom.createdAt > 1500
+          Date.now() - (projectileBody.custom?.createdAt ?? 0) > 1500
         ) {
           const originalPos = Vector.clone(projectileBody.position);
           const originalVel = Vector.clone(projectileBody.velocity);
@@ -157,7 +175,7 @@ export const useMatterPhysics = ({
 
           // Mark original for removal (and notify tracer)
           bodiesToRemove.push(projectileBody);
-          shotTracerHandlers.handleProjectileRemoved(projectileBody);
+          removeProjectileAndNotify(projectileBody, currentEngine.world);
 
           const spreadAngle = 0.15; // Radians, adjust as needed
           const velocities = [
@@ -206,7 +224,7 @@ export const useMatterPhysics = ({
             projectileBody.trail.push(Vector.clone(projectileBody.position));
         }
 
-        shotTracerHandlers.handleProjectileUpdate(projectileBody);
+        shotTracerHandlersRef.current.handleProjectileUpdate(projectileBody);
 
         // --- Apply Planet Gravity ---
         Composite.allBodies(currentEngine.world).forEach(staticBody => {
@@ -255,23 +273,30 @@ export const useMatterPhysics = ({
         }
         // --- End Opponent Ship Gravity ---
 
-        // Check timeout
-        const now = Date.now();
-        if (projectileBody.custom && now - projectileBody.custom.createdAt > 45000) {
-            console.log(`[Timeout] Removing proj ${projectileBody.id}`);
-            shotTracerHandlers.handleProjectileRemoved(projectileBody);
-            World.remove(currentEngine.world, projectileBody);
+        // --- Timeout Check ---
+        const projectileAge = Date.now() - (projectileBody.custom?.createdAt ?? Date.now());
+        if (projectileAge > 45000) { // 45 seconds timeout
+          console.log(`[Physics Update] Proj ${projectileBody.id} timed out.`);
+          bodiesToRemove.push(projectileBody);
         }
       }
     });
 
-    // Perform removals and additions after iterating
-    bodiesToRemove.forEach(body => {
-        World.remove(currentEngine.world, body);
-    });
-    bodiesToAdd.forEach(body => World.add(currentEngine.world, body));
-    projectilesToNotifyFired.forEach(body => shotTracerHandlers.handleProjectileFired(body));
-  }, [shotTracerHandlers, virtualWidth]);
+    // Process additions and removals
+    if (bodiesToAdd.length > 0) {
+        World.add(currentEngine.world, bodiesToAdd);
+        // Notify tracer about new fragments
+        projectilesToNotifyFired.forEach(proj => {
+            shotTracerHandlersRef.current.handleProjectileFired(proj);
+        });
+    }
+    if (bodiesToRemove.length > 0) {
+        bodiesToRemove.forEach(proj => {
+            // Use helper for removal
+            removeProjectileAndNotify(proj, currentEngine.world);
+        });
+    }
+  }, [removeProjectileAndNotify]); // Use helper
 
   // --- Function to Initialize/Reset the Matter.js World ---
   const initializeWorld = useCallback((levelData: InitialGamePositions | undefined) => {
@@ -295,7 +320,7 @@ export const useMatterPhysics = ({
     Events.off(engine, 'beforeUpdate');
     Events.off(engine, 'collisionStart');
 
-    shotTracerHandlers.resetTraces();
+    shotTracerHandlersRef.current.resetTraces();
 
     const ship1Body = Bodies.circle(levelData.ships[0].x, levelData.ships[0].y, SHIP_RADIUS, {
         label: 'ship-0', restitution: 0.5, friction: 0.1, frictionAir: 0.01, angle: 0
@@ -322,7 +347,7 @@ export const useMatterPhysics = ({
     Events.on(engine, 'collisionStart', handleCollisions);
 
     console.log("[Physics Hook] World setup complete.");
-  }, [virtualWidth, virtualHeight, shotTracerHandlers, handleCollisions, updateProjectilesAndApplyGravity]);
+  }, [virtualWidth, virtualHeight, shotTracerHandlersRef, handleCollisions, updateProjectilesAndApplyGravity]);
 
   // --- Main Setup and Cleanup useEffect ---
   useEffect(() => {
@@ -411,10 +436,10 @@ export const useMatterPhysics = ({
     Body.setVelocity(projectile, velocity);
 
     World.add(engine.world, projectile);
-    shotTracerHandlers.handleProjectileFired(projectile);
+    shotTracerHandlersRef.current.handleProjectileFired(projectile);
     console.log(`[Physics] Fired projectile ${projectile.id} by P${playerIndex}, Power: ${power}, Ability: ${abilityType || 'None'}`);
 
-  }, [shotTracerHandlers]); // Removed engine from deps, using ref
+  }, [shotTracerHandlersRef]); // Removed engine from deps, using ref
 
   const setShipAim = useCallback((playerIndex: 0 | 1, angleDegrees: number) => {
     const shipBody = shipBodiesRef.current[playerIndex];
