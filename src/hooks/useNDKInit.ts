@@ -1,120 +1,109 @@
 import { useState, useEffect, useRef } from 'react';
 import ndk from '../ndk'; // Import the singleton instance
-import NDK, { NDKRelay } from '@nostr-dev-kit/ndk';
+import NDK, { NDKPool, NDKRelay } from '@nostr-dev-kit/ndk';
 
 interface UseNDKInitReturn {
   isReady: boolean;
   connectionError: Error | null;
   ndkInstance: NDK; // Return the instance for convenience
+  connectedRelayCount: number; // Expose the count
 }
 
 /**
  * Hook to initialize the singleton NDK instance connection.
  * Manages connection state (ready, error).
  * Ensures connection is attempted only once on mount.
- * Provides an 'isReady' flag that becomes true AFTER the first relay connects.
+ * Provides an 'isReady' flag that becomes true ONLY when at least one relay is connected.
  */
 export const useNDKInit = (): UseNDKInitReturn => {
-  const [isAttemptingConnection, setIsAttemptingConnection] = useState<boolean>(true);
+  // Connection attempt state isn't strictly needed anymore with the new logic
+  // const [isAttemptingConnection, setIsAttemptingConnection] = useState<boolean>(true);
   const [isReady, setIsReady] = useState<boolean>(false);
   const [connectionError, setConnectionError] = useState<Error | null>(null);
-  const connectPromiseResolved = useRef<boolean>(false); // Track if connect() resolved
-  const firstConnectHandlerAttached = useRef<boolean>(false); // Prevent multiple listeners
+  const [connectedRelayCount, setConnectedRelayCount] = useState<number>(0);
+  const listenersAttached = useRef<boolean>(false); // Combined listener attachment flag
+
+  // Helper to update state based on connected relays
+  const updateReadyState = (pool: NDKPool) => {
+    const count = pool.connectedRelays().length;
+    setConnectedRelayCount(count);
+    setIsReady(count > 0);
+    if (count > 0) {
+      setConnectionError(null); // Clear error once connected
+    }
+    // console.log(`[useNDKInit] Relay count update: ${count}, isReady: ${count > 0}`);
+  };
 
   useEffect(() => {
     let isMounted = true; // Prevent state updates on unmounted component
 
-    const connectNDK = async () => {
-      console.log('useNDKInit: Attempting NDK connection...');
-      setIsAttemptingConnection(true);
-      setIsReady(false);
-      setConnectionError(null);
-      connectPromiseResolved.current = false;
-
-      try {
-        // Don't await here, let it run in the background
-        ndk.connect().then(() => {
-            if (isMounted) {
-                console.log('useNDKInit: NDK connect() promise resolved.');
-                connectPromiseResolved.current = true;
-                // If isReady is already true (listener fired first), we don't need to do anything
-                // If not ready, we still wait for the listener.
-            }
-        }).catch((error) => {
-            console.error('useNDKInit: Error connecting NDK:', error);
-            if (isMounted) {
-                setConnectionError(error instanceof Error ? error : new Error('Failed to connect NDK'));
-                setIsReady(false);
-                setIsAttemptingConnection(false);
-                // Clean up listener if connection promise failed
-                if (firstConnectHandlerAttached.current) {
-                    ndk.pool.removeAllListeners("relay:connect"); // Remove all listeners for these events
-                    ndk.pool.removeAllListeners("relay:disconnect");
-                    ndk.pool.removeAllListeners("notice");
-                    firstConnectHandlerAttached.current = false;
-                }
-            }
-        });
-
-        // --- START: Add detailed relay status listeners ---
-        if (!firstConnectHandlerAttached.current) { // Attach these only once
-            const handleRelayConnect = (relay: NDKRelay) => {
-                console.log(`[useNDKInit] Relay CONNECTED: ${relay.url}`);
-                // Existing logic to set isReady on first connect
-                if (isMounted && !isReady) {
-                    setIsReady(true);
-                    setIsAttemptingConnection(false);
-                }
-            };
-
-            const handleRelayDisconnect = (relay: NDKRelay) => {
-                console.warn(`[useNDKInit] Relay DISCONNECTED: ${relay.url}`);
-                // Optional: Check if ALL relays disconnected and set isReady to false?
-                // For now, just log the disconnect.
-            };
-
-            const handleRelayNotice = (relay: NDKRelay, notice: string) => {
-                 console.warn(`[useNDKInit] Relay NOTICE from ${relay.url}: ${notice}`);
-            }
-
-            // Attach listeners
-            ndk.pool.on("relay:connect", handleRelayConnect);
-            ndk.pool.on("relay:disconnect", handleRelayDisconnect);
-            ndk.pool.on("notice", handleRelayNotice); // Listen for notices too
-            firstConnectHandlerAttached.current = true;
-            console.log('useNDKInit: Attached detailed relay status listeners (connect, disconnect, notice).');
-        }
-        // --- END: Add detailed relay status listeners ---
-
-      } catch (error) {
-        // Catch synchronous errors from ndk.connect() if any (unlikely)
-        console.error('useNDKInit: Synchronous error during NDK connect setup:', error);
+    // Define handlers in the useEffect scope so they are accessible by cleanup
+    const handleRelayConnect = (relay: NDKRelay) => {
+        console.log(`[useNDKInit] Relay CONNECTED: ${relay.url}`);
         if (isMounted) {
-          setConnectionError(error instanceof Error ? error : new Error('Failed NDK setup'));
-          setIsReady(false);
-          setIsAttemptingConnection(false);
+            updateReadyState(ndk.pool);
         }
-      }
     };
 
-    if (!isReady && isAttemptingConnection) { // Only attempt if not already ready/attempting
-        connectNDK();
+    const handleRelayDisconnect = (relay: NDKRelay) => {
+        console.warn(`[useNDKInit] Relay DISCONNECTED: ${relay.url}`);
+        if (isMounted) {
+            // Update count after a short delay to allow potential quick reconnects
+            // and prevent flickering if multiple relays disconnect at once
+            setTimeout(() => {
+                if (isMounted) updateReadyState(ndk.pool);
+            }, 100);
+        }
+    };
+
+    const handleRelayNotice = (relay: NDKRelay, notice: string) => {
+         console.warn(`[useNDKInit] Relay NOTICE from ${relay.url}: ${notice}`);
     }
+
+    const setupNDKListeners = () => {
+      if (listenersAttached.current) return; // Attach only once
+
+      console.log('useNDKInit: Setting up NDK listeners...');
+
+      // Initial state check
+      updateReadyState(ndk.pool);
+
+      // Attach listeners (handlers are defined outside now)
+      ndk.pool.on("relay:connect", handleRelayConnect);
+      ndk.pool.on("relay:disconnect", handleRelayDisconnect);
+      ndk.pool.on("notice", handleRelayNotice);
+      listenersAttached.current = true;
+      console.log('useNDKInit: Attached relay status listeners (connect, disconnect, notice).');
+
+      // Attempt connection after listeners are set up
+      console.log('useNDKInit: Attempting NDK connection...');
+      ndk.connect().catch((error) => {
+          console.error('useNDKInit: Error during ndk.connect():', error);
+          if (isMounted) {
+              setConnectionError(error instanceof Error ? error : new Error('Failed to connect NDK'));
+              setIsReady(false); // Ensure ready is false on connection error
+              setConnectedRelayCount(0);
+          }
+          // Note: Don't cleanup listeners here, connection might recover
+      });
+    };
+
+    setupNDKListeners();
 
     return () => {
       isMounted = false;
-      // Remove listener on unmount if it was attached
-      if (firstConnectHandlerAttached.current) {
-          console.log('useNDKInit: Cleaning up detailed relay status listeners.');
-          ndk.pool.removeAllListeners("relay:connect"); // Remove all listeners for these events
-          ndk.pool.removeAllListeners("relay:disconnect");
-          ndk.pool.removeAllListeners("notice");
-          firstConnectHandlerAttached.current = false;
+      // Remove listeners on unmount
+      if (listenersAttached.current) {
+          console.log('useNDKInit: Cleaning up relay status listeners.');
+          // Pass the specific handler functions to off()
+          ndk.pool.off("relay:connect", handleRelayConnect);
+          ndk.pool.off("relay:disconnect", handleRelayDisconnect);
+          ndk.pool.off("notice", handleRelayNotice);
+          listenersAttached.current = false;
       }
       // Singleton NDK is not disconnected here.
     };
-    // Re-run if connection attempt failed and we want to retry? For now, run once.
   }, []); // Runs once on mount
 
-  return { isReady, connectionError, ndkInstance: ndk };
+  return { isReady, connectionError, ndkInstance: ndk, connectedRelayCount };
 }; 

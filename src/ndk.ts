@@ -13,6 +13,8 @@ export const explicitRelayUrls = [
   'wss://nos.lol',
   'wss://relay.primal.net',
   'wss://relay.nostrcheck.me',
+  // Add the game-specific community relay
+  'wss://relay.degmods.com',
 ];
 
 // Instantiate the NDK singleton

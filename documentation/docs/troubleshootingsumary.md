@@ -49,6 +49,69 @@ After implementing the QR code flow, a separate flow was added for mobile device
 3.  **Problem:** Initial tests using `window.location.href = authUrl;` to trigger the deeplink caused some mobile signers (e.g., Amber) to crash or close prematurely, even though the connection worked via desktop QR scan.
 4.  **Resolution:** Changed the deeplink trigger method in `initiateNip46MobileDeepLinkLogin` from `window.location.href = authUrl;` to `window.open(authUrl, '_blank');`. This alternative method appears to handle the intent to launch the external app more reliably across mobile environments.
 
+## DM Encryption/Decryption Failures (Kind 4)
+
+**Problem:**
+After successfully logging in (especially via NIP-46 using the `NostrConnectSignerWrapper`), the application failed to either decrypt incoming Kind 4 DMs (challenges) or encrypt outgoing Kind 4 DMs (challenges/acceptances). Errors like `Failed to decrypt event` or `Failed to encrypt event` appeared in the console, originating from NDK's internal methods (`_NDKEvent.decrypt`, `_NDKEvent.encrypt`).
+
+**Troubleshooting Steps:**
+
+1.  **Signer Verification:** Confirmed via logging that `ndk.signer` was correctly assigned to the active signer instance (`NDKNip07Signer` or `NostrConnectSignerWrapper`) and reported as connected when the errors occurred.
+2.  **NDK vs. Signer Call:** Added detailed logging inside the `NostrConnectSignerWrapper` and the underlying `nostr-connect-signer.ts` code. Determined that NDK was failing *before* attempting to call the signer's `encrypt` or `decrypt` methods.
+3.  **Input Verification:** Checked that `NDKUser` objects passed to `event.encrypt` were valid and contained the necessary public keys. Confirmed `ndk.signer.pubkey` was accessible.
+4.  **NIP Format Analysis:** Logged the raw `event.content` of incoming DMs. Discovered that messages sent from a user logged in via the NIP-46 wrapper were **NIP-44** encrypted, while messages from a NIP-07 user were **NIP-04** encrypted.
+
+**Root Cause:**
+NDK's built-in `event.decrypt()` method seems to primarily expect NIP-04 format for Kind 4 DMs and failed internally when encountering NIP-44 ciphertext. Similarly, NDK's `event.encrypt()` also failed internally when the NIP-46 wrapper signer was active.
+
+**Resolution:**
+
+The solution involved completely bypassing NDK's default `event.encrypt` and `event.decrypt` methods for Kind 4 DMs within `ChallengeHandler.tsx`:
+
+1.  **Manual Decryption:**
+    *   Implemented logic to check the format of the incoming `event.content` (`.includes("?iv=")`).
+    *   Created type guards (`hasNip04`, `hasNip44`) to check the capabilities of the *currently active* `ndk.signer`.
+    *   Dynamically called either `signer.nip04.decrypt` or `signer.nip44.decrypt` based on the content format and signer capabilities.
+    *   *Note:* Required adding public `nip04` and `nip44` getters to `NostrConnectSignerWrapper` to expose the underlying methods. Persistent linter warnings about `as any` casts inside the type guards were noted but ignored as functionally correct.
+2.  **Manual Encryption:**
+    *   Modified `handleSendChallenge` and `handleAcceptChallenge`.
+    *   Manually encrypted the JSON payload using `signer.nip04.encrypt` (preferring the standard NIP for DMs).
+    *   Set the resulting ciphertext directly to `event.content`.
+    *   Called `event.publish()` without calling `event.encrypt()`.
+
+This manual handling ensures correct encryption/decryption regardless of the sender's NIP choice or the user's login method (NIP-07 or NIP-46).
+
+## Further Fixes and Improvements (Post-Initial NIP-46 Integration)
+
+Following the initial integration of the Applesauce NIP-46 signer and manual DM handling, several additional issues were identified and resolved:
+
+1.  **NIP-07 DM Handling (`ChallengeHandler.tsx`):**
+    *   **Problem:** The manual NIP-04 decryption/encryption logic initially failed when using a NIP-07 browser extension signer. NDK's `signer.decrypt`/`encrypt` methods were called, but they didn't correctly pass the peer public key to the extension, causing a "second arg must be public key" error from the extension.
+    *   **Resolution:** The type guards (`hasNip04StandardGlobal`) and the corresponding logic were updated to detect NIP-07 capability by checking for `window.nostr.nip04`. When detected, the code now directly calls `window.nostr.nip04.decrypt` or `window.nostr.nip04.encrypt`, passing the required peer pubkey and ciphertext/plaintext, thus bypassing the problematic NDK signer methods for this specific case.
+
+2.  **Challenge Management (`ChallengeHandler.tsx`):**
+    *   **Problem:** Users could get stuck if they received a challenge they didn't want to accept, and challenges persisted indefinitely.
+    *   **Resolution:**
+        *   Added a "Dismiss" button to the incoming challenge UI.
+        *   Implemented a `handleDismissChallenge` function.
+        *   Added a 3-minute `setTimeout` expiry for both sent (`activeSentChallenge`) and received (`activeReceivedChallenge`) challenges. Expired challenges automatically clear the state.
+        *   Ensured timeouts are properly managed (created and cleared) during the component lifecycle and upon challenge resolution (accept/dismiss/expiry).
+
+3.  **NDK Connection State (`useNDKInit.ts`):**
+    *   **Problem:** The hook previously set `isReady` to `true` on the first relay connection and didn't reliably track subsequent disconnections, potentially leading to issues on unstable (e.g., mobile) networks where the app might think NDK is ready even if all relays have dropped.
+    *   **Resolution:** Refactored the hook to actively track the number of connected relays using `ndk.pool.on('relay:connect')` and `ndk.pool.on('relay:disconnect')`. The `isReady` state is now dynamically set based on whether the `connectedRelayCount` is greater than zero, providing a more accurate representation of NDK's readiness.
+
+4.  **DM Subscription Robustness (`ChallengeHandler.tsx`):**
+    *   **Problem:** Potential for missed DMs (challenges/acceptances) if the WebSocket connection dropped temporarily and wasn't re-established quickly by NDK.
+    *   **Resolution:** Implemented a periodic refresh mechanism using `setInterval` (every 30 seconds). The interval stops the existing DM subscription and creates a new one with a `since` filter looking back 5 minutes, increasing the likelihood of catching recently missed events.
+
+5.  **GameScreen Aim State (`GameScreen.tsx`):**
+    *   **Problem:** A `TypeError: currentAim is undefined` occurred because the component incorrectly tried to access a non-existent `currentAim` state variable, whereas the `useGameLogic` hook actually returns an array `aimStates`.
+    *   **Resolution:** Corrected the component to destructure `aimStates` from `useGameLogic`. Updated the logic (especially the `useEffect` dependency array and props passed to `AimingInterface`) to correctly use `aimStates[myPlayerIndex]` to access the local player's angle and power.
+
+6.  **Community Relay Added (`ndk.ts`):**
+    *   Added the community/game relay `wss://relay.degmods.com` to the default `explicitRelayUrls` list used for NDK initialization.
+
 ## Final Status (Current)
 
 The NIP-46 login flow now uses the integrated Applesauce signer code via the `NostrConnectSignerWrapper`.
@@ -62,6 +125,7 @@ The NIP-46 login flow now uses the integrated Applesauce signer code via the `No
 **The NIP-46 QR code flow (Desktop) and Deeplink flow (Mobile) are ready for testing.**
 
 **Next Steps:**
-1.  **Test** both NIP-46 flows end-to-end (Desktop QR -> Scan -> Approve; Mobile Button -> App Opens -> Approve -> Verify login).
-2.  **(Optional)** Re-introduce UI elements (e.g., a separate button/input) to trigger the bunker URI flow (`initiateNip46Login`) if desired.
-3.  **(Low Priority)** Monitor NDK updates for potential fixes to the built-in `NDKNip46Signer` issues (documented above for historical context).
+1.  **Thorough Testing:** Retest both NIP-07 and NIP-46 login flows, challenge sending/receiving/accepting/dismissing/expiring, and basic gameplay functionality on both desktop and mobile.
+2.  **Multiplayer Synchronization:** Continue development and testing of the core multiplayer state synchronization logic within `useGameLogic` (handling `fire` and `shotResolved` events from opponents).
+3.  **UI Polish:** Refine UI elements, add loading/disabled states where appropriate (e.g., action buttons during opponent's turn).
+4.  **(Low Priority)** Revisit linter errors in copied Applesauce code (`applesauce_nip46_integration_issues.md`) if desired.

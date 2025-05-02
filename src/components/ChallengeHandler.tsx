@@ -1,7 +1,44 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { nip19 } from 'nostr-tools';
-import NDK, { NDKEvent, NDKKind, NDKFilter, NDKSubscription, NDKUser } from '@nostr-dev-kit/ndk';
-import { NostrConnectSignerWrapper } from '../lib/applesauce-nip46/wrapper';
+import NDK, { NDKEvent, NDKKind, NDKFilter, NDKSubscription, NDKSigner } from '@nostr-dev-kit/ndk';
+
+// Define interface for expected wrapper structure
+type Nip04CapableWrapper = { nip04: { decrypt: (pubkey: string, ciphertext: string) => Promise<string>; encrypt: (pubkey: string, plaintext: string) => Promise<string>; } };
+// NIP-07 doesn't expose methods on the signer object itself, but globally via window.nostr
+// type Nip04CapableStandard = { decrypt: (pubkey: string, ciphertext: string) => Promise<string>; encrypt: (pubkey: string, plaintext: string) => Promise<string>; };
+
+function hasNip04Wrapper(signer: NDKSigner): signer is NDKSigner & Nip04CapableWrapper {
+    return signer &&
+           'nip04' in signer &&
+           // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           typeof (signer as any).nip04?.decrypt === 'function' &&
+           // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           typeof (signer as any).nip04?.encrypt === 'function';
+}
+
+// Updated Guard: Check for global window.nostr NIP-04 capability
+function hasNip04StandardGlobal(): boolean {
+    if (typeof window === 'undefined' || !window.nostr) {
+        return false;
+    }
+    const nip04 = window.nostr.nip04;
+    return typeof nip04 === 'object' &&
+           nip04 !== null &&
+           typeof nip04.decrypt === 'function' &&
+           typeof nip04.encrypt === 'function';
+}
+
+// Type Guard for NIP-44 support (Likely only on wrapper)
+// Define interface for expected structure
+type Nip44Capable = { nip44: { decrypt: (pubkey: string, ciphertext: string) => Promise<string>; encrypt: (pubkey: string, plaintext: string) => Promise<string>; } };
+function hasNip44(signer: NDKSigner): signer is NDKSigner & Nip44Capable {
+    return signer &&
+           'nip44' in signer &&
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           typeof (signer as any).nip44?.decrypt === 'function' &&
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           typeof (signer as any).nip44?.encrypt === 'function';
+}
 
 interface ChallengePayload {
     type: 'challenge';
@@ -29,98 +66,180 @@ export function ChallengeHandler({
     const [error, setError] = useState<string | null>(null);
     const [activeSentChallenge, setActiveSentChallenge] = useState<{ opponentPubkey: string, eventId: string } | null>(null);
     const [activeReceivedChallenge, setActiveReceivedChallenge] = useState<{ challengerPubkey: string, eventId: string } | null>(null);
+    const sentChallengeTimeoutRef = React.useRef<number | null>(null);
+    const receivedChallengeTimeoutRef = React.useRef<number | null>(null);
+    const subscriptionRef = useRef<NDKSubscription | null>(null);
 
-    useEffect(() => {
-        if (!loggedInPubkey || !ndk) {
-            setActiveReceivedChallenge(null);
-            return;
+    const clearTimeouts = useCallback(() => {
+        if (sentChallengeTimeoutRef.current) {
+            clearTimeout(sentChallengeTimeoutRef.current);
+            sentChallengeTimeoutRef.current = null;
         }
+        if (receivedChallengeTimeoutRef.current) {
+            clearTimeout(receivedChallengeTimeoutRef.current);
+            receivedChallengeTimeoutRef.current = null;
+        }
+    }, []);
+
+    const handleDMEvent = useCallback(async (event: NDKEvent) => {
+        if (!loggedInPubkey || event.pubkey === loggedInPubkey) return;
+
+        console.log('[ChallengeHandler] Received potential DM event:', event.encode());
+        try {
+            const ciphertext = event.content;
+            const isLikelyNip04 = ciphertext.includes("?iv=");
+            let decryptedContent: string | undefined;
+
+            const currentSigner = ndk?.signer;
+
+            if (!currentSigner && !hasNip04StandardGlobal()) {
+                console.warn("[ChallengeHandler] No active signer or NIP-04 capability found for decryption.");
+                return;
+            }
+
+            if (isLikelyNip04) {
+                console.log("[ChallengeHandler] Detected NIP-04 format. Checking signer capability...");
+                if (currentSigner && hasNip04Wrapper(currentSigner)) {
+                    console.log(`[ChallengeHandler] Attempting manual NIP-04 decrypt with Wrapper signer for sender ${event.pubkey}`);
+                    decryptedContent = await currentSigner.nip04.decrypt(event.pubkey, ciphertext);
+                    console.log("[ChallengeHandler] Manual NIP-04 decryption successful (Wrapper).");
+                } else if (hasNip04StandardGlobal()) {
+                    console.log(`[ChallengeHandler] Attempting manual NIP-04 decrypt with Standard NIP-07 (window.nostr) for sender ${event.pubkey}`);
+                    if (!window.nostr?.nip04?.decrypt) throw new Error("window.nostr.nip04.decrypt not available");
+                    decryptedContent = await window.nostr.nip04.decrypt(event.pubkey, ciphertext);
+                    console.log("[ChallengeHandler] Manual NIP-04 decryption successful (Standard Global).");
+                } else {
+                    console.warn("[ChallengeHandler] Signer or environment does not support NIP-04 decryption.");
+                    return;
+                }
+            } else {
+                console.log("[ChallengeHandler] Detected non-NIP-04 format (assuming NIP-44). Checking signer capability...");
+                if (currentSigner && hasNip44(currentSigner)) {
+                    console.log(`[ChallengeHandler] Attempting manual NIP-44 decrypt with signer for sender ${event.pubkey}`);
+                    decryptedContent = await currentSigner.nip44.decrypt(event.pubkey, ciphertext);
+                    console.log("[ChallengeHandler] Manual NIP-44 decryption successful.");
+                } else {
+                    console.warn("[ChallengeHandler] Current signer does not support NIP-44 decryption for this content.");
+                    return;
+                }
+            }
+
+            if (decryptedContent === undefined) {
+                console.warn("[ChallengeHandler] Decryption failed or did not produce content for event:", event.encode());
+                return;
+            }
+
+            const content = decryptedContent.trim();
+            let payload: ChallengePayload | AcceptPayload | null = null;
+            try { payload = JSON.parse(content); } catch { /* Ignore if not JSON */ }
+
+            const challengeTag = event.tags.find(t => t[0] === 't');
+
+            const currentActiveSentChallenge = activeSentChallenge;
+            const currentActiveReceivedChallenge = activeReceivedChallenge;
+
+            if (currentActiveSentChallenge && event.pubkey === currentActiveSentChallenge.opponentPubkey && challengeTag && challengeTag[1] === currentActiveSentChallenge.eventId) {
+                const isAcceptMessage = (payload && payload.type === 'accept') || content.toLowerCase() === 'accept';
+                if (isAcceptMessage) {
+                    console.log(`[ChallengeHandler] Received ACCEPTANCE ${event.encode()} for our challenge ${currentActiveSentChallenge.eventId} from ${event.pubkey}`);
+                    clearTimeouts();
+                    const opponentPubkey = currentActiveSentChallenge.opponentPubkey;
+                    const matchIdentifier = currentActiveSentChallenge.eventId;
+                    setActiveSentChallenge(null);
+                    onChallengeAccepted(opponentPubkey, matchIdentifier);
+                    return;
+                }
+            }
+
+            const isChallengeMessage = (payload && payload.type === 'challenge') || content.toLowerCase() === 'challenge';
+            if (isChallengeMessage && !challengeTag) {
+                if (!currentActiveSentChallenge && !currentActiveReceivedChallenge) {
+                    console.log(`[ChallengeHandler] Received new CHALLENGE ${event.encode()} from ${event.pubkey}`);
+                    if (receivedChallengeTimeoutRef.current) clearTimeout(receivedChallengeTimeoutRef.current);
+
+                    const newReceivedChallenge = { challengerPubkey: event.pubkey, eventId: event.encode() };
+                    setActiveReceivedChallenge(newReceivedChallenge);
+
+                    receivedChallengeTimeoutRef.current = setTimeout(() => {
+                        console.log(`[ChallengeHandler] Incoming challenge ${event.encode()} expired.`);
+                        setActiveReceivedChallenge(current => (current?.eventId === newReceivedChallenge.eventId ? null : current));
+                        receivedChallengeTimeoutRef.current = null;
+                    }, 3 * 60 * 1000);
+                } else {
+                    console.log(`[ChallengeHandler] Ignoring new challenge ${event.encode()} while already in an active challenge state.`);
+                }
+                return;
+            }
+
+        } catch (err) {
+            console.error(`[ChallengeHandler] Failed to process DM ${event.encode()}:`, err);
+        }
+    }, [ndk, loggedInPubkey, clearTimeouts, onChallengeAccepted, activeSentChallenge, activeReceivedChallenge]);
+
+    const handleEose = useCallback(() => {
+         // console.log('[ChallengeHandler] DM subscription EOSE received.');
+    }, []);
+
+    const subscribeToDMs = useCallback(() => {
+        if (!loggedInPubkey || !ndk) return null;
+
+        subscriptionRef.current?.stop();
+        console.log('[ChallengeHandler] Stopping previous DM subscription (if any).');
 
         const challengeFilter: NDKFilter = {
             kinds: [NDKKind.EncryptedDirectMessage],
             '#p': [loggedInPubkey],
-            since: Math.floor(Date.now() / 1000) - 3600
+            since: Math.floor(Date.now() / 1000) - (5 * 60)
         };
 
         console.log('[ChallengeHandler] Subscribing to DMs with filter:', challengeFilter);
-        const sub: NDKSubscription = ndk.subscribe([challengeFilter], { closeOnEose: false });
+        const newSub = ndk.subscribe([challengeFilter], { closeOnEose: false });
 
-        sub.on('event', async (event: NDKEvent) => {
-            if (event.pubkey === loggedInPubkey) return;
+        newSub.on('event', handleDMEvent);
+        newSub.on('eose', handleEose);
 
-            console.log('[ChallengeHandler] Received potential DM event:', event.encode());
-            console.log('[ChallengeHandler] Incoming DM event content:', event.content);
-            try {
-                // Manual Decryption Attempt using NIP-44 via signer
-                const nip46Signer = ndk.signer as NostrConnectSignerWrapper;
+        console.log('[ChallengeHandler] New DM subscription created and listeners attached.');
+        subscriptionRef.current = newSub;
+        return newSub;
 
-                if (!nip46Signer?.nip44?.decrypt) {
-                    throw new Error("Signer does not support NIP-44 decryption.");
-                }
-                console.log(`[ChallengeHandler] Attempting manual NIP-44 decrypt with signer for sender ${event.pubkey}`);
-                // NIP-44 decrypt requires the *other* party's pubkey
-                const decryptedContent = await nip46Signer.nip44.decrypt(event.pubkey, event.content);
-                console.log("[ChallengeHandler] Manual NIP-44 decryption successful.");
+    }, [ndk, loggedInPubkey, handleDMEvent, handleEose]);
 
-                // Use the manually decrypted content
-                const content = decryptedContent.trim();
-                let payload: ChallengePayload | AcceptPayload | null = null;
-                try { payload = JSON.parse(content); } catch { /* Ignore if not JSON */ }
-
-                const challengeTag = event.tags.find(t => t[0] === 't');
-
-                if (activeSentChallenge && event.pubkey === activeSentChallenge.opponentPubkey && challengeTag && challengeTag[1] === activeSentChallenge.eventId) {
-                    const isAcceptMessage = (payload && payload.type === 'accept') || content.toLowerCase() === 'accept';
-                    if (isAcceptMessage) {
-                        console.log(`[ChallengeHandler] Received ACCEPTANCE ${event.encode()} for our challenge ${activeSentChallenge.eventId} from ${event.pubkey}`);
-                        const opponentPubkey = activeSentChallenge.opponentPubkey;
-                        const matchIdentifier = activeSentChallenge.eventId;
-                        setActiveSentChallenge(null);
-                        onChallengeAccepted(opponentPubkey, matchIdentifier);
-                        return;
-                    }
-                }
-
-                const isChallengeMessage = (payload && payload.type === 'challenge') || content.toLowerCase() === 'challenge';
-                if (isChallengeMessage && !challengeTag) {
-                    if (!activeSentChallenge && !activeReceivedChallenge) {
-                         console.log(`[ChallengeHandler] Received new CHALLENGE ${event.encode()} from ${event.pubkey}`);
-                         setActiveReceivedChallenge({ challengerPubkey: event.pubkey, eventId: event.encode() });
-                    } else {
-                         console.log(`[ChallengeHandler] Ignoring new challenge ${event.encode()} while already in an active challenge state.`);
-                    }
-                    return;
-                }
-
-            } catch (err) {
-                // Update error context
-                console.error(`[ChallengeHandler] Failed to process DM ${event.encode()} (manual decrypt attempt):`, err);
-            }
-        });
-
-        sub.on('eose', () => {
-             console.log('[ChallengeHandler] DM subscription EOSE received.');
-        });
-
-        console.log('[ChallengeHandler] DM subscription created.');
+    useEffect(() => {
+        console.log("[ChallengeHandler] Main Effect: Setting up initial DM subscription.");
+        subscribeToDMs();
 
         return () => {
-            console.log('[ChallengeHandler] Stopping DM subscription.');
-            sub.stop();
-            setActiveSentChallenge(null);
-            setActiveReceivedChallenge(null);
+            console.log('[ChallengeHandler] Main Effect Cleanup: Stopping final DM subscription.');
+            subscriptionRef.current?.stop();
+            subscriptionRef.current = null;
+            clearTimeouts();
+        };
+    }, [loggedInPubkey, subscribeToDMs, clearTimeouts]);
+
+    useEffect(() => {
+        if (!loggedInPubkey) return;
+
+        console.log("[ChallengeHandler] Interval Effect: Setting up periodic refresh (30s).");
+        const intervalId = setInterval(() => {
+            console.log("[ChallengeHandler] Interval: Refreshing DM subscription...");
+            subscribeToDMs();
+        }, 30000);
+
+        return () => {
+            console.log("[ChallengeHandler] Interval Effect Cleanup: Clearing interval.");
+            clearInterval(intervalId);
         };
 
-    }, [ndk, loggedInPubkey, activeSentChallenge, onChallengeAccepted]);
+    }, [loggedInPubkey, subscribeToDMs]);
 
     const handleSendChallenge = useCallback(async () => {
-        if (!ndk || !loggedInPubkey) { setError("NDK not ready or user not logged in."); return; }
+        const currentSigner = ndk?.signer;
+        if (!ndk || !loggedInPubkey || !currentSigner) { setError("NDK not ready, user not logged in, or signer missing."); return; }
         if (!recipientNpubOrHex) { setError("Recipient pubkey is required."); return; }
-        if (activeSentChallenge || activeReceivedChallenge) { setError("Already in an active challenge process."); return; }
+        if (activeSentChallenge || activeReceivedChallenge) { setError("Please resolve the current challenge first."); return; }
 
         setError(null);
-        setActiveSentChallenge(null);
-        setActiveReceivedChallenge(null);
+        clearTimeouts();
 
         let recipientHexPubkey: string;
 
@@ -142,42 +261,52 @@ export function ChallengeHandler({
             const challengePayload: ChallengePayload = { type: 'challenge' };
             const event = new NDKEvent(ndk);
             event.kind = NDKKind.EncryptedDirectMessage;
-            event.content = JSON.stringify(challengePayload);
             event.tags = [['p', recipientHexPubkey]];
 
-            const recipientUser: NDKUser | undefined = ndk.getUser({ hexpubkey: recipientHexPubkey });
-             if (!recipientUser) {
-                 console.warn("Could not immediately get recipient user object, proceeding with hexpubkey.");
-             }
+            const payloadString = JSON.stringify(challengePayload);
 
-            console.log('[ChallengeHandler] Recipient NDKUser object:', recipientUser);
-            try {
-                if (ndk?.signer) {
-                    console.log('[ChallengeHandler] Checking ndk.signer.pubkey synchronously:', ndk.signer.pubkey);
-                } else {
-                    console.warn('[ChallengeHandler] ndk.signer is undefined when checking pubkey (send challenge).');
-                }
-            } catch (e) {
-                console.error('[ChallengeHandler] Error accessing ndk.signer.pubkey:', e);
+            let encryptedContent: string;
+
+            console.log(`[ChallengeHandler] Attempting manual NIP-04 encrypt (send challenge) for recipient ${recipientHexPubkey}`);
+            if (currentSigner && hasNip04Wrapper(currentSigner)) {
+                console.log("[ChallengeHandler] Using Wrapper NIP-04 encrypt...");
+                encryptedContent = await currentSigner.nip04.encrypt(recipientHexPubkey, payloadString);
+            } else if (hasNip04StandardGlobal()) {
+                console.log("[ChallengeHandler] Using Standard NIP-07 (window.nostr) encrypt...");
+                if (!window.nostr?.nip04?.encrypt) throw new Error("window.nostr.nip04.encrypt not available");
+                encryptedContent = await window.nostr.nip04.encrypt(recipientHexPubkey, payloadString);
+            } else {
+                throw new Error("Current signer or environment does not support NIP-04 encryption.");
             }
-            await event.encrypt(recipientUser);
+
+            event.content = encryptedContent;
+            console.log("[ChallengeHandler] Manual NIP-04 encryption (send challenge) successful.");
+
             await event.publish();
             const sentEventId = event.encode();
 
             console.log(`Challenge sent to ${recipientHexPubkey}, event ID: ${sentEventId}`);
-            setActiveSentChallenge({ opponentPubkey: recipientHexPubkey, eventId: sentEventId });
+            const newChallenge = { opponentPubkey: recipientHexPubkey, eventId: sentEventId };
+            setActiveSentChallenge(newChallenge);
             setRecipientNpubOrHex('');
+
+            sentChallengeTimeoutRef.current = setTimeout(() => {
+                console.log(`[ChallengeHandler] Sent challenge ${sentEventId} expired.`);
+                setActiveSentChallenge(current => (current?.eventId === sentEventId ? null : current));
+                sentChallengeTimeoutRef.current = null;
+            }, 3 * 60 * 1000);
 
         } catch (e) {
             console.error("Failed to send challenge:", e);
             setError(`Failed to send challenge: ${e instanceof Error ? e.message : String(e)}`);
             setActiveSentChallenge(null);
         }
-    }, [ndk, loggedInPubkey, recipientNpubOrHex, activeSentChallenge, activeReceivedChallenge, setRecipientNpubOrHex]);
+    }, [ndk, loggedInPubkey, recipientNpubOrHex, activeSentChallenge, activeReceivedChallenge, setRecipientNpubOrHex, clearTimeouts]);
 
     const handleAcceptChallenge = useCallback(async () => {
-        if (!ndk || !loggedInPubkey || !activeReceivedChallenge) {
-            setError("Cannot accept challenge: Invalid state.");
+        const currentSigner = ndk?.signer;
+        if (!ndk || !loggedInPubkey || !activeReceivedChallenge || !currentSigner) {
+            setError("Cannot accept challenge: Invalid state or signer missing.");
             return;
         }
 
@@ -188,29 +317,34 @@ export function ChallengeHandler({
             const acceptPayload: AcceptPayload = { type: 'accept' };
             const event = new NDKEvent(ndk);
             event.kind = NDKKind.EncryptedDirectMessage;
-            event.content = JSON.stringify(acceptPayload);
             event.tags = [
                 ['p', challengerPubkey],
                 ['t', originalChallengeId]
             ];
 
-            const challengerUser = ndk.getUser({ hexpubkey: challengerPubkey });
+            const payloadStringAccept = JSON.stringify(acceptPayload);
 
-            console.log('[ChallengeHandler] Challenger NDKUser object:', challengerUser);
-            try {
-                if (ndk?.signer) {
-                    console.log('[ChallengeHandler] Checking ndk.signer.pubkey synchronously:', ndk.signer.pubkey);
-                } else {
-                    console.warn('[ChallengeHandler] ndk.signer is undefined when checking pubkey (accept challenge).');
-                }
-            } catch (e) {
-                console.error('[ChallengeHandler] Error accessing ndk.signer.pubkey:', e);
+            let encryptedContentAccept: string;
+
+            console.log(`[ChallengeHandler] Attempting manual NIP-04 encrypt (accept challenge) for recipient ${challengerPubkey}`);
+            if (currentSigner && hasNip04Wrapper(currentSigner)) {
+                console.log("[ChallengeHandler] Using Wrapper NIP-04 encrypt...");
+                encryptedContentAccept = await currentSigner.nip04.encrypt(challengerPubkey, payloadStringAccept);
+            } else if (hasNip04StandardGlobal()) {
+                console.log("[ChallengeHandler] Using Standard NIP-07 (window.nostr) encrypt...");
+                if (!window.nostr?.nip04?.encrypt) throw new Error("window.nostr.nip04.encrypt not available");
+                encryptedContentAccept = await window.nostr.nip04.encrypt(challengerPubkey, payloadStringAccept);
+            } else {
+                throw new Error("Current signer or environment does not support NIP-04 encryption.");
             }
-            await event.encrypt(challengerUser);
+            event.content = encryptedContentAccept;
+            console.log("[ChallengeHandler] Manual NIP-04 encryption (accept challenge) successful.");
+
             await event.publish();
             const acceptanceEventId = event.encode();
             console.log(`Acceptance sent to ${challengerPubkey} for challenge ${originalChallengeId}. Acceptance event ID: ${acceptanceEventId}`);
 
+            clearTimeouts();
             const matchIdentifier = originalChallengeId;
             const opponent = challengerPubkey;
             setActiveReceivedChallenge(null);
@@ -220,7 +354,13 @@ export function ChallengeHandler({
             console.error("Failed to send acceptance:", e);
             setError(`Failed to send acceptance: ${e instanceof Error ? e.message : String(e)}`);
         }
-    }, [ndk, loggedInPubkey, activeReceivedChallenge, onChallengeAccepted]);
+    }, [ndk, loggedInPubkey, activeReceivedChallenge, onChallengeAccepted, clearTimeouts]);
+
+    const handleDismissChallenge = useCallback(() => {
+        console.log(`[ChallengeHandler] Dismissing incoming challenge: ${activeReceivedChallenge?.eventId}`);
+        clearTimeouts();
+        setActiveReceivedChallenge(null);
+    }, [activeReceivedChallenge, clearTimeouts]);
 
     const canInteract = loggedInPubkey && !activeSentChallenge && !activeReceivedChallenge;
     const isWaitingForAcceptance = !!activeSentChallenge;
@@ -254,21 +394,31 @@ export function ChallengeHandler({
 
             {isWaitingForAcceptance && (
                 <p className="text-yellow-400 mt-2">
-                    Challenge sent to {nip19.npubEncode(activeSentChallenge.opponentPubkey).substring(0, 12)}... Waiting for acceptance.
+                    Challenge sent to {activeSentChallenge?.opponentPubkey ? nip19.npubEncode(activeSentChallenge.opponentPubkey).substring(0, 12) + '...' : '...'}. Waiting for acceptance.
                 </p>
             )}
 
             {hasIncomingChallenge && (
                  <div className="mt-4 p-3 bg-gray-700 rounded">
-                     <p className="text-green-400 font-medium">
-                         Incoming challenge from: {nip19.npubEncode(activeReceivedChallenge.challengerPubkey).substring(0, 12)}...
+                     <p className="text-green-400 font-medium mb-2">
+                         Incoming challenge from: {activeReceivedChallenge?.challengerPubkey ? nip19.npubEncode(activeReceivedChallenge.challengerPubkey).substring(0, 12) + '...' : '...'}
                      </p>
-                     <button
-                         onClick={handleAcceptChallenge}
-                         className="mt-2 px-3 py-1 bg-green-600 rounded hover:bg-green-700 text-sm disabled:opacity-50"
-                     >
-                         Accept Challenge
-                     </button>
+                     <div className="flex space-x-2">
+                         <button
+                             onClick={handleAcceptChallenge}
+                             className="px-3 py-1 bg-green-600 rounded hover:bg-green-700 text-sm disabled:opacity-50"
+                             disabled={!activeReceivedChallenge}
+                         >
+                             Accept
+                         </button>
+                         <button
+                             onClick={handleDismissChallenge}
+                             className="px-3 py-1 bg-red-600 rounded hover:bg-red-700 text-sm disabled:opacity-50"
+                             disabled={!activeReceivedChallenge}
+                         >
+                             Dismiss
+                         </button>
+                     </div>
                  </div>
             )}
 
@@ -277,4 +427,4 @@ export function ChallengeHandler({
             )}
         </div>
     );
-} 
+}

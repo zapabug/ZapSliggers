@@ -41,7 +41,6 @@ const GameScreen: React.FC<GameScreenProps> = ({
   const {
     playerStates,
     // currentPlayerIndex, // Keep commented out, not needed here
-    currentAim,
     selectedAbility,
     levelData,
     handleAimChange,
@@ -49,7 +48,8 @@ const GameScreen: React.FC<GameScreenProps> = ({
     handleSelectAbility,
     handlePlayerHit,
     handleProjectileResolved,
-    myPlayerIndex // Get the index determined by the hook
+    myPlayerIndex, // Get the index determined by the hook
+    aimStates // Use aimStates from useGameLogic
   } = useGameLogic({
       mode: 'multiplayer', 
       localPlayerPubkey,
@@ -75,9 +75,14 @@ const GameScreen: React.FC<GameScreenProps> = ({
   const localPlayerData = playerStates[myPlayerIndex];
   const opponentPlayerIndex = myPlayerIndex === 0 ? 1 : 0;
   const opponentPlayerData = playerStates[opponentPlayerIndex];
+  // Get the local player's aim state
+  const localPlayerAim = aimStates[myPlayerIndex]; 
 
   // --- Keyboard Controls (Use handlers from hook) --- 
   useEffect(() => {
+    // Ensure localPlayerAim is defined before setting up listener or using it
+    if (!localPlayerAim) return;
+
     const handleKeyDown = (event: KeyboardEvent) => {
         let newAngle: number | undefined = undefined;
         let newPower: number | undefined = undefined;
@@ -96,19 +101,23 @@ const GameScreen: React.FC<GameScreenProps> = ({
         // Applying the UX swap first:
         switch (event.key) {
             case 'ArrowLeft': // Now controls Angle LEFT
-                newAngle = (currentAim.angle - 2 + 360) % 360;
+                // Use localPlayerAim here
+                newAngle = (localPlayerAim.angle - 2 + 360) % 360;
                 preventDefault = true;
                 break;
             case 'ArrowRight': // Now controls Angle RIGHT
-                newAngle = (currentAim.angle + 2) % 360;
+                 // Use localPlayerAim here
+                newAngle = (localPlayerAim.angle + 2) % 360;
                 preventDefault = true;
                 break;
             case 'ArrowDown': // Now controls Power DOWN
-                newPower = Math.max(0, currentAim.power - 2);
+                 // Use localPlayerAim here
+                newPower = Math.max(0, localPlayerAim.power - 2);
                 preventDefault = true;
                 break;
             case 'ArrowUp': // Now controls Power UP
-                newPower = Math.min(100, currentAim.power + 2);
+                 // Use localPlayerAim here
+                newPower = Math.min(100, localPlayerAim.power + 2);
                 preventDefault = true;
                 break;
             case ' ': // Spacebar
@@ -128,8 +137,9 @@ const GameScreen: React.FC<GameScreenProps> = ({
 
         if (newAngle !== undefined || newPower !== undefined) {
           const updatedAim = {
-            angle: newAngle !== undefined ? newAngle : currentAim.angle,
-            power: newPower !== undefined ? newPower : currentAim.power,
+            // Use localPlayerAim here for defaults
+            angle: newAngle !== undefined ? newAngle : localPlayerAim.angle,
+            power: newPower !== undefined ? newPower : localPlayerAim.power,
           };
           handleAimChange(updatedAim); // Call hook handler
         }
@@ -140,8 +150,9 @@ const GameScreen: React.FC<GameScreenProps> = ({
         window.removeEventListener('keydown', handleKeyDown);
     };
     // Dependencies now include handlers from the hook
-    // Add currentPlayerIndex if needed for conditional logic (removed for now)
-  }, [handleFire, handleSelectAbility, handleAimChange, currentAim.angle, currentAim.power]); 
+    // Use the actual local player's aim state properties
+    // Optional chaining isn't strictly needed now due to the check at the start, but doesn't hurt
+  }, [handleFire, handleSelectAbility, handleAimChange, localPlayerAim?.angle, localPlayerAim?.power]); 
 
   // --- Return JSX (Connect UI to hook state/handlers) --- 
   return (
@@ -182,7 +193,9 @@ const GameScreen: React.FC<GameScreenProps> = ({
       {/* Bottom Control Area - Aiming */} 
       <div className="absolute bottom-4 left-4 z-10 pointer-events-auto flex flex-col items-start max-w-xs">
         <AimingInterface
-          currentAngle={currentAim.angle} // Use aim from hook
+          // Use local player's aim state, add safety checks for initial render
+          currentAngle={localPlayerAim?.angle ?? 0} 
+          currentPower={localPlayerAim?.power ?? 0}
           onAimChange={handleAimChange} // Use handler from hook
         />
       </div>
