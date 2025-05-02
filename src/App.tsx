@@ -26,6 +26,7 @@ import LobbyScreen from './components/lobby/LobbyScreen';
 // Import the new screen components from the correct location
 // import MainMenuScreen from './components/MainMenuScreen'; // Commented out - File missing
 import PracticeScreen from './components/screens/PracticeScreen'; // Corrected import path
+import { isMobileDevice } from './utils/mobileDetection'; // <-- Import the utility
 
 // Remove local relay definition
 // const explicitRelayUrls = [...] 
@@ -56,12 +57,15 @@ function App() {
     ndkConnectionError,
     currentUser,
     isLoggedIn,
-    loginMethod,
-    nip46AuthUrl,
+    // loginMethod, // Still unused, keep removed
+    nip46AuthUrl, // Add back
     nip46Status,
     authError,
     loginWithNip07,
-    initiateNip46Login,
+    // initiateNip46Login, // Remove unused function for now
+    initiateNip46QrCodeLogin, // Add new function
+    initiateNip46MobileDeepLinkLogin, // <-- Need to add this function to useAuth
+    cancelNip46LoginAttempt, // <-- Assuming useAuth exports this
   } = useAuth();
 
   // Get the ndk instance via the hook
@@ -144,6 +148,16 @@ function App() {
       setCurrentView('menu');
   };
 
+  const handleNip46Connect = () => {
+    if (isMobileDevice()) {
+      console.log("[App] Mobile device detected, initiating NIP-46 deeplink flow.");
+      initiateNip46MobileDeepLinkLogin(); // Call the new mobile-specific function
+    } else {
+      console.log("[App] Desktop device detected, initiating NIP-46 QR code flow.");
+      initiateNip46QrCodeLogin(); // Call the existing QR code function
+    }
+  };
+
   // --- Render Logic --- 
   const renderContent = () => {
     console.log(`[App Render] View: ${currentView}, NDK Ready: ${isNdkReady}, Logged In: ${isLoggedIn}, NIP46 Status: ${nip46Status}`);
@@ -163,8 +177,8 @@ function App() {
     if (currentView === 'login') {
         // --- NIP-46 Flow States ---
 
-        // NIP-46 QR Code / Waiting state (After clicking 'Connect with Mobile')
-        if (loginMethod === 'nip46' && nip46Status === 'requesting' && nip46AuthUrl) {
+        // NIP-46 QR Code Display (Desktop Only)
+        if (nip46Status === 'waiting_for_scan' && nip46AuthUrl && !isMobileDevice()) { // Added !isMobileDevice()
              return (
                 // Center content, add padding for mobile
                 <div className="w-full h-full flex flex-col items-center justify-center p-4 sm:p-6 text-center">
@@ -194,6 +208,25 @@ function App() {
                 </div>
             );
         }
+
+        // NIP-46 Waiting for Mobile App Approval
+        if (nip46Status === 'waiting_for_mobile_approval') { // <-- New status check
+             return (
+                 <div className="w-full h-full flex flex-col items-center justify-center p-4 sm:p-6 text-center">
+                     <p className="text-lg mb-4">Check your Nostr mobile app</p>
+                     <p className="text-gray-400 mb-4">Approve the connection request from Klunkstr in your signer (e.g., Amber, Damus).</p>
+                     {/* Add a Cancel button */} 
+                     <button 
+                         onClick={cancelNip46LoginAttempt} 
+                         className="px-4 py-2 rounded font-semibold text-white transition-colors bg-red-600 hover:bg-red-700 text-sm sm:text-base"
+                     >
+                         Cancel
+                     </button>
+                     {authError && <p className="text-red-500 text-xs mt-4">{authError.message}</p>}
+                 </div>
+             );
+        }
+
         // --- Default Login Options Screen ---
         else {
             return (
@@ -224,15 +257,15 @@ function App() {
                         {/* Separator */} 
                         <div className="w-full border-t border-gray-600 my-2"></div>
                         
-                        {/* NIP-46 Section - Simplified Button */} 
-                        <p className="text-center text-gray-300 text-sm sm:text-base"> {/* Adjusted text size */}
+                        {/* NIP-46 Section - Button now calls handleNip46Connect */} 
+                        <p className="text-center text-gray-300 text-sm sm:text-base">
                             Connect using a mobile signing app:
                         </p>
                         <button 
-                            // Directly initiate flow, passing empty string to signal QR generation (assumption)
-                            onClick={() => initiateNip46Login(/* Intentionally empty to use default/no specific bunker */)} 
-                            // Disable button while requesting connection
-                            disabled={nip46Status === 'requesting'} 
+                            // Call the new handler function
+                            onClick={handleNip46Connect} 
+                            // Disable button if waiting for QR (desktop) or mobile approval
+                            disabled={nip46Status === 'waiting_for_scan' || nip46Status === 'waiting_for_mobile_approval'} 
                             className="w-full px-4 sm:px-6 py-2 sm:py-3 rounded font-semibold text-white transition-colors bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 text-sm sm:text-base" /* Adjusted padding/text */
                         >
                             Connect with Mobile App (NIP-46)

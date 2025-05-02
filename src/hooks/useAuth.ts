@@ -5,7 +5,7 @@ import NDK, { NDKNip07Signer, NDKUser } from '@nostr-dev-kit/ndk'; // Removed ND
 import { useNDKInit } from './useNDKInit'; // Import the custom NDK init hook
 // Persistence functions removed as per user request
 // import { idb } from '../utils/idb';
-import { NostrConnectSignerWrapper } from '../lib/applesauce-nip46/wrapper'; // Corrected path
+import { NostrConnectSignerWrapper } from '../lib/applesauce-nip46/wrapper.ts'; // Corrected path
 
 // Define constants (similar to App.tsx)
 // NSEC_APP_HEX_PUBKEY removed as it's no longer used as a default
@@ -17,8 +17,8 @@ const DEFAULT_NIP46_BUNKER_IDENTIFIER = 'bunker://ed199f5e5ad67c6c907b0ac31fb28f
 const LOCALSTORAGE_NIP46_BUNKER_URI = 'nip46_bunker_uri'; // Store the full bunker URI
 
 export type LoginMethod = 'none' | 'nip07' | 'nip46';
-// Simplified NIP-46 Status for wrapper flow
-export type Nip46Status = 'idle' | 'connecting' | 'connected' | 'failed' | 'disconnected'; // Renamed 'requesting' to 'connecting'
+// Add status for QR code flow
+export type Nip46Status = 'idle' | 'connecting' | 'connected' | 'failed' | 'disconnected' | 'waiting_for_scan' | 'waiting_for_mobile_approval';
 
 export interface UseAuthReturn {
     ndk: NDK | undefined;
@@ -27,12 +27,14 @@ export interface UseAuthReturn {
     currentUser: NDKUser | null;
     currentUserNpub: string | null;
     isLoggedIn: boolean;
-    loginMethod: LoginMethod;
-    // nip46AuthUrl: string | null; // Removed, wrapper handles URI internally for connection
+    loginMethod: LoginMethod; // Keep this to know which method initiated login
+    nip46AuthUrl: string | null; // Add back for QR code URI
     nip46Status: Nip46Status;
     authError: Error | null;
     loginWithNip07: () => Promise<void>;
-    initiateNip46Login: (bunkerUri?: string) => Promise<void>; // Parameter is now bunker URI
+    initiateNip46Login: (bunkerUri?: string) => Promise<void>; // Bunker URI flow
+    initiateNip46QrCodeLogin: () => Promise<void>; // New QR Code flow
+    initiateNip46MobileDeepLinkLogin: () => Promise<void>; // <-- Add new function type
     logout: () => Promise<void>;
     cancelNip46LoginAttempt: () => void; // May need adjustment or removal if not applicable to wrapper
 }
@@ -43,36 +45,44 @@ export const useAuth = (): UseAuthReturn => {
 
     const [currentUser, setCurrentUser] = useState<NDKUser | null>(null);
     const [loginMethod, setLoginMethod] = useState<LoginMethod>('none');
-    // const [nip46AuthUrl, setNip46AuthUrl] = useState<string | null>(null); // Removed
+    const [nip46AuthUrl, setNip46AuthUrl] = useState<string | null>(null); // Add state for Auth URL
     const [nip46Status, setNip46Status] = useState<Nip46Status>('idle');
     const [authError, setAuthError] = useState<Error | null>(null);
     const [isLoggedInState, setIsLoggedInState] = useState<boolean>(false); // Add state for login status
 
-    // Ref to hold the current NIP-46 signer instance if needed for cancellation
+    // Ref to hold the current NIP-46 signer instance (could be bunker or QR code flow)
     const nip46SignerRef = useRef<NostrConnectSignerWrapper | null>(null);
-    const nip46AbortControllerRef = useRef<AbortController | null>(null); // For potential cancellation
+    const nip46AbortControllerRef = useRef<AbortController | null>(null); // For potential cancellation (bunker flow)
+    // Ref to hold the temporary signer used ONLY for QR code generation/initial connection
+    const tempNip46SignerRef = useRef<NostrConnectSignerWrapper | null>(null);
 
     const isLoggedIn = isLoggedInState; // Use state variable
     const currentUserNpub = currentUser ? currentUser.npub : null;
 
-    // --- Cleanup NIP-46 ---
+    // --- Cleanup NIP-46 (Needs to handle both flows) ---
     const cleanupNip46 = useCallback((clearPersistence = false) => {
-        console.log("[useAuth] Cleaning up NIP-46 state (wrapper flow).");
+        console.log("[useAuth] Cleaning up NIP-46 state.");
 
-        // Cancel any ongoing connection attempt
+        // Cancel any ongoing connection attempt (bunker flow)
         if (nip46AbortControllerRef.current) {
-             console.log("[useAuth] Aborting NIP-46 connection attempt.");
+             console.log("[useAuth] Aborting NIP-46 bunker connection attempt.");
              nip46AbortControllerRef.current.abort();
              nip46AbortControllerRef.current = null;
         }
 
-        // Disconnect the signer if it exists and is connected
+        // Close the main signer (if connected)
         if (nip46SignerRef.current?.isConnected) {
-            console.log("[useAuth] Disconnecting NIP-46 signer wrapper.");
-            // Assuming the wrapper has a disconnect method
-            nip46SignerRef.current.disconnect?.(); // Use optional chaining if unsure
+            console.log("[useAuth] Closing main NIP-46 signer wrapper.");
+            nip46SignerRef.current.close(); // Use close()
         }
-        nip46SignerRef.current = null; // Clear the ref
+        nip46SignerRef.current = null; // Clear the main ref
+
+        // Close the temporary QR code signer (if it exists)
+        if (tempNip46SignerRef.current) {
+            console.log("[useAuth] Closing temporary NIP-46 QR signer wrapper.");
+            tempNip46SignerRef.current.close(); // Use close()
+            tempNip46SignerRef.current = null;
+        }
 
         // Clear signer if it was the wrapper instance
         if (ndk?.signer instanceof NostrConnectSignerWrapper) {
@@ -230,18 +240,6 @@ export const useAuth = (): UseAuthReturn => {
         }
     }, [ndk, isNdkReady, nip46Status, cleanupNip46]);
 
-    // --- Cancel NIP-46 ---
-    const cancelNip46LoginAttempt = useCallback(() => {
-        console.log("[useAuth] Attempting to cancel NIP-46 login...");
-        if (nip46AbortControllerRef.current) {
-            nip46AbortControllerRef.current.abort(); // Signal abortion
-        }
-        // cleanupNip46 will handle resetting state etc.
-        cleanupNip46(); // Reset state, clear persistence explicitly if desired on cancel
-         setAuthError(new Error("NIP-46 connection cancelled by user.")); // Provide feedback
-         // Nip46Status is reset within cleanupNip46
-    }, [cleanupNip46]);
-
     // --- Reconnect Logic (Example - Needs Integration) ---
     useEffect(() => {
         // Attempt to reconnect using persisted NIP-46 URI on initial load if NDK is ready
@@ -271,6 +269,169 @@ export const useAuth = (): UseAuthReturn => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [ndk, isNdkReady /* trigger only when NDK is ready */]);
 
+    // --- New QR Code Login ---
+    const initiateNip46QrCodeLogin = useCallback(async () => {
+        if (!ndk || !isNdkReady) {
+            setAuthError(new Error("NDK not ready for NIP-46."));
+            return;
+        }
+        if (['connecting', 'connected', 'waiting_for_scan', 'waiting_for_mobile_approval'].includes(nip46Status)) {
+            console.warn("[useAuth] NIP-46 login already in progress or connected.");
+            return;
+        }
+
+        console.log("[useAuth] Initiating NIP-46 login with QR code...");
+
+        cleanupNip46(); // Clean previous attempts
+        setLoginMethod('nip46');
+        setAuthError(null);
+        // Set status immediately to prevent race conditions
+        setNip46Status('waiting_for_scan'); 
+
+        try {
+            // 1. Create a temporary signer wrapper instance
+            // We don't provide remote or bunkerUri, so it won't auto-connect.
+            // It will generate its own internal SimpleSigner for this session.
+            const tempSigner = new NostrConnectSignerWrapper({ ndk });
+            tempNip46SignerRef.current = tempSigner; // Store ref immediately
+
+            // 2. Generate the nostrconnect URI
+            const metadata = { name: "Klunkstr" }; // Basic metadata
+            const authUrl = tempSigner.getNostrConnectURI(metadata);
+            setNip46AuthUrl(authUrl);
+            console.log("[useAuth] Generated NIP-46 Auth URL for QR code.");
+            // Status is already 'waiting_for_scan'
+
+            // 3. Wait for the user to scan and connect
+            console.log("[useAuth] Waiting for QR code scan and connection...");
+            // blockUntilReady waits for the userPromise to resolve, which happens
+            // internally when the underlying NostrConnectSigner connects.
+            const user = await tempSigner.blockUntilReady(); 
+            
+            // 4. Connection successful!
+            console.log(`[useAuth] NIP-46 QR connection successful! User: ${user.npub}`);
+
+            // Move temporary signer to main signer ref and set as NDK signer
+            nip46SignerRef.current = tempSigner;
+            tempNip46SignerRef.current = null; // Clear temp ref
+            ndk.signer = tempSigner; 
+
+            // Update auth state
+            setCurrentUser(user);
+            setIsLoggedInState(true);
+            setLoginMethod('nip46');
+            setNip46Status('connected');
+            setNip46AuthUrl(null); // Clear the auth URL now that we're connected
+            setAuthError(null);
+
+            // --- Persist connection details? --- 
+            // Unlike bunker URI, nostrconnect doesn't have an obvious single string
+            // to persist for reconnect. We might need to store remote pubkey/relays 
+            // if we want auto-reconnect for QR flow.
+            // For now, skipping persistence for QR flow.
+            console.log("[useAuth] QR flow connection complete. Persistence skipped for this method.");
+
+        } catch (error: unknown) {
+            console.error("[useAuth] NIP-46 QR connection failed:", error);
+            setAuthError(error instanceof Error ? error : new Error("Failed to connect via NIP-46 QR code."));
+            // Reset status fully on error
+            cleanupNip46(); // Full cleanup, including setting status to idle
+        }
+    }, [ndk, isNdkReady, nip46Status, cleanupNip46]);
+
+    // --- Mobile Deep Link Login ---
+    const initiateNip46MobileDeepLinkLogin = useCallback(async () => {
+        if (!ndk || !isNdkReady) {
+            setAuthError(new Error("NDK not ready for NIP-46."));
+            return;
+        }
+        if (['connecting', 'connected', 'waiting_for_scan', 'waiting_for_mobile_approval'].includes(nip46Status)) {
+            console.warn("[useAuth] NIP-46 login already in progress or connected.");
+            return;
+        }
+
+        console.log("[useAuth] Initiating NIP-46 mobile deeplink login...");
+
+        cleanupNip46(); // Clean previous attempts
+        setLoginMethod('nip46');
+        setAuthError(null);
+        // Set status immediately
+        setNip46Status('waiting_for_mobile_approval'); 
+
+        try {
+            // 1. Create temporary signer wrapper (same as QR flow)
+            const tempSigner = new NostrConnectSignerWrapper({ ndk });
+            tempNip46SignerRef.current = tempSigner;
+
+            // 2. Generate the nostrconnect URI (same as QR flow)
+            const metadata = { name: "Klunkstr" }; // Basic metadata
+            const authUrl = tempSigner.getNostrConnectURI(metadata);
+            console.log("[useAuth] Generated NIP-46 Auth URL for mobile deeplink:", authUrl);
+
+            // 3. Attempt to trigger the deeplink
+            console.log("[useAuth] Attempting to open mobile deeplink using window.open...");
+            // Try window.open instead of window.location.href
+            const appWindow = window.open(authUrl, '_blank'); 
+            if (!appWindow) {
+                // Handle pop-up blocker or inability to open
+                console.error("[useAuth] Failed to open deeplink window/tab. Pop-up blocker?");
+                // Maybe provide fallback instructions here?
+                setAuthError(new Error("Could not open signer app. Please ensure pop-ups are allowed or try manually copying the URI."));
+                // Don't cleanup immediately, maybe user can still copy/paste?
+                // Set status back? Or add a new status?
+                setNip46Status('failed'); // Or a specific 'deeplink_failed' status?
+                return; 
+            }
+
+            // 4. Wait for the user to approve in the mobile app and connect back
+            console.log("[useAuth] Waiting for mobile app approval and connection...");
+            // blockUntilReady waits for the userPromise to resolve via relay messages
+            const user = await tempSigner.blockUntilReady(); 
+            
+            // 5. Connection successful!
+            console.log(`[useAuth] NIP-46 mobile deeplink connection successful! User: ${user.npub}`);
+
+            // Move temporary signer to main signer ref and set as NDK signer
+            nip46SignerRef.current = tempSigner;
+            tempNip46SignerRef.current = null;
+            ndk.signer = tempSigner;
+
+            // Update auth state
+            setCurrentUser(user);
+            setIsLoggedInState(true);
+            setLoginMethod('nip46');
+            setNip46Status('connected');
+            // setNip46AuthUrl(null); // No URL was displayed
+            setAuthError(null);
+
+            // Skipping persistence for mobile deeplink flow (same as QR)
+            console.log("[useAuth] Mobile deeplink flow connection complete. Persistence skipped.");
+
+        } catch (error: unknown) {
+            console.error("[useAuth] NIP-46 mobile deeplink connection failed:", error);
+            setAuthError(error instanceof Error ? error : new Error("Failed to connect via NIP-46 mobile app."));
+            // Reset status fully on error
+            cleanupNip46(); // Full cleanup
+        }
+    }, [ndk, isNdkReady, nip46Status, cleanupNip46]);
+
+    // --- Cancel NIP-46 (Needs adjustment?) ---
+    // This currently only aborts the bunker URI flow. 
+    // For QR flow, we might need to call close() on the temp signer?
+    const cancelNip46LoginAttempt = useCallback(() => {
+        console.log("[useAuth] Attempting to cancel NIP-46 login...");
+        if (nip46AbortControllerRef.current) { // Bunker flow
+            nip46AbortControllerRef.current.abort(); 
+        } else if (tempNip46SignerRef.current) { // QR flow (before connection)
+            // Close the temporary signer to stop listening
+            tempNip46SignerRef.current.close();
+            tempNip46SignerRef.current = null;
+        } 
+        // Cleanup resets state etc.
+        cleanupNip46(); 
+        setAuthError(new Error("NIP-46 connection cancelled by user.")); 
+    }, [cleanupNip46]);
+
     // --- Return Auth State and Functions ---
     return {
         ndk,
@@ -280,11 +441,13 @@ export const useAuth = (): UseAuthReturn => {
         currentUserNpub,
         isLoggedIn,
         loginMethod,
-        // nip46AuthUrl, // Removed
+        nip46AuthUrl,
         nip46Status,
         authError,
         loginWithNip07,
         initiateNip46Login,
+        initiateNip46QrCodeLogin,
+        initiateNip46MobileDeepLinkLogin,
         logout,
         cancelNip46LoginAttempt,
     };

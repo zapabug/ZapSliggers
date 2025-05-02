@@ -31,7 +31,7 @@ src/
 │   ├── Planning.md
 │   └── roadmap.md
 ├── hooks/              # Custom React hooks
-│   ├── useAuth.ts      # Manages NIP-07/NIP-46/nsec login state & settings persistence
+│   ├── useAuth.ts      # Manages NIP-07 and NIP-46 login state. Uses the custom `NostrConnectSignerWrapper` from `src/lib/applesauce-nip46` for NIP-46 connections, supporting both direct bunker URI connection and a generic QR code flow (`nostrconnect://`). Includes NDK initialization via `useNDKInit`.
 │   ├── useNDKInit.ts   # Initializes and manages the NDK singleton instance connection
 │   ├── useShotTracers.ts # Manages state and logic for active/historical projectile trails
 │   ├── useMatterPhysics.ts    # Encapsulates Matter.js engine setup & physics loop
@@ -40,6 +40,13 @@ src/
 │   ├── useGameAssets.ts       # Handles loading game image assets
 │   └── useGameLogic.ts       # Encapsulates core game state (players, level, aim, abilities) and logic handlers (fire, aim, select ability, hit detection, round/match win condition). Parameterized by `mode` ('practice'/'multiplayer'). Practice mode includes turn-based logic, best-of-3 rounds, scoring, HP tie-breaker, and alternating start player.
 ├── index.css           # Global styles, Tailwind directives
+├── lib/                # Copied or external libraries adapted for the project
+│   └── applesauce-nip46/ # Implementation of NIP-46 based on Applesauce signer code
+│       ├── wrapper.ts       # NDKSigner wrapper for the Applesauce NostrConnectSigner
+│       ├── nostr-connect-signer.ts # Core NIP-46 connection/request logic
+│       ├── simple-signer.ts # Helper for local keypair generation
+│       ├── helpers.ts       # Utility functions (crypto, promises)
+│       └── types.ts         # Shared types for NIP-46 implementation
 ├── main.tsx            # Application entry point, NDK instance creation
 ├── ndk.ts              # NDK singleton instance export (Potentially related to useNDKInit)
 ├── screens/            # Contains full-screen components like PracticeScreen
@@ -94,7 +101,7 @@ src/
 
 ## Custom Hooks (`src/hooks/`)
 
-*   **`useAuth.ts`**: Manages NIP-07/NIP-46/nsec login state & settings persistence. Includes NDK initialization via `useNDKInit`.
+*   **`useAuth.ts`**: Manages NIP-07 and NIP-46 login state. Uses the custom `NostrConnectSignerWrapper` from `src/lib/applesauce-nip46` for NIP-46 connections, supporting both direct bunker URI connection and a generic QR code flow (`nostrconnect://`). Includes NDK initialization via `useNDKInit`.
 *   **`useNDKInit.ts`**: Manages NDK connection state (used internally by `useAuth`).
 *   **`useGameLogic.ts`**: Encapsulates core game state (players, level, aim, abilities) and logic handlers (fire, aim, select ability, hit detection, round/match win condition). Parameterized by `mode` ('practice'/'multiplayer'). Practice mode includes turn-based logic, best-of-3 rounds, scoring, HP tie-breaker, and alternating start player.
 *   **`useShotTracers.ts`**: Manages state and logic for active/historical projectile trails.

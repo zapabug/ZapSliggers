@@ -41,7 +41,7 @@
    - **Physics Engine:** `matter-js` (via `useMatterPhysics` hook)
    - **2D Rendering:** HTML Canvas API (via `GameRenderer.tsx`)
    - **Nostr Client Library:** `@nostr-dev-kit/ndk` (via `useNDKInit` hook)
-   - **Authentication:** Custom `useAuth` hook.
+   - **Authentication:** Custom `useAuth` hook (Handles NIP-07 and NIP-46 via integrated Applesauce signer code).
    - **State Management:** Component state/prop drilling, React hooks.
    - **Nostr Relays:** Default list, user-configurable preferred.
    - **Backend Service:** Required for NUT-18.
@@ -59,6 +59,7 @@
    pnpm install tailwindcss@3.4.13 postcss autoprefixer
    pnpm install @nostr-dev-kit/ndk matter-js @types/matter-js
    pnpm install nostr-login # Added nostr-login
+   # Dependencies for copied Applesauce NIP-46 code (buffer, nanoid) installed separately
    # Removed ndk-hooks as primarily using direct NDK calls
    # Add zustand later if needed for state
 
@@ -98,7 +99,7 @@
    - Initial Level/Physics Setup: Random placement, custom gravity, basic collisions, projectile timeout implemented via hooks. - *Done*.
    - Aiming/Firing/Controls: Functional. - *Done*.
    - Aiming Aids: Shot tracers implemented. - *Done*.
-   - Authentication: Handled by `useAuth` hook. - *Done*.
+   - Authentication: Handled by `useAuth` hook. - *Done* (Now uses Applesauce NIP-46 wrapper).
    - NDK Setup: Singleton + `useNDKInit` hook. Manual fetching/subscriptions used where needed. - *Done*.
    - State Mgt: Component state/prop drilling. - *Confirmed*.
    - Klunkstr Gameplay Rules (Target): Defined (Turn-based, Bo3, 5 shots/round, HP/Abilities, Vuln, Sudden Death). - *Confirmed Target*
@@ -127,6 +128,7 @@
    - **NUT-18 Payment Requests** require backend...
    - **Backend Service** acts as trusted intermediary...
    - `nostr-login` simplifies authentication...
+   - **NIP-46:** Implemented using a custom wrapper around copied Applesauce signer code. 
    - **Matchmaking** relies on out-of-band pubkey exchange...
    - **UI Components:** `AimingInterface.tsx` handles left controls (Joystick/Power). `ActionButtons.tsx` handles right controls (Ability arc/Fire). `GameScreen.tsx` positions these components.
    - **Last Shot Trace:** Implement rendering of the previous shot's path.
@@ -148,7 +150,7 @@
 **9. Next Steps:**
    - **Integration & Testing (Current Focus):**
      - **Visuals:** Render actual sprites/assets in `GameRenderer`. - *Immediate Next*
-     - **Nostr Login:** Test and debug login flow (`useAuth`) thoroughly on mobile devices.
+     - **Nostr Login:** Test and debug NIP-46 QR code login flow (`useAuth` with Applesauce wrapper) thoroughly on mobile devices.
      - **Matchmaking:** Implement full challenge accept/reject flow in `ChallengeHandler`/`LobbyScreen`.
      - **Wagering:** Define/Implement Backend Service API and frontend integration.
      - **Turn/State Sync:** Refine/complete synchronization of game state (collisions, turns, aiming?) using `kind:30079`.

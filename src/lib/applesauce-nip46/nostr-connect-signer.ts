@@ -15,7 +15,8 @@ const logger = debug("klunkstr:applesauce-nip46"); // Changed namespace
 
 export function isErrorResponse(response: unknown): response is NostrConnectErrorResponse {
   // Type guard needs to check properties of the unknown type
-  return typeof response === 'object' && response !== null && 'error' in response && typeof (response as any).error === 'string';
+  // Check type of error property more explicitly
+  return typeof response === 'object' && response !== null && 'error' in response && typeof (response as { error?: unknown }).error === 'string';
 }
 
 export enum Permission {
@@ -237,28 +238,37 @@ export class NostrConnectSigner implements Nip07Interface {
 
   /** Call this method with incoming events */
   public async handleEvent(event: NostrEvent) {
+    // Log raw event arrival
+    this.log("[handleEvent] Received event:", { id: event.id, kind: event.kind, pubkey: event.pubkey, tags: event.tags });
+
     if (!this.verifyEvent(event)) {
-        this.log("Ignoring invalid event", event.id);
+        this.log("[handleEvent] Ignoring invalid event", event.id);
         return;
     }
 
     // ignore the event if its not from the expected remote signer (if known)
     if (this.remote && event.pubkey !== this.remote) {
-        this.log("Ignoring event from unexpected pubkey", event.pubkey, "expected", this.remote);
+        this.log("[handleEvent] Ignoring event from unexpected pubkey", event.pubkey, "expected", this.remote);
         return;
     }
     // ignore events not addressed to us
-     if (!event.tags.some(t => t[0] === 'p' && t[1] === this.clientPubkey)) {
-        this.log("Ignoring event not tagged to client", event.id, "client", this.clientPubkey);
+    if (!event.tags.some(t => t[0] === 'p' && t[1] === this.clientPubkey)) {
+        this.log("[handleEvent] Ignoring event not tagged to client", event.id, "client", this.clientPubkey);
         return;
-     }
+    }
 
+    // Log before decryption
+    this.log("[handleEvent] Event passed checks, attempting decryption for event:", event.id, "from", event.pubkey);
 
     try {
       // Decrypt content using the local SimpleSigner
       const responseStr = isNIP04(event.content)
         ? await this.signer.nip04.decrypt(event.pubkey, event.content)
         : await this.signer.nip44.decrypt(event.pubkey, event.content);
+
+      // Log decrypted string
+      this.log("[handleEvent] Decrypted content for event:", event.id, "content:", responseStr);
+
       // Use unknown and type check before accessing properties
       const response: unknown = JSON.parse(responseStr);
 
@@ -300,6 +310,9 @@ export class NostrConnectSigner implements Nip07Interface {
           request?.reject(new Error(response.error));
         } else {
            this.log("Request success:", responseId, responseResult);
+          // When resolving, we expect the correct type based on the original request
+          // The 'unknown' in the map requires a cast back here if strict typing is needed,
+          // but the Deferred's resolve function likely handles the type implicitly.
           request?.resolve(responseResult);
         }
         this.requests.delete(responseId);
@@ -338,7 +351,8 @@ export class NostrConnectSigner implements Nip07Interface {
     const event = await this.createRequestEvent(JSON.stringify(request), this.remote, kind);
 
     const deferred = createDefer<ResponseResults[T]>();
-    this.requests.set(id, deferred);
+    // Cast to Deferred<unknown> to satisfy the map type
+    this.requests.set(id, deferred as Deferred<unknown>);
 
     this.log("Making request:", id, method, params);
     await this.publishMethod(this.relays, event); // Use injected publish method

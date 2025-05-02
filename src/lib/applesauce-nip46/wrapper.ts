@@ -1,6 +1,6 @@
 import NDK, { NDKSigner, NDKUser, NDKEvent, NDKUserProfile, NDKRelaySet } from "@nostr-dev-kit/ndk";
 import { EventTemplate, NostrEvent } from "nostr-tools";
-import { NostrConnectSigner, NostrConnectSignerOptions, Observer } from "./nostr-connect-signer";
+import { NostrConnectSigner, NostrConnectSignerOptions, Observer, NostrConnectAppMetadata } from "./nostr-connect-signer";
 import debug from 'debug';
 
 const logger = debug("klunkstr:applesauce-wrapper");
@@ -150,10 +150,25 @@ export class NostrConnectSignerWrapper implements NDKSigner {
                        this.log("Wrapper connected (waited), user fetched:", pubkey);
                        resolve(this._user);
                    } else {
-                        // This case shouldn't typically happen with fromBunkerURI
-                        // or direct instantiation needing connect() call later
-                        this.log("Waiting for explicit connect call or signer connection...");
-                         reject(new Error("Signer not connected and remote not specified during init."));
+                        // Case: QR Code flow (remote not known initially)
+                        // Wait for the signer to connect via the nostrconnect protocol
+                        this.log("Waiting for nostrconnect:// connection...");
+                        try {
+                            await this.signer.waitForSigner(); // Assume waitForSigner handles this case
+                            if (options.signal?.aborted) {
+                                return reject(new DOMException('Aborted', 'AbortError'));
+                            }
+                            const pubkey = await this.signer.getPublicKey();
+                            this._user = this.ndk.getUser({ hexpubkey: pubkey });
+                            this.isConnected = true;
+                            this.log("Wrapper connected (nostrconnect), user fetched:", pubkey);
+                            resolve(this._user);
+                        } catch (connectError) {
+                            this.log("Error waiting for nostrconnect connection:", connectError);
+                            this.isConnected = false;
+                            this.close(); // Ensure cleanup on error
+                            reject(connectError); // Reject with the connection error
+                        }
                    }
                 } catch (error) {
                     this.log("Error during initial user fetch/connection wait:", error);
@@ -180,6 +195,13 @@ export class NostrConnectSignerWrapper implements NDKSigner {
             throw new Error("Signer not ready: User not available synchronously.");
         }
         return this._user;
+    }
+
+    // Add passthrough method for generating nostrconnect URI
+    public getNostrConnectURI(metadata?: NostrConnectAppMetadata): string {
+        this.log("Generating nostrconnect URI via underlying signer");
+        // Assumes the underlying signer instance (`this.signer`) is available
+        return this.signer.getNostrConnectURI(metadata);
     }
 
     // toPayload must return string (JSON serialized)
