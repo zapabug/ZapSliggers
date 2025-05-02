@@ -118,8 +118,9 @@ const GameRenderer = forwardRef<GameRendererRef, GameRendererProps>(({ levelData
       handleProjectileFired: tracers.handleProjectileFired,
       handleProjectileUpdate: tracers.handleProjectileUpdate,
       handleProjectileRemoved: tracers.handleProjectileRemoved,
+      getLastCompletedPath: tracers.getLastCompletedPath,
       resetTraces: tracers.resetTraces,
-  }), [tracers.handleProjectileFired, tracers.handleProjectileUpdate, tracers.handleProjectileRemoved, tracers.resetTraces]);
+  }), [tracers.handleProjectileFired, tracers.handleProjectileUpdate, tracers.handleProjectileRemoved, tracers.getLastCompletedPath, tracers.resetTraces]);
   // --- END Memoization ---
 
   const physics = useMatterPhysics({

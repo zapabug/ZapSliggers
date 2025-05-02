@@ -62,7 +62,7 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
     const {
         playerStates,
         currentPlayerIndex, // Use this to indicate whose turn it is visually
-        currentAim,
+        aimStates, // Get the aim states array
         selectedAbility,
         levelData,
         score, 
@@ -81,6 +81,7 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
 
     // Derived state for convenience
     const activePlayerState = playerStates[currentPlayerIndex]; // Based on turn
+    const currentAim = aimStates[currentPlayerIndex]; // Get the current player's aim state
     // Inactive state not directly used currently, removed for linting
 
     // --- Keyboard Controls (Use handlers from hook) --- 
@@ -89,34 +90,28 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
             let newAngle: number | undefined = undefined;
             let newPower: number | undefined = undefined;
             let preventDefault = false;
-            let angleMultiplier = 1; // Default direction
 
-            // Check if it's Player 2's turn in practice mode for inversion
-            if (currentPlayerIndex === 1) { 
-                angleMultiplier = -1;
-            }
-
-            // Swap controls and apply inversion if needed
+            // Controls are now the same for both players
             switch (event.key) {
-                case 'ArrowLeft': // Now controls Angle LEFT
-                    newAngle = (currentAim.angle - (2 * angleMultiplier) + 360) % 360;
+                case 'ArrowLeft': // Angle LEFT
+                    newAngle = (currentAim.angle - 2 + 360) % 360; 
                     preventDefault = true;
                     break;
-                case 'ArrowRight': // Now controls Angle RIGHT
-                    newAngle = (currentAim.angle + (2 * angleMultiplier)) % 360;
+                case 'ArrowRight': // Angle RIGHT
+                    newAngle = (currentAim.angle + 2) % 360;
                     preventDefault = true;
                     break;
-                case 'ArrowDown': // Now controls Power DOWN
+                case 'ArrowDown': // Power DOWN
                     newPower = Math.max(0, currentAim.power - 2);
                     preventDefault = true;
                     break;
-                case 'ArrowUp': // Now controls Power UP
+                case 'ArrowUp': // Power UP
                     newPower = Math.min(100, currentAim.power + 2);
                     preventDefault = true;
                     break;
                 case ' ': // Spacebar
                     event.preventDefault();
-                    handleFire(); // Call hook handler
+                    handleFire();
                     break;
                 case '1': handleSelectAbility('splitter'); break; 
                 case '2': handleSelectAbility('gravity'); break; 
@@ -134,7 +129,7 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
                     angle: newAngle !== undefined ? newAngle : currentAim.angle,
                     power: newPower !== undefined ? newPower : currentAim.power,
                 };
-                handleAimChange(updatedAim); // Call hook handler
+                handleAimChange(updatedAim);
             }
         };
 
@@ -142,8 +137,7 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
         return () => {
             window.removeEventListener('keydown', handleKeyDown);
         };
-        // Dependencies include handlers and currentPlayerIndex for the inversion logic
-    }, [handleFire, handleSelectAbility, handleAimChange, currentAim.angle, currentAim.power, currentPlayerIndex]); 
+    }, [handleFire, handleSelectAbility, handleAimChange, currentAim.angle, currentAim.power]); 
 
     // --- Return JSX (Similar structure to GameScreen, connected to hook) --- 
     return (
@@ -203,7 +197,8 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
                 {/* Bottom Control Area - Aiming (Always active) */} 
                 <div className="absolute bottom-4 left-4 z-10 pointer-events-auto flex flex-col items-start max-w-xs">
                     <AimingInterface
-                        currentAngle={currentAim.angle} // Use aim from hook
+                        currentAngle={currentAim.angle} // Use current player's aim angle
+                        currentPower={currentAim.power} // Use current player's aim power
                         onAimChange={handleAimChange} // Use handler from hook
                     />
                 </div>

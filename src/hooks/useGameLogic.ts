@@ -37,7 +37,7 @@ export interface UseGameLogicProps {
 export interface UseGameLogicReturn {
     playerStates: [PlayerState, PlayerState];
     currentPlayerIndex: 0 | 1;
-    currentAim: { angle: number; power: number };
+    aimStates: [{ angle: number; power: number }, { angle: number; power: number }];
     selectedAbility: AbilityType | null;
     levelData: InitialGamePositions;
     score: [number, number];
@@ -92,7 +92,10 @@ export function useGameLogic({
     const [levelData, setLevelData] = useState<InitialGamePositions>(() =>
         initialLevelData || generateInitialPositions(2400, 1200)
     );
-    const [currentAim, setCurrentAim] = useState({ angle: myPlayerIndex === 1 ? 180 : 0, power: 50 }); // Initial angle based on index
+    // Store aim state per player - Explicitly type useState
+    const [aimStates, setAimStates] = useState<[{ angle: number; power: number }, { angle: number; power: number }]>(
+        [{ angle: 0, power: 50 }, { angle: 180, power: 50 }]
+    ); 
     const [currentPlayerIndex, setCurrentPlayerIndex] = useState<0 | 1>(0); // Tracks turn in practice mode
     const [playerStates, setPlayerStates] = useState<[PlayerState, PlayerState]>([
         { hp: MAX_HP, usedAbilities: new Set(), isVulnerable: false }, // Player 0
@@ -106,18 +109,21 @@ export function useGameLogic({
     const playerStatesRef = useRef(playerStates);
     useEffect(() => { playerStatesRef.current = playerStates; }, [playerStates]);
 
-    // --- Effect to Sync Aim State on Turn Change (Practice Mode Only) --- 
+    // --- Effect to handle Turn Change cleanup (Practice Mode Only) ---
     useEffect(() => {
-        if (mode !== 'practice') return; // Only run in practice mode
+        if (mode !== 'practice') return;
 
-        const currentShipAngleRad = gameRendererRef.current?.getShipAngle(currentPlayerIndex);
-        if (currentShipAngleRad !== undefined) {
-            let angleDeg = currentShipAngleRad * (180 / Math.PI);
-            angleDeg = (angleDeg % 360 + 360) % 360; // Normalize to 0-360
-            setCurrentAim(prevAim => ({ ...prevAim, angle: angleDeg }));
-        }
+        // // Syncing aim state from physics angle caused visual jump on first input.
+        // const currentShipAngleRad = gameRendererRef.current?.getShipAngle(currentPlayerIndex);
+        // if (currentShipAngleRad !== undefined) {
+        //     let angleDeg = currentShipAngleRad * (180 / Math.PI);
+        //     angleDeg = (angleDeg % 360 + 360) % 360; // Normalize to 0-360
+        //     setCurrentAim(prevAim => ({ ...prevAim, angle: angleDeg }));
+        // }
+
+        // Reset selected ability when turn changes
         setSelectedAbility(null);
-    }, [currentPlayerIndex, mode, gameRendererRef]); // Dependency on currentPlayerIndex and mode
+    }, [currentPlayerIndex, mode]); // Removed gameRendererRef dependency as it's not needed
 
     // --- Callback for Round Win / Game End ---
     // Restore the full round completion logic
@@ -183,8 +189,10 @@ export function useGameLogic({
             ]);
             setCurrentPlayerIndex(startingPlayerIndex); 
             setSelectedAbility(null);
-            const initialAngle = startingPlayerIndex === 0 ? 0 : 180;
-            setCurrentAim({ angle: initialAngle, power: 50 });
+            // Remove unused variable - initial angle is set directly in setAimStates
+            // const initialAngle = startingPlayerIndex === 0 ? 0 : 180; 
+            // Reset aim states for the new round
+            setAimStates([{ angle: 0, power: 50 }, { angle: 180, power: 50 }]);
         } else {
             // Multiplayer logic (remains unchanged)
              console.log(`Multiplayer Round Ended. Triggering onGameEnd.`);
@@ -277,12 +285,19 @@ export function useGameLogic({
         });
     }, [handleRoundCompletion, mode]);
 
-    // --- Aim Change Handler --- 
-    // TODO: In multiplayer, maybe send aim updates via ephemeral events? For now, only send fire.
+    // --- Aim Change Handler ---
     const handleAimChange = useCallback((aim: { angle: number; power: number }) => {
-        setCurrentAim(aim);
         // Apply aim change to the correct player based on mode
         const targetIndex = mode === 'practice' ? currentPlayerIndex : myPlayerIndex;
+        
+        // Update the specific player's aim state
+        setAimStates(prevStates => {
+            const nextStates: [{ angle: number; power: number }, { angle: number; power: number }] = [...prevStates];
+            nextStates[targetIndex] = aim;
+            return nextStates;
+        });
+
+        // Physically rotate the ship
         gameRendererRef.current?.setShipAim(targetIndex, aim.angle);
     }, [mode, myPlayerIndex, currentPlayerIndex, gameRendererRef]);
 
@@ -292,7 +307,8 @@ export function useGameLogic({
         const actingPlayerIndex = mode === 'practice' ? currentPlayerIndex : myPlayerIndex;
         const actingPlayerState = playerStates[actingPlayerIndex];
         const abilityToFire = selectedAbility;
-        const currentAimState = currentAim; // Capture state at time of call
+        // Read the correct aim state for the acting player
+        const currentAimState = aimStates[actingPlayerIndex]; 
 
         console.log(`[useGameLogic] Fire initiated by Player ${actingPlayerIndex} (Mode: ${mode}). Aim:`, currentAimState, `Ability: ${abilityToFire || 'None'}`);
 
@@ -368,7 +384,7 @@ export function useGameLogic({
         myPlayerIndex,
         playerStates,
         selectedAbility,
-        currentAim,
+        aimStates, // Add aimStates dependency
         gameRendererRef,
         handleRoundCompletion,
         ndk,
@@ -430,7 +446,7 @@ export function useGameLogic({
     return {
         playerStates,
         currentPlayerIndex,
-        currentAim,
+        aimStates, // Return aimStates 
         selectedAbility,
         levelData,
         score,
