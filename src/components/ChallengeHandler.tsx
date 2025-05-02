@@ -14,10 +14,17 @@ interface ChallengeHandlerProps {
     loggedInPubkey: string | null;
     ndk: NDK;
     onChallengeAccepted: (opponentPubkey: string, matchId: string) => void;
+    recipientNpubOrHex: string;
+    setRecipientNpubOrHex: (value: string) => void;
 }
 
-export function ChallengeHandler({ loggedInPubkey, ndk, onChallengeAccepted }: ChallengeHandlerProps) {
-    const [recipientNpubOrHex, setRecipientNpubOrHex] = useState('');
+export function ChallengeHandler({
+    loggedInPubkey,
+    ndk,
+    onChallengeAccepted,
+    recipientNpubOrHex,
+    setRecipientNpubOrHex
+}: ChallengeHandlerProps) {
     const [error, setError] = useState<string | null>(null);
     const [activeSentChallenge, setActiveSentChallenge] = useState<{ opponentPubkey: string, eventId: string } | null>(null);
     const [activeReceivedChallenge, setActiveReceivedChallenge] = useState<{ challengerPubkey: string, eventId: string } | null>(null);
@@ -142,7 +149,7 @@ export function ChallengeHandler({ loggedInPubkey, ndk, onChallengeAccepted }: C
             setError(`Failed to send challenge: ${e instanceof Error ? e.message : String(e)}`);
             setActiveSentChallenge(null);
         }
-    }, [ndk, loggedInPubkey, recipientNpubOrHex, activeSentChallenge, activeReceivedChallenge]);
+    }, [ndk, loggedInPubkey, recipientNpubOrHex, activeSentChallenge, activeReceivedChallenge, setRecipientNpubOrHex]);
 
     const handleAcceptChallenge = useCallback(async () => {
         if (!ndk || !loggedInPubkey || !activeReceivedChallenge) {
