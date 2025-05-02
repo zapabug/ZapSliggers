@@ -19,10 +19,10 @@
    - **Aiming Aids (`useShotTracers`):** Historical shot traces (last 10) and active projectile trails rendered.
    - **Klunkstr Rules (Partial):** Basic HP system implemented (as resource). Ability selection UI/logic functional (`ActionButtons`/`useGameLogic`). Standard projectile hits trigger round win callback in `useGameLogic`.
    - **Practice Mode:** Full practice mode implemented (`PracticeScreen` + `useGameLogic`): turn-based, best-of-3 rounds, scoring, HP tie-breaker, alternating start player, opponent Npub display. - *Done*.
-   - **Authentication (`useAuth`):** NIP-07/NIP-46/nsec login logic implemented.
+   - **Authentication (`useAuth`):** Centralized authentication logic via custom `useAuth` hook. Supports NIP-07 (`NDKNip07Signer`) and NIP-46 (using integrated Applesauce signer code via `NostrConnectSignerWrapper`), including bunker URI, desktop QR, and mobile deeplink flows.
    - **Lobby (`LobbyScreen`, `LobbyPlayground`):** Basic lobby structure exists with interactive playground.
    - **Challenges (`ChallengeHandler`):** Basic Nostr DM challenge sending/receiving implemented.
-   - **Multiplayer Sync (Basic):** Fire actions synchronized via Nostr events (`kind:30079`) using `useGameLogic` and `useSubscribe`.
+   - **Multiplayer Sync (Basic):** Fire actions synchronized via Nostr events (`kind:30079`) using `useGameLogic` and manual NDK calls (`ndk.subscribe`, `ndkEvent.publish`).
 
    **Target Features (To Be Implemented/Completed):**
    - **Visuals:** Render actual sprites/assets for ships, planets, projectiles, effects.
@@ -40,16 +40,16 @@
    - **Styling:** Tailwind CSS (v3.4.13)
    - **Physics Engine:** `matter-js` (via `useMatterPhysics` hook)
    - **2D Rendering:** HTML Canvas API (via `GameRenderer.tsx`)
-   - **Nostr Client Library:** `@nostr-dev-kit/ndk` (via `useNDKInit` hook)
-   - **Authentication:** Custom `useAuth` hook (Handles NIP-07 and NIP-46 via integrated Applesauce signer code).
-   - **State Management:** Component state/prop drilling, React hooks.
+   - **Nostr Client Library:** `@nostr-dev-kit/ndk`. NDK instance managed via singleton and initialized via custom `useNDKInit` hook (called within `useAuth`). Direct NDK methods (`fetchProfile`, `subscribe`, event publishing) used where needed, minimal reliance on `ndk-hooks` library.
+   - **Authentication:** Custom `useAuth` hook manages NDK initialization and signers. NIP-07 uses `NDKNip07Signer`. NIP-46 uses integrated Applesauce code via `NostrConnectSignerWrapper`.
+   - **State Management:** Component state/prop drilling, React hooks. `useAuth` provides global auth state.
    - **Nostr Relays:** Default list, user-configurable preferred.
-   - **Backend Service:** Required for NUT-18.
-   - **eCash Wallet Requirement:** Users need NUT-18 compatible Cashu wallets.
+   - **Backend Service:** Required for NUT-18 (Wagering - Phase 2 goal, originally planned). **Current focus is Cashu.**
+   - **eCash Wallet Requirement:** Users need Cashu-compatible wallets. Agent/Bot needs wallet connection for facilitating stakes/payouts.
 
 **4. File Structure:** *(Refer to `layout.md` for the most up-to-date structure)*
 
-**5. Setup Commands:** *(Seems up-to-date)*
+**5. Setup Commands:**
    ```bash
    # 1. Create Vite project
    pnpm create vite@latest klunkstr --template react-ts
@@ -57,9 +57,10 @@
 
    # 2. Install dependencies
    pnpm install tailwindcss@3.4.13 postcss autoprefixer
-   pnpm install @nostr-dev-kit/ndk matter-js @types/matter-js
-   pnpm install nostr-login # Added nostr-login
-   # Dependencies for copied Applesauce NIP-46 code (buffer, nanoid) installed separately
+   pnpm install @nostr-dev-kit/ndk matter-js @types/matter-js qrcode.react @types/qrcode.react
+   # Dependencies for copied Applesauce NIP-46 code:
+   pnpm install buffer nanoid debug @types/debug
+   # Remove nostr-login if no longer used directly
    # Removed ndk-hooks as primarily using direct NDK calls
    # Add zustand later if needed for state
 
@@ -81,11 +82,11 @@
    # 7. Run the dev server
    pnpm run dev
 
-   # Backend setup commands TBD (will include installing Nostr/Cashu libs)
+   # Backend setup commands TBD (if agent requires separate service)
    ```
 
-**6. Normie UX Considerations:** *(Seems up-to-date)*
-   - **Onboarding:** First launch shows a modal explaining Nostr connection, **Cashu wallet requirement (NUT-18 compatible)**, mandatory pre-paid wagering via NUT-18 requests, and basic game rules.
+**6. Normie UX Considerations:**
+   - **Onboarding:** First launch shows a modal explaining Nostr connection, **Cashu wallet requirement**, mandatory pre-paid wagering via **Cashu token submission to an agent**, and basic game rules.
    - **Tooltips:** Hover tooltips on buttons (Fire, Abilities) and key UI elements (Timer, Score).
    - **Clear Feedback:** **2D Visual cues** (sprite changes, effects on canvas) for successful connection, finding opponent, **receiving payment request, payment sent/verified**, turn start/end, hits, misses, **ability activation**, **AoE effects**, winner declaration, **payout received**.
    - **Payment Flow:** Clear display of the NUT-18 `creq...` payment request, potentially with a copy button or QR code. Clear indication of payment status (waiting, sent, verified by service). Clear notification when payout is received.
@@ -94,42 +95,40 @@
 **7. Decisions Logged:**
    - Tech Stack: Vite, React, TS, TailwindCSS, HTML Canvas, `matter-js`. - *Confirmed*.
    - Rendering: 2D rendering via HTML Canvas. - *Confirmed*.
-   - Nostr Lib: `@nostr-dev-kit/ndk`. - *Confirmed*.
+   - Nostr Lib: `@nostr-dev-kit/ndk`, singleton instance. - *Confirmed*.
    - Physics Engine: `matter-js` abstracted via hooks. - *Done*.
    - Initial Level/Physics Setup: Random placement, custom gravity, basic collisions, projectile timeout implemented via hooks. - *Done*.
-   - Aiming/Firing/Controls: Functional. - *Done*.
+   - Aiming/Firing/Controls: Functional. Controls updated (Angle LR, Power UD). - *Done*.
    - Aiming Aids: Shot tracers implemented. - *Done*.
-   - Authentication: Handled by `useAuth` hook. - *Done* (Now uses Applesauce NIP-46 wrapper).
-   - NDK Setup: Singleton + `useNDKInit` hook. Manual fetching/subscriptions used where needed. - *Done*.
-   - State Mgt: Component state/prop drilling. - *Confirmed*.
+   - Authentication: Handled by `useAuth` hook. Uses `NDKNip07Signer` for NIP-07. Uses **integrated Applesauce NIP-46 code via wrapper** for NIP-46 (bunker, QR, mobile deeplink). - *Done*.
+   - NDK Setup: Singleton instance initialized via `useNDKInit` within `useAuth`. **Manual NDK calls preferred over `ndk-hooks` library.** - *Done*.
+   - State Mgt: Component state/prop drilling. `useAuth` for global auth state. - *Confirmed*.
    - Klunkstr Gameplay Rules (Target): Defined (Turn-based, Bo3, 5 shots/round, HP/Abilities, Vuln, Sudden Death). - *Confirmed Target*
    - Klunkstr Abilities (Target): Defined (Splitter, Gravity, Plastic - Cost/Limits TBD based on final HP implementation). - *Confirmed Target*
-   - Matchmaking (Target): DM challenges (`kind:4`). - *Confirmed Target*
-   - Wagering (Target): Mandatory NUT-18 via backend. - *Confirmed Target*
+   - Matchmaking (Target): DM challenges (`kind:4`), potentially preceded by LFG notes (`kind:1`). - *Confirmed Target*
+   - **Wagering (Target): Mandatory Cashu token based via agent/bot.** - *Confirmed Target*
    - UX (Target): Sci-Fi 2D (Canvas), Final Controls Layout, Mobile-First PWA. - *Confirmed Target*
    - PWA Strategy: Adopted `vite-plugin-pwa`. - *Configured*
-   - Lobby Flow: Dedicated `LobbyScreen` with `LobbyPlayground`. - *Done*.
+   - Lobby Flow: Dedicated `LobbyScreen` with `LobbyPlayground` (for testing). - *Done*.
    - Viewport & Positioning: Implemented wider virtual viewport, random placement, adaptive camera zoom. - *Done*.
    - Gravity Tuning: Implemented effectiveRadius calculation. - *Done*.
    - HP/Ability Logic: Basic resource management and selection UI implemented. - *Done*
-   - Practice Mode Logic: Implemented best-of-3 rounds, scoring, HP tie-breaker, alternating start. - *Done*
+   - Practice Mode Logic: Implemented best-of-3 rounds, scoring, HP tie-breaker, alternating start. Player 2 controls corrected. - *Done*.
+   - **Multiplayer Sync (Basic):** Fire actions synchronized via `kind:30079` using manual NDK calls. - *Done*.
 
-**8. Comments & Education:** *(Generally accurate, focusing on NDK/Matter.js/Nostr concepts)*
+**8. Comments & Education:**
    - `@nostr-dev-kit/ndk` provides a comprehensive toolkit...
-   - The application uses a **singleton pattern** for NDK...
-   - **NDK Instance Propagation:** Components needing NDK receive it via props...
-   - `@nostr-dev-kit/ndk-hooks` can still be used, but pass `ndk` explicitly...
-   - Using `kind:1` notes... (Deferred).
+   - The application uses a **singleton pattern** for NDK, initialized within the `useAuth` hook via `useNDKInit`.
+   - **NDK Instance Propagation:** Components needing NDK receive it via props from parent components tracing back to `useAuth`.
+   - **Manual NDK Usage:** Due to context/initialization complexities, the application favors direct NDK calls (`ndk.fetchProfile`, `ndk.subscribe`, `new NDKEvent().publish()`) over the `ndk-hooks` library for fetching/subscribing.
    - `kind:4` (`NDKKind.EncryptedDirectMessage`) is used for challenges...
-   - `kind:30079` (custom ephemeral kind) is used for game moves...
+   - `kind:30079` (custom ephemeral kind) is used for game moves (currently just fire actions)...
    - `Matter.js` allows simulating 2D physics...
    - Client-side simulation ensures consistency...
    - **Planet Path Pre-calculation** required...
-   - **NUT-18 Payment Requests** require backend...
-   - **Backend Service** acts as trusted intermediary...
-   - `nostr-login` simplifies authentication...
-   - **NIP-46:** Implemented using a custom wrapper around copied Applesauce signer code. 
-   - **Matchmaking** relies on out-of-band pubkey exchange...
+   - **Cashu Wagering** requires an agent/bot (npub) to receive stakes and handle payouts via Cashu tokens. Users need Cashu wallets.
+   - **Authentication (Auth Hook):** The `useAuth` hook centralizes login logic. It handles NIP-07 via `NDKNip07Signer` and NIP-46 using a custom wrapper (`NostrConnectSignerWrapper`) around integrated Applesauce code to address issues with the built-in `NDKNip46Signer`. Supports bunker, QR, and mobile deeplink NIP-46 flows.
+   - **Matchmaking** relies on out-of-band pubkey exchange followed by DMs (`kind:4`)...
    - **UI Components:** `AimingInterface.tsx` handles left controls (Joystick/Power). `ActionButtons.tsx` handles right controls (Ability arc/Fire). `GameScreen.tsx` positions these components.
    - **Last Shot Trace:** Implement rendering of the previous shot's path.
    - **Level Loading:** Basic random level generation (place planets).
@@ -150,9 +149,9 @@
 **9. Next Steps:**
    - **Integration & Testing (Current Focus):**
      - **Visuals:** Render actual sprites/assets in `GameRenderer`. - *Immediate Next*
-     - **Nostr Login:** Test and debug NIP-46 QR code login flow (`useAuth` with Applesauce wrapper) thoroughly on mobile devices.
+     - **Nostr Login:** Testing complete. Both NIP-07 and NIP-46 (QR/Deeplink) flows are functional using `useAuth` and the Applesauce wrapper.
      - **Matchmaking:** Implement full challenge accept/reject flow in `ChallengeHandler`/`LobbyScreen`.
-     - **Wagering:** Define/Implement Backend Service API and frontend integration.
+     - **Wagering (Cashu):** Define/Implement Agent/Bot logic for receiving stakes and sending payouts via Cashu tokens.
      - **Turn/State Sync:** Refine/complete synchronization of game state (collisions, turns, aiming?) using `kind:30079`.
    - **Klunkstr Gameplay Completion:**
      - Implement ability physics effects.

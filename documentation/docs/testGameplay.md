@@ -8,14 +8,14 @@ This document describes how to test the current, simplified multiplayer function
 **Prerequisites:**
 
 *   Two separate devices or browser profiles/windows.
-*   Two distinct Nostr accounts (e.g., logged in via NIP-07 extension or NIP-46 signer on each instance).
+*   Two distinct Nostr accounts, accessible via NIP-07 extension or a NIP-46 compatible mobile signer (e.g., Amber) or bunker.
 *   Access to the running Klunkstr application on both instances.
 *   Know the `npub` or hex `pubkey` of the other player.
 
 **Test Procedure:**
 
-1.  **Login:** Both users log in to Klunkstr using their respective Nostr accounts.
-2.  **Navigate to Lobby:** Both users navigate from the Main Menu to the Multiplayer Lobby.
+1.  **Login:** Both users log in to Klunkstr using the provided options (NIP-07 button, or NIP-46 button which triggers QR/deeplink). Authentication is managed by the `useAuth` hook.
+2.  **Navigate to Lobby:** Both users navigate from the Main Menu (shown after successful login) to the Multiplayer Lobby.
 3.  **Initiate Challenge (User 1):**
     *   User 1 enters User 2's `npub` or hex `pubkey` into the input field in the "Challenge Players" section.
     *   User 1 clicks "Send Challenge".
@@ -39,4 +39,4 @@ This document describes how to test the current, simplified multiplayer function
 *   **Limitation (Partial Network Sync):** While fire actions are synchronized, the *results* of those actions (projectile movement, collisions, damage, win conditions) are still simulated **independently** on each client. A hit on User 1's screen will not register on User 2's screen.
 *   **Limitation (Local Win Condition):** Hitting the opponent ship *in your local simulation* will trigger the win condition callback (`onGameEnd`) locally, likely returning you to the menu. This won't affect the other player's screen.
 
-This test confirms the Nostr challenge flow, the mapping of local controls, and the basic **network synchronization of fire actions** within the `GameScreen` using the `useGameLogic` hook in `'multiplayer'` mode.
+This test confirms the Nostr challenge flow (using manual NDK calls in `ChallengeHandler`), the mapping of local controls, and the basic **network synchronization of fire actions** within the `GameScreen` using the `useGameLogic` hook (which also uses manual NDK calls) in `'multiplayer'` mode.
