@@ -23,6 +23,7 @@ const LobbyScreen: React.FC<LobbyScreenProps> = ({
     
     const [recipientNpubOrHex, setRecipientNpubOrHex] = useState('');
     const [isScannerOpen, setIsScannerOpen] = useState(false);
+    const [showPermissionHelper, setShowPermissionHelper] = useState(false);
 
     const handleScanResult: OnResultFunction = (result, error) => {
         if (result) {
@@ -46,11 +47,34 @@ const LobbyScreen: React.FC<LobbyScreenProps> = ({
         }
 
         if (error) {
-            if (error.name !== 'NotFoundException') {
-                 console.error('QR Scanner Error:', error);
-                 alert(`QR Scan Error: ${error.message}. Please ensure camera permissions are granted.`);
+            setIsScannerOpen(false);
+            console.error('QR Scanner Error:', error);
+            let alertMessage = `QR Scan Error: ${error.message}.`;
+
+            if (error.name === 'NotAllowedError') {
+                alertMessage = "Camera access was denied. Please grant permission in your browser settings and try again.";
+            } else if (error.name === 'NotFoundError') {
+                 alertMessage = "No camera found on this device.";
+            } else if (error.name === 'NotReadableError') {
+                 alertMessage = "Could not access the camera. Another app or browser tab might be using it.";
+            } else if (error.message.includes('secure context')) {
+                 alertMessage = "Camera access requires a secure connection (HTTPS). Please ensure the app is served over HTTPS.";
             }
+            
+            alert(alertMessage);
         }
+    };
+
+    const openScanner = () => {
+        if (window.location.protocol !== 'https:') {
+             alert("Camera access requires a secure connection (HTTPS). Please ensure the app is served over HTTPS.");
+             return;
+        }
+        setShowPermissionHelper(true);
+        setTimeout(() => {
+            setIsScannerOpen(true);
+            setShowPermissionHelper(false);
+        }, 500); 
     };
     
     return (
@@ -120,15 +144,20 @@ const LobbyScreen: React.FC<LobbyScreenProps> = ({
             </div>
 
             <div className="w-full max-w-lg p-4 bg-gray-700 rounded-lg shadow-md">
-                <div className="flex justify-between items-center mb-4">
+                <div className="flex justify-between items-center mb-2">
                     <h2 className="text-xl font-semibold">Challenge Players</h2>
                      <button
-                         onClick={() => setIsScannerOpen(true)}
+                         onClick={openScanner}
                          className="px-3 py-1 bg-purple-600 rounded hover:bg-purple-700 text-sm disabled:opacity-50"
                      >
                          Scan QR
                      </button>
                  </div>
+                 {showPermissionHelper && (
+                    <p className="text-xs text-yellow-300 mb-2 text-center">
+                        Your browser will ask for camera permission to scan the code.
+                    </p>
+                 )}
                 <ChallengeHandler 
                     ndk={ndk} 
                     loggedInPubkey={currentUser.pubkey} 

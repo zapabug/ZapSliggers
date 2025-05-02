@@ -234,12 +234,20 @@ export class NostrConnectSignerWrapper implements NDKSigner {
         const targetPubkey = targetUser.pubkey;
         if (!targetPubkey) throw new Error("Target user pubkey is not available for encryption");
 
-        if (!this.signer.nip44?.encrypt) { // Prefer NIP-44 if available
-            throw new Error("NIP-44 encrypt not available on signer");
+        // Prioritize NIP-04 for Kind 4 DMs
+        if (!this.signer.nip04?.encrypt) {
+            this.log("NIP-04 encrypt method not found on underlying signer!");
+            // Optionally, fallback to NIP-44 if desired and available?
+            // if (!this.signer.nip44?.encrypt) {
+            //     throw new Error("Neither NIP-04 nor NIP-44 encrypt available on signer");
+            // }
+            // this.log(`Encrypting for ${targetPubkey} using NIP-44 (fallback)`);
+            // return this.signer.nip44.encrypt(targetPubkey as string, value);
+            throw new Error("NIP-04 encrypt not available on signer"); // Strict NIP-04 for now
         }
-        this.log(`Encrypting for ${targetPubkey} using NIP-44`);
+        this.log(`Encrypting for ${targetPubkey} using NIP-04`);
         // Explicitly cast targetPubkey to string if linter complains
-        return this.signer.nip44.encrypt(targetPubkey as string, value);
+        return this.signer.nip04.encrypt(targetPubkey as string, value);
     }
 
     async decrypt(user: NDKUser | NDKUserProfile | string, value: string): Promise<string> {
