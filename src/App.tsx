@@ -368,16 +368,12 @@ function App() {
     return <div className="flex items-center justify-center h-full w-full">Unexpected application state.</div>;
   };
 
+  // Apply the main layout wrapper around the rendered content
   return (
-    // Ensure the main div takes full screen and prevents overflow
-    <div className="relative h-dvh w-screen bg-gray-900 text-white flex flex-col overflow-hidden">
-
-      {/* Main Content Area */} 
-      <div className="flex-grow w-full h-full"> {/* Use flex-grow to fill remaining space */}
-        {renderContent()}
-      </div>
+    <div className="flex flex-col min-h-screen bg-black text-white">
+      {renderContent()} 
     </div>
-  )
+  );
 }
 
 export default App

@@ -107,8 +107,8 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
                 </h1>
                 {/* Display Score and Round (copied from previous correct state) */}
                 <div className="ml-auto text-lg font-semibold text-yellow-300 flex items-center space-x-4 pr-4">
-                    <span>Round: {currentRound} / {3 /* MAX_ROUNDS_INTERNAL */}</span>
-                    <span>Score: {score[0]}</span>
+                    <span>Round: {currentRound} / {settings.MAX_ROUNDS}</span>
+                    <span>Score: {score[0]} - {score[1]}</span>
                 </div>
             </div>
 

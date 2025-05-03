@@ -27,6 +27,9 @@ interface GameRendererProps {
 const SHIP_RADIUS_DRAW = 50; // Decreased for visual scale
 const PLANET_MIN_RADIUS_DRAW = 100; // Increased to match settings minimum
 const drawBackground = (ctx: CanvasRenderingContext2D, img: HTMLImageElement | null) => { 
+    // Log the state of img when drawing
+    console.log(`[GameRenderer drawBackground] Drawing with backgroundImage: ${img ? 'Exists' : 'NULL'}`); 
+
     const bgX = -VIRTUAL_WIDTH / 2;
     const bgY = -VIRTUAL_HEIGHT;
     const bgWidth = VIRTUAL_WIDTH * 2;
@@ -48,12 +51,49 @@ const drawBorder = (ctx: CanvasRenderingContext2D) => {
     ctx.strokeRect(borderX, borderY, borderWidth, borderHeight);
  }; // Removed unused vars
 const drawPlanet = (ctx: CanvasRenderingContext2D, body: Matter.Body) => {
+    const { x, y } = body.position;
     const radius = body.plugin?.klunkstr?.radius || PLANET_MIN_RADIUS_DRAW;
+
+    let gradient: CanvasGradient;
+
+    if (body.label === 'orange-planet') {
+        // Orange planet: Radial gradient, brighter for larger planets
+        const baseOrange = '#D97706'; // Tailwind orange-600
+        const brightOrange = '#F59E0B'; // Tailwind amber-500
+        const veryBrightOrange = '#FCD34D'; // Tailwind amber-300
+        const maxRadius = 250; // Example max radius for full brightness
+        const brightnessFactor = Math.min(1, Math.max(0, radius / maxRadius));
+        const centerColor = brightnessFactor < 0.5 ? brightOrange : veryBrightOrange;
+
+        gradient = ctx.createRadialGradient(x, y, radius * 0.1, x, y, radius);
+        gradient.addColorStop(0, centerColor); 
+        gradient.addColorStop(0.7, brightOrange);
+        gradient.addColorStop(1, baseOrange); 
+
+    } else {
+        // Default planet: Subtle gray radial gradient for 3D effect
+        const centerGray = '#A0A0A0'; // Lighter gray
+        const edgeGray = '#606060';   // Darker gray
+
+        gradient = ctx.createRadialGradient(x, y, radius * 0.2, x, y, radius);
+        gradient.addColorStop(0, centerGray);  
+        gradient.addColorStop(1, edgeGray);    
+    }
+
     ctx.beginPath();
-    ctx.arc(body.position.x, body.position.y, radius, 0, 2 * Math.PI);
-    ctx.fillStyle = body.render.fillStyle || '#888'; 
+    ctx.arc(x, y, radius, 0, 2 * Math.PI);
+    ctx.fillStyle = gradient; // Use the gradient
     ctx.fill();
- };
+
+    // Optional: Add a subtle inner shadow or highlight for more 3D effect
+    /*
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, 2 * Math.PI);
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
+    ctx.lineWidth = radius * 0.05;
+    ctx.stroke();
+    */
+};
 const drawShip = (ctx: CanvasRenderingContext2D, body: Matter.Body) => {
     const playerIndex = parseInt(body.label.split('-')[1], 10);
     ctx.save();
@@ -93,7 +133,7 @@ const drawHistoricalTrace = (ctx: CanvasRenderingContext2D, trace: Matter.Vector
 // --- GameRenderer Component (Standard Function) ---
 const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerHandlers }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [backgroundImage, /*setBackgroundImage*/] = useState<HTMLImageElement | null>(null);
+  const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
 
   const { lastShotTraces } = shotTracerHandlers;
@@ -116,17 +156,17 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
 
   // Effects for background image and resize (no change)
   useEffect(() => { 
-      // Basic background image loading (adjust path if needed)
       const img = new Image();
+      console.log(`[GameRenderer Effect] Attempting to load image: ${img.src}`); // Log start
       img.onload = () => {
-        // Intentionally removed setBackgroundImage call as it was unused
-        // setBackgroundImage(img);
+        console.log(`[GameRenderer Effect] Image loaded successfully: ${img.src}`); // Log success
+        setBackgroundImage(img);
       };
-      img.onerror = () => {
-          console.error("Failed to load background image.");
+      img.onerror = (err) => {
+          // Log the actual error if possible
+          console.error(`[GameRenderer Effect] Failed to load background image: ${img.src}`, err); // Log failure
       };
-      // Assume background is in public folder relative to index.html
-      img.src = '/images/background.png'; 
+      img.src = '/images/backdrop.png'; 
   }, []);
 
   // Re-implement Resize Handling
