@@ -7,6 +7,7 @@ import { PlayerHUD } from '../ui_overlays/PlayerHUD';
 import ActionButtons from '../ui_overlays/ActionButtons';
 import { useGameLogic } from '../../hooks/useGameLogic';
 import { mainSettings } from '../../config/gameSettings';
+import { useKeyboardControls } from '../../hooks/useKeyboardControls';
 
 interface GameScreenProps {
     ndk: NDK;
@@ -38,6 +39,7 @@ const GameScreen: React.FC<GameScreenProps> = ({
         handleSelectAbility,
         physicsHandles,
         shotTracerHandlers,
+        settings,
     } = useGameLogic({
         settings: mainSettings,
         mode: 'multiplayer',
@@ -54,6 +56,15 @@ const GameScreen: React.FC<GameScreenProps> = ({
     const opponentPlayerState = playerStates[opponentPlayerIndex];
 
     const isMyTurn = true;
+
+    useKeyboardControls({
+        isActive: true,
+        currentAngle: localAimState.angle,
+        currentPower: localAimState.power,
+        handleAimChange: handleAimChange,
+        handleFire: handleFire,
+        handleSelectAbility: handleSelectAbility,
+    });
 
     return (
         <div className="relative w-full h-dvh bg-black text-white overflow-hidden flex flex-col">
@@ -115,7 +126,7 @@ const GameScreen: React.FC<GameScreenProps> = ({
                     />
                 </div>
 
-                <div className="absolute bottom-4 right-4 z-10">
+                <div className="absolute bottom-4 right-4 z-10 pointer-events-auto flex flex-col items-end">
                     <ActionButtons
                         onFire={handleFire}
                         onAbilitySelect={handleSelectAbility}
@@ -126,6 +137,7 @@ const GameScreen: React.FC<GameScreenProps> = ({
                         maxAbilityUsesTotal={mainSettings.MAX_ABILITIES_TOTAL}
                         maxAbilityUsesPerType={mainSettings.MAX_ABILITIES_PER_TYPE}
                         disabled={!isMyTurn}
+                        availableAbilities={settings.AVAILABLE_ABILITIES}
                     />
                 </div>
             </div>

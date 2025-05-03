@@ -7,6 +7,7 @@ import { PlayerHUD } from '../ui_overlays/PlayerHUD';
 import ActionButtons from '../ui_overlays/ActionButtons';
 import { useGameLogic } from '../../hooks/useGameLogic';
 import { defaultCustomSettings, GameSettingsProfile } from '../../config/gameSettings'; // Import default custom settings and profile type
+import { useKeyboardControls } from '../../hooks/useKeyboardControls'; // Import the hook
 
 // Define opponent Npub (same placeholder as practice)
 const OPPONENT_NPUB = "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6";
@@ -20,7 +21,12 @@ interface DeveloperSandboxScreenProps {
 const DeveloperSandboxScreen: React.FC<DeveloperSandboxScreenProps> = ({ ndk, currentUser, onBackToMenu }) => {
     // --- State for Current Settings --- 
     // Initialize with default custom settings, allow modification later
-    const [currentSettings, setCurrentSettings] = useState<GameSettingsProfile>(defaultCustomSettings);
+    const [sandboxSettings /*, setCurrentSettings */] = useState<GameSettingsProfile>(() => ({
+        ...defaultCustomSettings,
+        MAX_ABILITIES_TOTAL: Infinity, // Unlimited total uses
+        MAX_ABILITIES_PER_TYPE: Infinity, // Unlimited uses per type
+        ABILITY_COST_HP: 0, // No HP cost
+    }));
 
     // opponent pubkey derivation (same as practice)
     let opponentPubkey: string;
@@ -42,20 +48,19 @@ const DeveloperSandboxScreen: React.FC<DeveloperSandboxScreenProps> = ({ ndk, cu
     // --- Use the Game Logic Hook with CURRENT Settings --- 
     const {
         playerStates,
-        currentPlayerIndex,
         myPlayerIndex, // Needed to determine local player
         aimStates,
         selectedAbility,
         levelData,
-        score,
-        currentRound,
+        score, // Keep score for now?
+        currentRound, // Keep round for now?
         handleAimChange,
         handleFire,
         handleSelectAbility,
         physicsHandles,
         shotTracerHandlers,
     } = useGameLogic({
-        settings: currentSettings, // Pass the settings STATE here
+        settings: sandboxSettings, // Pass the MODIFIED settings STATE here
         mode: 'custom', // Use 'custom' mode
         localPlayerPubkey: currentUser.pubkey,
         opponentPubkey: opponentPubkey, // Pass opponent pubkey
@@ -64,17 +69,21 @@ const DeveloperSandboxScreen: React.FC<DeveloperSandboxScreenProps> = ({ ndk, cu
         ndk: ndk, 
     });
 
-    // Derived state
-    const localPlayerState = playerStates[myPlayerIndex];
-    const localAimState = aimStates[myPlayerIndex];
+    // Derived state - Always use local player index (0)
+    const localPlayerState = playerStates[myPlayerIndex]; 
+    const localAimState = aimStates[myPlayerIndex]; 
     const opponentPlayerIndex = myPlayerIndex === 0 ? 1 : 0;
     const opponentPlayerState = playerStates[opponentPlayerIndex];
 
-    // Determine whose turn it is for UI (assuming alternating turns like practice for 'custom' mode)
-    const isMyTurn = currentPlayerIndex === myPlayerIndex;
-
-    // Keyboard Controls (optional, can copy from PracticeScreen if desired)
-    // useEffect(() => { ... }, [handleFire, ...]);
+    // --- Use Keyboard Controls Hook --- 
+    useKeyboardControls({
+        isActive: true, // Always active in sandbox
+        currentAngle: localAimState.angle, // Use local player's aim 
+        currentPower: localAimState.power, // Use local player's aim 
+        handleAimChange: handleAimChange,
+        handleFire: handleFire,
+        handleSelectAbility: handleSelectAbility,
+    });
 
     // TODO: Add UI controls here to modify `currentSettings` state
     // Example: <input type="range" value={currentSettings.GRAVITY_CONSTANT} onChange={(e) => setCurrentSettings(s => ({...s, GRAVITY_CONSTANT: parseFloat(e.target.value)}))} />
@@ -91,12 +100,12 @@ const DeveloperSandboxScreen: React.FC<DeveloperSandboxScreenProps> = ({ ndk, cu
                      &larr; Back
                  </button>
                  <h1 className="text-xl font-bold ml-4 text-cyan-300 self-center">
-                     Developer Sandbox - {isMyTurn ? 'Your Turn' : 'Opponent Turn'} 
+                     Developer Sandbox 
                  </h1>
-                 {/* Use current settings for max rounds */}
+                 {/* Optional: Remove Score/Round Display? Keeping for now. */}
                  <div className="ml-auto text-lg font-semibold text-yellow-300 flex items-center space-x-4 pr-4">
-                     <span>Round: {currentRound} / {currentSettings.MAX_ROUNDS}</span> 
-                     <span>Score: {score[myPlayerIndex]} - {score[opponentPlayerIndex]}</span>
+                     <span>Round: {currentRound} / {sandboxSettings.MAX_ROUNDS}</span> 
+                     <span>Score: {score[0]} - {score[1]}</span> 
                  </div>
             </div>
 
@@ -107,7 +116,7 @@ const DeveloperSandboxScreen: React.FC<DeveloperSandboxScreenProps> = ({ ndk, cu
                     <PlayerHUD
                         pubkey={currentUser.pubkey} 
                         currentHp={localPlayerState.hp}
-                        maxHp={currentSettings.MAX_HP} // Use setting
+                        maxHp={sandboxSettings.MAX_HP} // Use setting
                         isPlayer1={myPlayerIndex === 0}
                         ndk={ndk}
                     />
@@ -116,7 +125,7 @@ const DeveloperSandboxScreen: React.FC<DeveloperSandboxScreenProps> = ({ ndk, cu
                     <PlayerHUD
                         pubkey={opponentPubkey}
                         currentHp={opponentPlayerState.hp}
-                        maxHp={currentSettings.MAX_HP} // Use setting
+                        maxHp={sandboxSettings.MAX_HP} // Use setting
                         isPlayer1={opponentPlayerIndex === 0}
                         ndk={ndk}
                     />
@@ -149,26 +158,25 @@ const DeveloperSandboxScreen: React.FC<DeveloperSandboxScreenProps> = ({ ndk, cu
                 {/* Bottom Controls - Aiming */}
                 <div className="absolute bottom-4 left-4 z-10 pointer-events-auto flex flex-col items-start max-w-xs">
                     <AimingInterface 
-                        currentAngle={localAimState.angle} 
-                        currentPower={localAimState.power}
+                        currentAngle={localAimState.angle} // Use local player's aim 
+                        currentPower={localAimState.power} // Use local player's aim 
                         onAimChange={handleAimChange} 
-                        // No disabled prop needed here for single player
                     />
                 </div>
 
                 {/* Bottom Controls - Actions/Fire */}
-                <div className="absolute bottom-4 right-4 z-10">
+                <div className="absolute bottom-4 right-4 z-10 pointer-events-auto flex flex-col items-end">
                     <ActionButtons
                         onFire={handleFire}
                         onAbilitySelect={handleSelectAbility}
                         selectedAbility={selectedAbility}
-                        usedAbilities={localPlayerState.usedAbilities} // Use local player's used abilities
-                        currentHp={localPlayerState.hp} // Use local player's HP
-                        // Use settings for cost/limits
-                        abilityCost={currentSettings.ABILITY_COST_HP}
-                        maxAbilityUsesTotal={currentSettings.MAX_ABILITIES_TOTAL}
-                        maxAbilityUsesPerType={currentSettings.MAX_ABILITIES_PER_TYPE}
-                        disabled={!isMyTurn} // Disable controls if not the local player's turn
+                        usedAbilities={localPlayerState.usedAbilities} // Use local player's state
+                        currentHp={localPlayerState.hp} // Use local player's state
+                        abilityCost={sandboxSettings.ABILITY_COST_HP}
+                        maxAbilityUsesTotal={sandboxSettings.MAX_ABILITIES_TOTAL}
+                        maxAbilityUsesPerType={sandboxSettings.MAX_ABILITIES_PER_TYPE}
+                        disabled={false} // Always enabled 
+                        availableAbilities={sandboxSettings.AVAILABLE_ABILITIES} 
                     />
                 </div>
             </div>

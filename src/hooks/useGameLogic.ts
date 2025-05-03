@@ -47,6 +47,7 @@ export interface UseGameLogicReturn {
     physicsHandles: MatterPhysicsHandles | null;
     // Expose shot tracer handlers for the renderer
     shotTracerHandlers: ReturnType<typeof useShotTracers>;
+    settings: GameSettingsProfile;
 }
 
 export function useGameLogic({
@@ -247,13 +248,12 @@ export function useGameLogic({
     }, [handleRoundCompletion, playerStatesRef]); // Depends on stable callback and ref
 
     const handleProjectileResolved = useCallback((path: ProjectilePathData, firedByPlayerIndex: 0 | 1) => {
-        console.log(`[useGameLogic] handleProjectileResolved: P${firedByPlayerIndex}'s shot resolved.`);
+        console.log(`[useGameLogic ${mode}] handleProjectileResolved: P${firedByPlayerIndex}'s shot resolved. Current Player Before Switch Attempt: ${currentPlayerIndex}`); // Updated Log
         if (mode === 'practice' || mode === 'custom') {
-            const nextPlayerIndex = firedByPlayerIndex === 0 ? 1 : 0;
-            setCurrentPlayerIndex(nextPlayerIndex);
-            setSelectedAbility(null);
+            // Turn switching logic moved to handleFire
         }
-        if (mode === 'multiplayer' && ndk && matchId && opponentPubkey) {
+        // If multiplayer, send resolved path to opponent
+        else if (mode === 'multiplayer' && ndk && matchId && opponentPubkey) {
             const shotResolvedContent: ShotResolvedEvent = {
                 type: 'shotResolved',
                 senderPubkey: localPlayerPubkey,
@@ -270,16 +270,32 @@ export function useGameLogic({
             ndkEvent.publish().catch(err => console.error("Error publishing shotResolved event:", err));
             console.log("[useGameLogic] Published SHOT_RESOLVED event");
         }
-    }, [mode, ndk, matchId, opponentPubkey, localPlayerPubkey]);
+        // Always add historical trace - REMOVED INCORRECT CALL
+        // shotTracerHandlers.addHistoricalTrace(path, firedByPlayerIndex);
 
-    // --- Initialize Physics Hook (AFTER defining callbacks) ---
+    }, [mode, ndk, matchId, opponentPubkey, localPlayerPubkey, shotTracerHandlers, currentPlayerIndex]);
+
+    // --- Initialize Physics Engine (Pass settings) ---
     const physicsHandles = useMatterPhysics({
-        settings: settings,
-        levelData: levelData,
-        shotTracerHandlers: shotTracerHandlers,
-        onPlayerHit: handlePlayerHit,
-        onProjectileResolved: handleProjectileResolved,
+        settings: settings, // Pass settings to physics
+        levelData: levelData, // Pass initial level data (might be null initially)
+        shotTracerHandlers: shotTracerHandlers, // Pass tracer handlers
+        onPlayerHit: handlePlayerHit, // Pass hit handler
+        onProjectileResolved: handleProjectileResolved, // Pass resolve handler
     });
+
+    // --- Effect to Reset Physics when Level Data Changes ---
+    useEffect(() => {
+        console.log('[useGameLogic] Physics Reset Effect Triggered. levelData:', levelData, 'physicsHandles:', !!physicsHandles, 'resetPhysics available:', !!physicsHandles?.resetPhysics);
+        // Ensure both levelData and the resetPhysics function are available
+        if (levelData && physicsHandles?.resetPhysics) {
+            console.log('[useGameLogic] Conditions met! Resetting physics engine with levelData:', levelData);
+            physicsHandles.resetPhysics(levelData);
+        } else {
+            console.log('[useGameLogic] Conditions NOT met for physics reset.');
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [levelData, physicsHandles?.resetPhysics]); // Depend on levelData and the resetPhysics function identity
 
     // --- Effect for Turn/Round Initialization ---
     useEffect(() => {
@@ -386,36 +402,49 @@ export function useGameLogic({
 
     // --- Player Action Handlers ---
     const handleAimChange = useCallback((aim: { angle: number; power: number }) => {
-        const indexToUpdate = myPlayerIndex; // In multiplayer, always update local player's aim state
-        setAimStates(prev => {
-            const newState = [...prev] as typeof prev;
-            newState[indexToUpdate] = aim;
-            return newState;
-        });
-        // Update physics engine aim for local player
-        physicsHandles?.setShipAim(indexToUpdate, aim.angle);
-
-        // TODO: Send aim update event in multiplayer?
-        // Consider throttling this heavily if implemented.
-
-    }, [myPlayerIndex, physicsHandles]);
+        // In practice mode, update the current player's state AND physics
+        if (mode === 'practice'){
+            // console.log(`[handleAimChange ${mode}] Current Player: ${currentPlayerIndex}, Setting Aim:`, aim); // Log removed for brevity now
+            setAimStates(prev => {
+                const newStates = [...prev] as typeof prev;
+                newStates[currentPlayerIndex] = aim; // Use currentPlayerIndex
+                return newStates;
+            });
+            // Update physics engine for the current player
+            physicsHandles?.setShipAim(currentPlayerIndex, aim.angle); // Use currentPlayerIndex
+        }
+        // In multiplayer AND custom mode, only update the local player's state and physics
+        else if (mode === 'multiplayer' || mode === 'custom') {
+            // console.log(`[handleAimChange ${mode}] My Index: ${myPlayerIndex}, Setting Aim:`, aim); // Log removed for brevity now
+            setAimStates(prev => {
+                const newStates = [...prev] as typeof prev;
+                newStates[myPlayerIndex] = aim;
+                return newStates;
+            });
+            // Update physics engine for local player
+            physicsHandles?.setShipAim(myPlayerIndex, aim.angle);
+            // TODO: Send aim update via Nostr?
+        }
+    }, [mode, myPlayerIndex, currentPlayerIndex, physicsHandles]); // Restore correct dependencies
 
     const handleSelectAbility = useCallback((abilityType: AbilityType) => {
-        // In multiplayer, always check local player state
-        const playerIndex = myPlayerIndex;
-        const currentState = playerStates[playerIndex];
+        // Always check local player state in multiplayer/custom
+        // In practice, it should check currentPlayerIndex state
+        const playerIndexToCheck = (mode === 'practice') ? currentPlayerIndex : myPlayerIndex;
+        const currentState = playerStates[playerIndexToCheck];
         const abilitiesOfTypeUsed = Array.from(currentState.usedAbilities).filter(used => used === abilityType).length;
 
+        // Check limits (respecting settings passed in)
         if (abilitiesOfTypeUsed >= MAX_ABILITIES_PER_TYPE) {
-            console.log(`Ability ${abilityType} already used max times (${MAX_ABILITIES_PER_TYPE}).`);
+            console.log(`Ability ${abilityType} already used max times (${MAX_ABILITIES_PER_TYPE}) for P${playerIndexToCheck}.`);
             return;
         }
         if (currentState.usedAbilities.size >= MAX_ABILITIES_TOTAL) {
-            console.log(`Max total abilities (${MAX_ABILITIES_TOTAL}) used.`);
+            console.log(`Max total abilities (${MAX_ABILITIES_TOTAL}) used for P${playerIndexToCheck}.`);
             return;
         }
         if (currentState.hp < ABILITY_COST_HP) {
-            console.log(`Not enough HP (${currentState.hp}) to use ability (Cost: ${ABILITY_COST_HP}).`);
+            console.log(`Not enough HP (${currentState.hp}) for P${playerIndexToCheck} to use ability (Cost: ${ABILITY_COST_HP}).`);
             return;
         }
 
@@ -423,43 +452,55 @@ export function useGameLogic({
         setSelectedAbility(prev => prev === abilityType ? null : abilityType);
         console.log(`Selected ability: ${selectedAbility === abilityType ? 'None' : abilityType}`);
 
-    }, [myPlayerIndex, playerStates, ABILITY_COST_HP, MAX_ABILITIES_TOTAL, MAX_ABILITIES_PER_TYPE, selectedAbility]);
+    }, [
+        mode, myPlayerIndex, currentPlayerIndex, playerStates, selectedAbility,
+        MAX_ABILITIES_TOTAL, MAX_ABILITIES_PER_TYPE, ABILITY_COST_HP, settings // Added settings to deps
+    ]);
 
     const handleFire = useCallback(() => {
-        // In multiplayer, always fire for the local player
-        const playerIndex = myPlayerIndex;
-        const aim = aimStates[playerIndex];
-        const ability = selectedAbility;
-        const playerState = playerStates[playerIndex];
+        // In practice, fire for current player. In multi/custom, fire for local player.
+        const firingPlayerIndex = (mode === 'practice') ? currentPlayerIndex : myPlayerIndex;
 
-        // Check HP cost again before firing
-        if (ability && playerState.hp < ABILITY_COST_HP) {
-            console.warn(`Cannot fire ability ${ability}: Not enough HP.`);
-            setSelectedAbility(null);
+        // ADD LOGGING FOR PRACTICE/CUSTOM
+        if (mode !== 'multiplayer') {
+            console.log(`[handleFire ${mode}] Current Player Index: ${currentPlayerIndex}, Determined Firing Index: ${firingPlayerIndex}`);
+        } else {
+            console.log(`[handleFire ${mode}] My Index: ${myPlayerIndex}, Determined Firing Index: ${firingPlayerIndex}`);
+        }
+
+        // Check HP cost for ability
+        const currentAim = aimStates[firingPlayerIndex];
+        const currentAbility = selectedAbility;
+        const playerState = playerStates[firingPlayerIndex];
+
+        if (currentAbility && playerState.hp < ABILITY_COST_HP) {
+            console.warn(`Cannot fire ability ${currentAbility}: Not enough HP.`);
+            setSelectedAbility(null); // Deselect if not enough HP
             return;
         }
 
         // Apply HP cost and update ability usage/vulnerability state LOCALLY
-        if (ability) {
+        if (currentAbility) {
             setPlayerStates(prev => {
                 const newState = [...prev] as [PlayerState, PlayerState];
                 const newUsedAbilities = new Set(playerState.usedAbilities);
-                newUsedAbilities.add(ability);
+                newUsedAbilities.add(currentAbility);
                 const newHp = playerState.hp - ABILITY_COST_HP;
-                const newVulnerable = newUsedAbilities.size >= 2;
-                newState[playerIndex] = {
+                // Use MAX_ABILITIES_TOTAL from settings for vulnerability check
+                const newVulnerable = newUsedAbilities.size >= settings.MAX_ABILITIES_TOTAL;
+                newState[firingPlayerIndex] = {
                     hp: newHp,
                     usedAbilities: newUsedAbilities,
                     isVulnerable: newVulnerable,
                 };
-                console.log(`[useGameLogic] Applied HP cost to Self P${playerIndex}. New HP: ${newHp}, Vulnerable: ${newVulnerable}`);
+                console.log(`[useGameLogic] Applied HP cost to Self P${firingPlayerIndex}. New HP: ${newHp}, Vulnerable: ${newVulnerable} (Limit: ${settings.MAX_ABILITIES_TOTAL})`);
                 return newState;
             });
         }
 
         // Fire projectile via physics hook
-        const scaledPower = aim.power / 20; // TODO: Revisit power scaling
-        physicsHandles?.fireProjectile(playerIndex, scaledPower, ability);
+        const scaledPower = currentAim.power / 20; // TODO: Revisit power scaling
+        physicsHandles?.fireProjectile(firingPlayerIndex, scaledPower, currentAbility);
 
         // Reset selected ability after firing
         setSelectedAbility(null);
@@ -470,8 +511,8 @@ export function useGameLogic({
                 type: 'fire',
                 senderPubkey: localPlayerPubkey,
                 matchId: matchId,
-                aim: aim,
-                ability: ability,
+                aim: currentAim,
+                ability: currentAbility,
             };
             const ndkEvent = new NDKEvent(ndk);
             ndkEvent.kind = 30079 as NDKKind;
@@ -482,18 +523,25 @@ export function useGameLogic({
             ];
             ndkEvent.publish().catch(err => console.error("Error publishing fire event:", err));
             console.log("[useGameLogic] Published FIRE event", fireEventContent);
-
-            // Switch turn locally? Maybe wait for shot resolution?
-            // setCurrentPlayerIndex(opponentPlayerIndex); // Simple alternation
         }
-        // ----------------------------------------- //
+        // --- Switch Turn Immediately ONLY in Practice Mode --- //
+        else if (mode === 'practice') {
+            const nextPlayerIndex = currentPlayerIndex === 0 ? 1 : 0;
+            console.log(`[handleFire ${mode}] Fired for P${currentPlayerIndex}. Switching turn immediately to P${nextPlayerIndex}.`);
+            setCurrentPlayerIndex(nextPlayerIndex);
+            // setSelectedAbility is already reset above
+        }
+        // --- No turn switch in Custom mode --- //
 
-    }, [mode, myPlayerIndex, aimStates, selectedAbility, playerStates, physicsHandles, ndk, matchId, opponentPubkey, localPlayerPubkey, ABILITY_COST_HP]);
+    }, [
+        mode, myPlayerIndex, currentPlayerIndex, aimStates, selectedAbility, playerStates,
+        physicsHandles, ndk, matchId, opponentPubkey, localPlayerPubkey, ABILITY_COST_HP, settings
+    ]);
 
     // --- Return Hook State and Handlers ---
     return {
         playerStates,
-        currentPlayerIndex,
+        currentPlayerIndex, // Still needed for practice mode
         aimStates,
         selectedAbility,
         levelData,
@@ -505,5 +553,6 @@ export function useGameLogic({
         myPlayerIndex,
         physicsHandles,
         shotTracerHandlers,
+        settings,
     };
 } 

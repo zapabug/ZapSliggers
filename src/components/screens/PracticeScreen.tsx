@@ -1,5 +1,5 @@
 'use strict';
-import React, { useEffect, useCallback } from 'react';
+import React, { /* useEffect, */ useCallback } from 'react';
 import NDK, { NDKUser } from '@nostr-dev-kit/ndk'; // Import NDK types
 import GameRenderer /*, { GameRendererRef } */ from '../game/GameRenderer'; // Renderer ref not needed directly here
 import AimingInterface from '../ui_overlays/AimingInterface'; // Adjust path
@@ -7,6 +7,7 @@ import { PlayerHUD } from '../ui_overlays/PlayerHUD'; // Adjust path
 import ActionButtons from '../ui_overlays/ActionButtons'; // Adjust path
 import { useGameLogic } from '../../hooks/useGameLogic'; // Import hook only
 import { practiceSettings } from '../../config/gameSettings'; // Import practice settings
+import { useKeyboardControls } from '../../hooks/useKeyboardControls'; // Import the new hook
 
 // Define opponent Npub
 const OPPONENT_NPUB = "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6"; // Example Npub
@@ -58,7 +59,6 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
         currentPlayerIndex, // Use this to indicate whose turn it is visually
         aimStates, // Get the aim states array
         selectedAbility,
-        levelData,
         score, 
         currentRound, 
         handleAimChange,
@@ -67,6 +67,7 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
         // Get handles for renderer
         physicsHandles,
         shotTracerHandlers,
+        settings, // Destructure settings
     } = useGameLogic({
         settings: practiceSettings, // Pass the imported practice settings
         mode: 'practice',
@@ -80,60 +81,15 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
     const currentAim = aimStates[currentPlayerIndex]; // Get the current player's aim state
     // Inactive state not directly used currently, removed for linting
 
-    // --- Keyboard Controls (Use handlers from hook) --- 
-    useEffect(() => {
-        const handleKeyDown = (event: KeyboardEvent) => {
-            let newAngle: number | undefined = undefined;
-            let newPower: number | undefined = undefined;
-            let preventDefault = false;
-
-            // Controls are now the same for both players
-            switch (event.key) {
-                case 'ArrowLeft': // Angle LEFT
-                    newAngle = (currentAim.angle - 2 + 360) % 360; 
-                    preventDefault = true;
-                    break;
-                case 'ArrowRight': // Angle RIGHT
-                    newAngle = (currentAim.angle + 2) % 360;
-                    preventDefault = true;
-                    break;
-                case 'ArrowDown': // Power DOWN
-                    newPower = Math.max(0, currentAim.power - 2);
-                    preventDefault = true;
-                    break;
-                case 'ArrowUp': // Power UP
-                    newPower = Math.min(100, currentAim.power + 2);
-                    preventDefault = true;
-                    break;
-                case ' ': // Spacebar
-                    event.preventDefault();
-                    handleFire();
-                    break;
-                case '1': handleSelectAbility('splitter'); break; 
-                case '2': handleSelectAbility('gravity'); break; 
-                case '3': handleSelectAbility('plastic'); break; 
-                default:
-                    break;
-            }
-
-            if (preventDefault) {
-                event.preventDefault();
-            }
-
-            if (newAngle !== undefined || newPower !== undefined) {
-                const updatedAim = {
-                    angle: newAngle !== undefined ? newAngle : currentAim.angle,
-                    power: newPower !== undefined ? newPower : currentAim.power,
-                };
-                handleAimChange(updatedAim);
-            }
-        };
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => {
-            window.removeEventListener('keydown', handleKeyDown);
-        };
-    }, [handleFire, handleSelectAbility, handleAimChange, currentAim.angle, currentAim.power]); 
+    // --- Use Keyboard Controls Hook --- 
+    useKeyboardControls({
+        isActive: true, // Always active in practice screen
+        currentAngle: currentAim.angle,
+        currentPower: currentAim.power,
+        handleAimChange: handleAimChange,
+        handleFire: handleFire,
+        handleSelectAbility: handleSelectAbility,
+    });
 
     // --- Return JSX (Similar structure to GameScreen, connected to hook) --- 
     return (
@@ -180,12 +136,10 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
 
                 {/* Game Canvas Container */}
                 <div className="absolute inset-0 z-0 w-full h-full">
-                    {levelData && physicsHandles && (
-                        <GameRenderer
-                            physicsHandles={physicsHandles}
-                            shotTracerHandlers={shotTracerHandlers}
-                        />
-                    )}
+                    <GameRenderer
+                        physicsHandles={physicsHandles}
+                        shotTracerHandlers={shotTracerHandlers}
+                    />
                 </div>
 
                 {/* Bottom Control Area - Aiming (Always active) */} 
@@ -198,19 +152,18 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
                 </div>
 
                 {/* Bottom Control Area - Actions/Fire (Always active) */} 
-                <div className="absolute bottom-4 right-4 z-10">
+                <div className="absolute bottom-4 right-4 z-10 pointer-events-auto flex flex-col items-end">
                     <ActionButtons
-                        onFire={handleFire} // Use handler from hook
-                        onAbilitySelect={handleSelectAbility} // Use handler from hook
-                        selectedAbility={selectedAbility} // Use state from hook
-                        // Pass state of the *current turn's* player
-                        usedAbilities={activePlayerState.usedAbilities}
-                        currentHp={activePlayerState.hp}
-                        // Use settings for cost/limits
-                        abilityCost={practiceSettings.ABILITY_COST_HP}
-                        maxAbilityUsesTotal={practiceSettings.MAX_ABILITIES_TOTAL}
-                        maxAbilityUsesPerType={practiceSettings.MAX_ABILITIES_PER_TYPE}
-                        disabled={false} // No disabled logic needed for practice
+                        selectedAbility={selectedAbility} // Pass current selection
+                        usedAbilities={activePlayerState.usedAbilities} // Pass used abilities of active player
+                        currentHp={activePlayerState.hp} // Pass active player's HP
+                        abilityCost={practiceSettings.ABILITY_COST_HP} // Corrected prop name
+                        maxAbilityUsesTotal={practiceSettings.MAX_ABILITIES_TOTAL} // Corrected prop name
+                        maxAbilityUsesPerType={practiceSettings.MAX_ABILITIES_PER_TYPE} // Corrected prop name
+                        onAbilitySelect={handleSelectAbility} // Renamed prop
+                        onFire={handleFire} // Pass fire handler
+                        disabled={false} // Added missing required prop
+                        availableAbilities={settings.AVAILABLE_ABILITIES} // Pass available abilities from settings
                     />
                 </div>
             </div>

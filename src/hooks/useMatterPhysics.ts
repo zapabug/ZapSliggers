@@ -149,8 +149,11 @@ export const useMatterPhysics = ({
     const {
         PLANET_MIN_RADIUS,
         GRAVITY_AOE_BONUS_FACTOR,
-        VIRTUAL_WIDTH, // Assuming virtualWidth is constant or comes from settings
+        VIRTUAL_WIDTH, 
         GRAVITY_CONSTANT,
+        // --- Orange Planet Settings ---
+        ORANGE_PLANET_REPULSION_CONSTANT, // Need this
+        // ---------------------------
         PLASTIC_GRAVITY_FACTOR,
         SHIP_GRAVITY_RANGE_FACTOR,
         SHIP_RADIUS,
@@ -224,37 +227,63 @@ export const useMatterPhysics = ({
         // --- Standard Update & Gravity ---
         if (!projectileBody.custom || !projectileBody.trail) {
             console.warn(`[Physics Update] Proj ${projectileBody.id} missing data/trail.`);
-            projectileBody.trail = projectileBody.trail || [Vector.clone(projectileBody.position)]; // Ensure trail exists
-            // Maybe remove if custom data is missing? For now, let it continue
-            // return;
+            projectileBody.trail = projectileBody.trail || [Vector.clone(projectileBody.position)]; 
         } else {
             projectileBody.trail.push(Vector.clone(projectileBody.position));
         }
 
         shotTracerHandlersRef.current.handleProjectileUpdate(projectileBody);
 
-        // --- Apply Planet Gravity ---
+        // --- Apply Planet Gravity / Repulsion ---
         Composite.allBodies(currentEngine.world).forEach(staticBody => {
-          if (staticBody.label === 'planet') {
-             const distanceVector = Vector.sub(staticBody.position, projectileBody.position);
-             const distanceSq = Vector.magnitudeSquared(distanceVector);
-             if (distanceSq > 100) { 
-                 const planetRadius = staticBody.plugin?.klunkstr?.radius || PLANET_MIN_RADIUS;
-                 const effectiveRadius = planetRadius * (1 + GRAVITY_AOE_BONUS_FACTOR * (planetRadius / VIRTUAL_WIDTH));
-                 
-                 // Calculate base force
-                 let forceMagnitude = (GRAVITY_CONSTANT * projectileBody.mass * effectiveRadius) / distanceSq;
-                 
-                 if (projectileBody.custom?.abilityType === 'plastic') {
-                     forceMagnitude *= PLASTIC_GRAVITY_FACTOR;
-                 }
+          // Skip if not a planet type
+          if (staticBody.label !== 'planet' && staticBody.label !== 'orange-planet') return;
 
-                 const forceVector = Vector.mult(Vector.normalise(distanceVector), forceMagnitude);
-                 Body.applyForce(projectileBody, projectileBody.position, forceVector);
-             }
+          const distanceVector = Vector.sub(staticBody.position, projectileBody.position);
+          const distanceSq = Vector.magnitudeSquared(distanceVector);
+          if (distanceSq <= 10) return; // Avoid extreme forces at very close range (reduced threshold slightly)
+
+          const planetRadius = staticBody.plugin?.klunkstr?.radius || PLANET_MIN_RADIUS;
+          let netForce = Vector.create(0, 0); // Start with zero net force from this planet
+
+          // --- Calculate Base Attractive Force (Always applies unless overridden) ---
+          const effectiveRadius = planetRadius * (1 + GRAVITY_AOE_BONUS_FACTOR * (planetRadius / VIRTUAL_WIDTH));
+          let attractiveForceMagnitude = (GRAVITY_CONSTANT * projectileBody.mass * effectiveRadius) / distanceSq;
+
+          // Adjust attraction for Plastic ability 
+          if (projectileBody.custom?.abilityType === 'plastic') {
+              attractiveForceMagnitude *= PLASTIC_GRAVITY_FACTOR;
+          }
+          
+          const attractiveForce = Vector.mult(Vector.normalise(distanceVector), attractiveForceMagnitude);
+          netForce = Vector.add(netForce, attractiveForce); // Add attraction to net force
+
+          // --- Add Repulsion if Orange Planet Core is Hit ---
+          if (staticBody.label === 'orange-planet') {
+              const coreRadius = staticBody.plugin?.klunkstr?.coreRadius;
+              const distance = Vector.magnitude(distanceVector); // Need actual distance now
+              
+              if (coreRadius && distance <= coreRadius) {
+                  // Inside core radius - Add strong Repulsive force
+                  // NOTE: ORANGE_PLANET_REPULSION_CONSTANT likely needs to be significantly larger than GRAVITY_CONSTANT 
+                  // and might need distance scaling adjusted (e.g., 1/distance^3) for a strong slingshot.
+                  // Start with 1/distanceSq scaling for now.
+                  const repulsiveForceMagnitude = (ORANGE_PLANET_REPULSION_CONSTANT * projectileBody.mass * coreRadius) / distanceSq; 
+                  const repulsiveForce = Vector.mult(Vector.normalise(distanceVector), -repulsiveForceMagnitude); // Negative magnitude for repulsion
+                  
+                  netForce = Vector.add(netForce, repulsiveForce); // Add repulsion to the net force
+                  
+                  // Optional: Log when repulsion is active
+                  // console.log(`Orange planet ${staticBody.id} core hit! Repulsion applied. Dist: ${distance.toFixed(1)}, CoreRadius: ${coreRadius.toFixed(1)}`);
+              }
+          } 
+
+          // Apply the final net force (attraction + optional repulsion)
+          if (Vector.magnitudeSquared(netForce) > 0) {
+              Body.applyForce(projectileBody, projectileBody.position, netForce);
           }
         });
-        // --- End Planet Gravity ---
+        // --- End Planet Gravity / Repulsion ---
 
         // --- Apply Opponent Ship Gravity (for 'gravity' ability) ---
         if (projectileBody.custom?.abilityType === 'gravity') {
@@ -306,6 +335,10 @@ export const useMatterPhysics = ({
   const initializeWorld = useCallback((levelData: InitialGamePositions | undefined) => {
     const engine = engineRef.current;
     const localSettings = currentSettingsRef.current; // Get settings from ref
+
+    // ADD LOGGING HERE
+    console.log('[Physics initializeWorld] Called. levelData arg:', levelData, 'localSettings from ref:', localSettings);
+
     if (!engine || !localSettings) {
         console.error("[Physics Hook] Engine or Settings not available during world initialization.");
         return;

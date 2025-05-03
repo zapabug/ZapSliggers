@@ -68,10 +68,26 @@ const AimingInterface: React.FC<AimingInterfaceProps> = ({
     }
   }, [isDragging]);
 
-  const handlePowerChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const newPower = Number(event.target.value);
-    onAimChange({ angle: currentAngle, power: newPower });
-  };
+  const powerBarRef = useRef<HTMLDivElement>(null);
+  const handlePowerClickOrTouch = useCallback((event: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
+    if (!powerBarRef.current) return;
+    const rect = powerBarRef.current.getBoundingClientRect();
+    let clientX: number;
+
+    if ('touches' in event) { // Touch event
+        clientX = event.touches[0].clientX;
+    } else { // Mouse event
+        clientX = event.clientX;
+    }
+
+    const relativeX = clientX - rect.left;
+    let power = (relativeX / rect.width) * 100; // Power increases from left to right
+    power = Math.max(0, Math.min(100, Math.round(power))); // Clamp and round
+
+    console.log(`[AimingInterface] Power bar interaction. X: ${relativeX.toFixed(1)}, Width: ${rect.width.toFixed(1)}, Calculated Power: ${power}`);
+    onAimChange({ angle: currentAngle, power: power });
+
+  }, [currentAngle, onAimChange]);
 
   useEffect(() => {
     if (isDragging) {
@@ -109,16 +125,21 @@ const AimingInterface: React.FC<AimingInterfaceProps> = ({
         ></div>
       </div>
 
-      <div className="w-full max-w-[150px] flex flex-col items-center pt-1"> 
-        <input 
-          id="powerSlider"
-          type="range" 
-          min="0" 
-          max="100" 
-          step="1" 
-          value={currentPower}
-          onChange={handlePowerChange}
-          className="w-full h-2 bg-gradient-to-r from-red-800 via-red-600 to-red-500 rounded-lg appearance-none cursor-pointer range-thumb:appearance-none range-thumb:w-3 range-thumb:h-3 range-thumb:bg-white range-thumb:rounded-full range-thumb:shadow-md" 
+      <div 
+        ref={powerBarRef} 
+        className="w-40 h-5 bg-gradient-to-r from-red-800 via-red-600 to-red-500 rounded-lg cursor-pointer relative overflow-hidden mt-2"
+        onClick={handlePowerClickOrTouch}
+        onTouchStart={handlePowerClickOrTouch}
+        onTouchMove={handlePowerClickOrTouch}
+      >
+        {/* Power Level Indicator - Horizontal with Stepped Color */}
+        <div 
+          className={`absolute top-0 left-0 h-full transition-all duration-100 ease-linear ${
+            currentPower < 34 ? 'bg-green-500' :
+            currentPower < 67 ? 'bg-yellow-500' :
+            'bg-red-600'
+          }`}
+          style={{ width: `${currentPower}%` }}
         />
       </div>
       

@@ -14,6 +14,7 @@ interface ActionButtonsProps {
   maxAbilityUsesTotal: number;
   maxAbilityUsesPerType: number;
   disabled: boolean; // General disabled state (e.g., not player's turn)
+  availableAbilities: AbilityType[]; // Add prop for available abilities
 }
 
 // Removed unused AbilityIcon component
@@ -32,18 +33,16 @@ const ActionButtons: React.FC<ActionButtonsProps> = (props) => {
     maxAbilityUsesTotal,
     maxAbilityUsesPerType,
     disabled,
+    availableAbilities, // Destructure new prop
   } = props;
 
-  const availableAbilities: AbilityType[] = ['splitter', 'gravity', 'plastic'];
-
-  // Define specific angles for each selectable ability button
-  const abilityAngles: { [key in 'splitter' | 'gravity' | 'plastic']: number } = {
-    splitter: -100,
-    gravity: -45,
-    plastic: 10,
-  };
-
   const radius = 50; // Increased from 40 to give more space
+
+  // Calculate dynamic angles based on the number of available abilities
+  const numAbilities = availableAbilities.length;
+  const angleSpread = 110; // Total degrees to spread buttons over
+  const startAngle = -10 - (angleSpread / 2); // Center the spread around -10 degrees
+  const angleStep = numAbilities > 1 ? angleSpread / (numAbilities - 1) : 0; // Avoid division by zero
 
   const handleFireClick = () => {
       if (disabled) return; // Check general disabled state
@@ -73,7 +72,7 @@ const ActionButtons: React.FC<ActionButtonsProps> = (props) => {
 
       {/* Ability Buttons Origin - Positioned absolutely, offset from the corner */}
       <div className="absolute bottom-8 right-16 z-10 w-0 h-0">
-        {availableAbilities.map((ability) => {
+        {availableAbilities.map((ability, index) => {
           // Calculate if used max times for this specific type
           const abilitiesOfTypeUsed = Array.from(usedAbilities).filter(used => used === ability).length;
           const isUsedMaxPerType = abilitiesOfTypeUsed >= maxAbilityUsesPerType;
@@ -94,7 +93,8 @@ const ActionButtons: React.FC<ActionButtonsProps> = (props) => {
               borderStyle = 'border-transparent';
           }
 
-          const angleDegrees = abilityAngles[ability as 'splitter' | 'gravity' | 'plastic'];
+          // Calculate dynamic angle for this button
+          const angleDegrees = startAngle + (index * angleStep);
           const angleRadians = angleDegrees * (Math.PI / 180);
           const x = radius * Math.sin(angleRadians);
           const y = -radius * Math.cos(angleRadians);
@@ -110,10 +110,20 @@ const ActionButtons: React.FC<ActionButtonsProps> = (props) => {
                 top: '0px',
                 left: '0px'
               }}
-              title={`${ability.charAt(0).toUpperCase() + ability.slice(1)} (Cost: ${abilityCost} HP) - Used ${abilitiesOfTypeUsed}/${maxAbilityUsesPerType} times (Total: ${usedAbilities.size}/${maxAbilityUsesTotal}) - ${isButtonDisabled ? 'Unavailable' : 'Available'}`}
+              title={(
+                ability === 'splitter' ? 'Splitter 🔱: Splits into 3 after a short time.' :
+                ability === 'gravity' ? 'Gravity 🧲: Projectile is attracted towards opponent ship.' :
+                ability === 'plastic' ? 'Plastic 🌬️: Less affected by planet gravity.' :
+                ability // Fallback
+              ) + ` (Cost: ${abilityCost} HP) - Used ${abilitiesOfTypeUsed}/${maxAbilityUsesPerType} (Total: ${usedAbilities.size}/${maxAbilityUsesTotal}) - ${isButtonDisabled ? 'Unavailable' : 'Available'}`}
             >
-              {/* <AbilityIcon ability={ability} /> */}
-              <span className="text-xs">{ability.slice(0,3)}</span> {/* TEMP: Show text */}
+              {/* Emojis updated */}
+              {
+                ability === 'splitter' ? '🔱' : 
+                ability === 'gravity' ? '🧲' : 
+                ability === 'plastic' ? '🌬️' : 
+                ability.slice(0,3) // Fallback just in case
+              }
             </button>
           );
         })}

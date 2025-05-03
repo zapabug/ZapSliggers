@@ -18,7 +18,7 @@
    - **Controls & Firing:** Aiming (rotation/power via UI/keyboard) and firing implemented (`GameScreen` / `PracticeScreen` -> `useGameLogic` -> `GameRenderer`).
    - **Aiming Aids (`useShotTracers`):** Historical shot traces (last 10) and active projectile trails rendered.
    - **Klunkstr Rules (Partial):** Basic HP system implemented (as resource). Ability selection UI/logic functional (`ActionButtons`/`useGameLogic`). Standard projectile hits trigger round win callback in `useGameLogic`.
-   - **Practice Mode:** Full practice mode implemented (`PracticeScreen` + `useGameLogic`): turn-based, best-of-3 rounds, scoring, HP tie-breaker, alternating start player, opponent Npub display. - *Done*.
+   - **Practice Mode:** Full practice mode implemented (`PracticeScreen` + `useGameLogic`): turn-based, best-of-3 rounds, scoring, HP tie-breaker, alternating start player, opponent Npub display. - ***Broken (Needs Debugging Post-Refactor)***.
    - **Authentication (`useAuth`):** Centralized authentication logic via custom `useAuth` hook. Supports NIP-07 (`NDKNip07Signer`) and NIP-46 (using integrated Applesauce signer code via `NostrConnectSignerWrapper`), including bunker URI, desktop QR, and mobile deeplink flows.
    - **Lobby (`LobbyScreen`, `LobbyPlayground`):** Basic lobby structure exists with interactive playground.
    - **Challenges (`ChallengeHandler`):** Basic Nostr DM challenge sending/receiving implemented.
@@ -113,7 +113,7 @@
    - Viewport & Positioning: Implemented wider virtual viewport, random placement, adaptive camera zoom. - *Done*.
    - Gravity Tuning: Implemented effectiveRadius calculation. - *Done*.
    - HP/Ability Logic: Basic resource management and selection UI implemented. - *Done*
-   - Practice Mode Logic: Implemented best-of-3 rounds, scoring, HP tie-breaker, alternating start. Player 2 controls corrected. - *Done*.
+   - Practice Mode Logic: Implemented best-of-3 rounds, scoring, HP tie-breaker, alternating start. Player 2 controls corrected. - ***Broken (Needs Debugging Post-Refactor)***.
    - **Multiplayer Sync (Basic):** Fire actions synchronized via `kind:30079` using manual NDK calls. - *Done*.
 
 **8. Comments & Education:**

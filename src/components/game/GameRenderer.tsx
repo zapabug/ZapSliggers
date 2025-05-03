@@ -24,8 +24,8 @@ interface GameRendererProps {
 
 // Drawing Helpers
 // Ensure SHIP_RADIUS and PLANET_MIN_RADIUS are available if needed by helpers
-const SHIP_RADIUS_DRAW = 63; // Example: Use specific drawing constants or keep globals
-const PLANET_MIN_RADIUS_DRAW = 40;
+const SHIP_RADIUS_DRAW = 50; // Decreased for visual scale
+const PLANET_MIN_RADIUS_DRAW = 100; // Increased to match settings minimum
 const drawBackground = (ctx: CanvasRenderingContext2D, img: HTMLImageElement | null) => { 
     const bgX = -VIRTUAL_WIDTH / 2;
     const bgY = -VIRTUAL_HEIGHT;
@@ -93,7 +93,7 @@ const drawHistoricalTrace = (ctx: CanvasRenderingContext2D, trace: Matter.Vector
 // --- GameRenderer Component (Standard Function) ---
 const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerHandlers }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null);
+  const [backgroundImage, /*setBackgroundImage*/] = useState<HTMLImageElement | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
 
   const { lastShotTraces } = shotTracerHandlers;
@@ -115,16 +115,63 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
   // Imperative Handle removed
 
   // Effects for background image and resize (no change)
-  useEffect(() => { /* background */ });
-  useEffect(() => { /* resize */ });
+  useEffect(() => { 
+      // Basic background image loading (adjust path if needed)
+      const img = new Image();
+      img.onload = () => {
+        // Intentionally removed setBackgroundImage call as it was unused
+        // setBackgroundImage(img);
+      };
+      img.onerror = () => {
+          console.error("Failed to load background image.");
+      };
+      // Assume background is in public folder relative to index.html
+      img.src = '/images/background.png'; 
+  }, []);
+
+  // Re-implement Resize Handling
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // Use ResizeObserver for modern browsers
+    const resizeObserver = new ResizeObserver(entries => {
+        for (const entry of entries) {
+            const { width, height } = entry.contentRect;
+            console.log(`[GameRenderer ResizeObserver] Canvas resized to: ${width}x${height}`);
+            setCanvasSize({ width, height });
+            // Also update canvas element dimensions directly
+            // This is crucial for the drawing context resolution
+            canvas.width = width;
+            canvas.height = height;
+        }
+    });
+
+    resizeObserver.observe(canvas);
+
+    // Initial size check
+    const initialWidth = canvas.clientWidth;
+    const initialHeight = canvas.clientHeight;
+    if (initialWidth > 0 && initialHeight > 0) {
+        console.log(`[GameRenderer Resize] Setting initial canvas size: ${initialWidth}x${initialHeight}`);
+        setCanvasSize({ width: initialWidth, height: initialHeight });
+        canvas.width = initialWidth;
+        canvas.height = initialHeight;
+    }
+
+    return () => {
+        resizeObserver.disconnect();
+    };
+}, []); // Run only once on mount
 
   // --- Render Loop ---
   useEffect(() => {
     let animationFrameId: number;
     const renderLoop = () => {
         const canvas = canvasRef.current;
-        const engine = physicsHandles?.engine;
-        const bodiesGetter = physicsHandles?.getAllBodies;
+        const engine = physicsHandles?.engine; // Keep optional chaining
+        const bodiesGetter = physicsHandles?.getAllBodies; // Keep optional chaining
+
         if (!canvas || !engine || !bodiesGetter) {
             animationFrameId = requestAnimationFrame(renderLoop);
             return;
@@ -140,12 +187,16 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
         ctx.translate(viewport.offsetX, viewport.offsetY);
         ctx.scale(viewport.scale, viewport.scale);
 
+        // Draw Background and Border first
         drawBackground(ctx, backgroundImage);
         drawBorder(ctx);
 
+        // Get bodies and remove conditional logging
         const bodies = bodiesGetter();
+
+        // Iterate and draw
         bodies.forEach(body => {
-            if (body.label === 'planet') {
+            if (body.label === 'planet' || body.label === 'orange-planet') {
                  drawPlanet(ctx, body);
             } else if (body.label.startsWith('ship-')) {
                 drawShip(ctx, body);

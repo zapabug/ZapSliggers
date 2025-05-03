@@ -3,6 +3,8 @@
  * Defines different profiles for various game modes.
  */
 
+import { AbilityType } from '../components/ui_overlays/ActionButtons'; // Import AbilityType
+
 // --- Settings Interface ---
 // Defines the shape of a settings profile
 export interface GameSettingsProfile {
@@ -44,7 +46,15 @@ export interface GameSettingsProfile {
     MAX_HP: number;
     // Add Max Rounds
     MAX_ROUNDS: number;
+    // --- New Orange Planet Settings ---
+    NUM_ORANGE_PLANETS: number;
+    ORANGE_PLANET_MAX_RADIUS: number;
+    ORANGE_PLANET_CORE_RADIUS_FACTOR: number;
+    ORANGE_PLANET_REPULSION_CONSTANT: number;
+    ORANGE_PLANET_MIN_SPAWN_DIST_FACTOR: number;
     // Add other settings as needed (e.g., round time, shot limit)
+    // --- New Available Abilities Setting ---
+    AVAILABLE_ABILITIES: AbilityType[];
 }
 
 // --- Base Settings (Common values) ---
@@ -54,30 +64,30 @@ const baseSettings: Omit<GameSettingsProfile, 'comments'> = {
     VIRTUAL_HEIGHT: 1200,
     // Object Sizes
     SHIP_RADIUS: 63,
-    PLANET_MIN_RADIUS: 30,
-    PLANET_MAX_RADIUS: 180,
+    PLANET_MIN_RADIUS: 100,
+    PLANET_MAX_RADIUS: 300,
     STANDARD_PROJECTILE_RADIUS: 5,
-    SPLITTER_FRAGMENT_RADIUS: 4,
+    SPLITTER_FRAGMENT_RADIUS: 3,
     // Level Generation Parameters
-    NUM_PLANETS: 3,
+    NUM_PLANETS: 4,
     // Placement Zone Factors
-    INITIAL_VIEW_WIDTH_FACTOR: 0.75,
-    INITIAL_VIEW_HEIGHT_FACTOR: 0.75,
+    INITIAL_VIEW_WIDTH_FACTOR: 0.8,
+    INITIAL_VIEW_HEIGHT_FACTOR: 0.8,
     SHIP_ZONE_WIDTH_FACTOR: 0.1,
     PLANET_SPAWN_AREA_FACTOR: 0.9,
     // Minimum Distance Constraints
-    MIN_SHIP_SEPARATION_FACTOR: 0.9,
-    MIN_PLANET_SHIP_DISTANCE: 250,
-    MIN_PLANET_PLANET_DISTANCE: 50,
+    MIN_SHIP_SEPARATION_FACTOR: 0.97,
+    MIN_PLANET_SHIP_DISTANCE: 150,
+    MIN_PLANET_PLANET_DISTANCE: 75,
     // Physics Parameters
     GRAVITY_CONSTANT: 0.35,
     GRAVITY_AOE_BONUS_FACTOR: 0.2,
     DEFAULT_FRICTION_AIR: 0.002,
     // Ability-Specific Physics
     PLASTIC_GRAVITY_FACTOR: 0.85,
-    PLASTIC_FRICTION_AIR: 0.008,
+    PLASTIC_FRICTION_AIR: 0.004,
     SHIP_GRAVITY_RANGE_FACTOR: 4,
-    SHIP_GRAVITY_CONSTANT: 0.3,
+    SHIP_GRAVITY_CONSTANT: 0.4,
     GRAVITY_FRICTION_AIR: 0.005,
     // Gameplay Rules & Limits
     ABILITY_COST_HP: 25,
@@ -87,6 +97,14 @@ const baseSettings: Omit<GameSettingsProfile, 'comments'> = {
     MAX_HP: 100,
     // Add Max Rounds (default for main game)
     MAX_ROUNDS: 5,
+    // --- New Orange Planet Settings ---
+    NUM_ORANGE_PLANETS: 2, // Start with 1 for testing
+    ORANGE_PLANET_MAX_RADIUS: 160, // Set max radius for orange
+    ORANGE_PLANET_CORE_RADIUS_FACTOR: 0.3, // Core is 30% of radius
+    ORANGE_PLANET_REPULSION_CONSTANT: 1.6, // Repulsion strength (tune as needed)
+    ORANGE_PLANET_MIN_SPAWN_DIST_FACTOR: 0.8, // Must spawn outside inner 80% radius
+    // --- New Available Abilities Setting ---
+    AVAILABLE_ABILITIES: ['splitter', 'gravity', 'plastic'],
 };
 
 // --- Main Settings Profile ---
@@ -120,11 +138,11 @@ export const VIRTUAL_HEIGHT = 1200;
 
 // --- Object Sizes ---
 export const SHIP_RADIUS = 63; // Radius for player ships (used in generation and physics)
-export const PLANET_MIN_RADIUS = 30; // Minimum radius for generated planets
-export const PLANET_MAX_RADIUS = 180; // Maximum radius for generated planets
+export const PLANET_MIN_RADIUS = 120; // Minimum radius for generated planets
+export const PLANET_MAX_RADIUS = 350; // Maximum radius for generated planets
 
 // --- Level Generation Parameters ---
-export const NUM_PLANETS = 3; // Default number of planets per level
+export const NUM_PLANETS = 4; // Default number of planets per level
 
 // --- Placement Zone Factors (Relative to Initial View Area) ---
 // Initial view area is the central portion of the virtual space players initially see.
@@ -135,7 +153,7 @@ export const PLANET_SPAWN_AREA_FACTOR = 0.9; // Size of planet spawn area as fac
 
 // --- Minimum Distance Constraints ---
 export const MIN_SHIP_SEPARATION_FACTOR = 0.9; // Min ship separation as factor of initial view width
-export const MIN_PLANET_SHIP_DISTANCE = 250; // Min clearance between planet edge and ship edge
+export const MIN_PLANET_SHIP_DISTANCE = 120; // Min clearance between planet edge and ship edge
 export const MIN_PLANET_PLANET_DISTANCE = 50; // Min clearance between planet edges
 
 // --- Physics Parameters ---
@@ -155,7 +173,7 @@ export const GRAVITY_FRICTION_AIR = 0.005; // Air drag for Gravity projectiles
 
 // --- Projectile Sizes ---
 export const STANDARD_PROJECTILE_RADIUS = 5;
-export const SPLITTER_FRAGMENT_RADIUS = 4;
+export const SPLITTER_FRAGMENT_RADIUS = 3;
 
 // --- Gameplay Rules & Limits ---
 export const ABILITY_COST_HP = 25;
