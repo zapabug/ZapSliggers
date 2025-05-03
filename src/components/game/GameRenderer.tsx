@@ -5,6 +5,7 @@ import { ProjectileBody } from '../../hooks/useShotTracers';
 import { MatterPhysicsHandles } from '../../hooks/useMatterPhysics';
 import { useDynamicViewport } from '../../hooks/useDynamicViewport';
 import { UseGameLogicReturn } from '../../hooks/useGameLogic';
+import { GameSettingsProfile } from '../../config/gameSettings'; // <-- Import settings type
 
 // Constants for rendering/layout
 const VIRTUAL_WIDTH = 2400;
@@ -18,32 +19,107 @@ const PROJECTILE_RADIUS = 5;
 interface GameRendererProps {
   physicsHandles: MatterPhysicsHandles | null;
   shotTracerHandlers: UseGameLogicReturn['shotTracerHandlers'];
+  settings: GameSettingsProfile; // <-- Add settings prop
+  aimStates: [{ angle: number; power: number }, { angle: number; power: number }]; // <-- Add aimStates prop
 }
 
 // Ref interface removed
 
 // Drawing Helpers
 // Ensure SHIP_RADIUS and PLANET_MIN_RADIUS are available if needed by helpers
-const SHIP_RADIUS_DRAW = 50; // Decreased for visual scale
+// const SHIP_RADIUS_DRAW = 50; // Decreased for visual scale
 const PLANET_MIN_RADIUS_DRAW = 100; // Increased to match settings minimum
-const drawBackground = (ctx: CanvasRenderingContext2D, img: HTMLImageElement | null) => { 
-    // Log the state of img when drawing
-    console.log(`[GameRenderer drawBackground] Drawing with backgroundImage: ${img ? 'Exists' : 'NULL'}`); 
+const drawBackground = (ctx: CanvasRenderingContext2D, img: HTMLImageElement | null) => {
+    const canvas = ctx.canvas;
+    const canvasWidth = canvas.width;
+    const canvasHeight = canvas.height;
 
-    const bgX = -VIRTUAL_WIDTH / 2;
-    const bgY = -VIRTUAL_HEIGHT;
-    const bgWidth = VIRTUAL_WIDTH * 2;
-    const bgHeight = VIRTUAL_HEIGHT * 3;
-    if (img) {
-        ctx.drawImage(img, bgX, bgY, bgWidth, bgHeight);
+    if (img && img.naturalWidth && img.naturalHeight) {
+        const imgRatio = img.naturalWidth / img.naturalHeight;
+        const canvasRatio = canvasWidth / canvasHeight;
+
+        let drawWidth = canvasWidth;
+        let drawHeight = canvasHeight;
+
+        if (imgRatio > canvasRatio) {
+            // Image is wider than canvas aspect ratio -> fit height, crop width
+            drawHeight = canvasHeight;
+            drawWidth = drawHeight * imgRatio;
+        } else {
+            // Image is taller than canvas aspect ratio (or same) -> fit width, crop height
+            drawWidth = canvasWidth;
+            drawHeight = drawWidth / imgRatio;
+        }
+
+        // Draw the image to cover the *actual* canvas, centered
+        // Note: We draw relative to the current transform, so 0,0 is the top-left
+        // IF the viewport transform wasn't applied before calling this.
+        // HOWEVER, the viewport transform *IS* applied before this.
+        // So we need to draw relative to the *transformed* origin.
+        // The easiest way is to draw relative to the canvas dimensions
+        // *before* the viewport transform, assuming the transform centers the view.
+
+        // Let's adjust based on the viewport translation applied before this function
+        // The viewport centers on (0,0) of the virtual world, mapping it to canvas center.
+        // So, drawing at (0,0) in canvas coords requires drawing at
+        // (-canvasWidth/2 / scale, -canvasHeight/2 / scale) in world coords after scaling.
+        // OR, simpler: draw directly in canvas coords before restoring the ctx state.
+        // BUT this func IS called *after* save/translate/scale.
+
+        // Let's draw relative to the canvas *viewport*, not the virtual world coordinates
+        // used by other elements. We need to draw covering canvasWidth/Height
+        // starting from (0,0) *in the canvas coordinate system*.
+        // Since the context is already translated and scaled, drawing at 0,0
+        // will be off-center relative to the canvas itself.
+        // We need to undo the translation *for the background*.
+
+        // Get current transform (includes viewport scale and offset)
+        const transform = ctx.getTransform();
+        // Invert the transform to map canvas coords back to the 'world' coords
+        // expected by drawImage after the transform is applied
+        const pt = new DOMPoint(0, 0).matrixTransform(transform.inverse());
+        const scaledPt = new DOMPoint(canvasWidth, canvasHeight).matrixTransform(transform.inverse());
+
+        const drawX = pt.x;
+        const drawY = pt.y;
+        const effectiveDrawWidth = scaledPt.x - pt.x;
+        const effectiveDrawHeight = scaledPt.y - pt.y;
+
+
+        // Calculate scale to cover the effective drawing area
+        const effectiveRatio = effectiveDrawWidth / effectiveDrawHeight;
+        let finalDrawWidth, finalDrawHeight, finalDrawX, finalDrawY;
+
+        if (imgRatio > effectiveRatio) {
+            // Fit height, crop width (relative to effective area)
+            finalDrawHeight = effectiveDrawHeight;
+            finalDrawWidth = finalDrawHeight * imgRatio;
+            finalDrawX = drawX + (effectiveDrawWidth - finalDrawWidth) / 2;
+            finalDrawY = drawY;
+        } else {
+            // Fit width, crop height (relative to effective area)
+            finalDrawWidth = effectiveDrawWidth;
+            finalDrawHeight = finalDrawWidth / imgRatio;
+            finalDrawX = drawX;
+            finalDrawY = drawY + (effectiveDrawHeight - finalDrawHeight) / 2;
+        }
+
+
+        ctx.drawImage(img, finalDrawX, finalDrawY, finalDrawWidth, finalDrawHeight);
+
     } else {
-        ctx.fillStyle = '#000020'; 
-        ctx.fillRect(bgX, bgY, bgWidth, bgHeight);
+         // Fallback: Fill the visible area with a solid color
+         // Use the inverse transform logic similar to above to find the corners
+        const transform = ctx.getTransform();
+        const pt00 = new DOMPoint(0, 0).matrixTransform(transform.inverse());
+        const ptWH = new DOMPoint(canvasWidth, canvasHeight).matrixTransform(transform.inverse());
+        ctx.fillStyle = '#000020';
+        ctx.fillRect(pt00.x, pt00.y, ptWH.x - pt00.x, ptWH.y - pt00.y);
     }
-}; // Removed unused vars
-const drawBorder = (ctx: CanvasRenderingContext2D) => {
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-    ctx.lineWidth = 4;
+};
+const drawBorder = (ctx: CanvasRenderingContext2D, scale: number) => {
+    ctx.strokeStyle = 'rgba(207, 145, 30, 0.76)';
+    ctx.lineWidth = 2 / scale;
     const borderX = -VIRTUAL_WIDTH / 2;
     const borderY = -VIRTUAL_HEIGHT;
     const borderWidth = VIRTUAL_WIDTH * 2;
@@ -94,18 +170,40 @@ const drawPlanet = (ctx: CanvasRenderingContext2D, body: Matter.Body) => {
     ctx.stroke();
     */
 };
-const drawShip = (ctx: CanvasRenderingContext2D, body: Matter.Body) => {
+const drawShip = (
+    ctx: CanvasRenderingContext2D, 
+    body: Matter.Body, 
+    blueShipImg: HTMLImageElement | null, 
+    redShipImg: HTMLImageElement | null,
+    settings: GameSettingsProfile // <-- Accept settings
+) => {
     const playerIndex = parseInt(body.label.split('-')[1], 10);
+    const shipImage = playerIndex === 0 ? blueShipImg : redShipImg;
+
+    if (!shipImage || shipImage.width === 0) { // Check width to prevent division by zero
+        return; 
+    }
+
+    // Calculate desired draw size based on SHIP_RADIUS
+    const targetDiameter = settings.SHIP_RADIUS * 2;
+    const aspectRatio = shipImage.height / shipImage.width;
+    const drawWidth = targetDiameter;
+    const drawHeight = targetDiameter * aspectRatio;
+
     ctx.save();
     ctx.translate(body.position.x, body.position.y);
-    ctx.rotate(body.angle);
-    ctx.beginPath();
-    ctx.moveTo(SHIP_RADIUS_DRAW, 0);
-    ctx.lineTo(-SHIP_RADIUS_DRAW / 2, -SHIP_RADIUS_DRAW / 2);
-    ctx.lineTo(-SHIP_RADIUS_DRAW / 2, SHIP_RADIUS_DRAW / 2);
-    ctx.closePath();
-    ctx.fillStyle = playerIndex === 0 ? '#00f' : '#f00';
-    ctx.fill();
+    // Change offset: Rotate based on physics angle, assuming sprite faces UP by default (+90 deg offset)
+    ctx.rotate(body.angle + Math.PI / 2); 
+    
+    // Draw the image centered, scaled to the calculated size
+    ctx.drawImage(
+        shipImage, 
+        -drawWidth / 2, 
+        -drawHeight / 2,
+        drawWidth,
+        drawHeight
+    );
+    
     ctx.restore();
  };
 const drawProjectile = (ctx: CanvasRenderingContext2D, body: ProjectileBody) => {
@@ -131,9 +229,13 @@ const drawHistoricalTrace = (ctx: CanvasRenderingContext2D, trace: Matter.Vector
 
 
 // --- GameRenderer Component (Standard Function) ---
-const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerHandlers }) => {
+const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerHandlers, settings, aimStates }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null);
+  // Add state for ship images
+  const [blueShipImage, setBlueShipImage] = useState<HTMLImageElement | null>(null);
+  const [redShipImage, setRedShipImage] = useState<HTMLImageElement | null>(null);
+
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
 
   const { lastShotTraces } = shotTracerHandlers;
@@ -156,18 +258,25 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
 
   // Effects for background image and resize (no change)
   useEffect(() => { 
-      const img = new Image();
-      console.log(`[GameRenderer Effect] Attempting to load image: ${img.src}`); // Log start
-      img.onload = () => {
-        console.log(`[GameRenderer Effect] Image loaded successfully: ${img.src}`); // Log success
-        setBackgroundImage(img);
-      };
-      img.onerror = (err) => {
-          // Log the actual error if possible
-          console.error(`[GameRenderer Effect] Failed to load background image: ${img.src}`, err); // Log failure
-      };
-      img.src = '/images/backdrop.png'; 
-  }, []);
+      // Load background
+      const bgImg = new Image();
+      bgImg.onload = () => setBackgroundImage(bgImg);
+      bgImg.onerror = () => console.error("Failed to load background image.");
+      bgImg.src = '/images/backdrop.png'; 
+
+      // Load blue ship
+      const blueShip = new Image();
+      blueShip.onload = () => setBlueShipImage(blueShip);
+      blueShip.onerror = () => console.error("Failed to load blue ship image.");
+      blueShip.src = '/images/spaceship_small_blue.png';
+
+      // Load red ship
+      const redShip = new Image();
+      redShip.onload = () => setRedShipImage(redShip);
+      redShip.onerror = () => console.error("Failed to load red ship image.");
+      redShip.src = '/images/spaceship_small_red.png'; // Assuming this is the name
+
+  }, []); // Run only once on mount
 
   // Re-implement Resize Handling
   useEffect(() => {
@@ -229,7 +338,7 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
 
         // Draw Background and Border first
         drawBackground(ctx, backgroundImage);
-        drawBorder(ctx);
+        drawBorder(ctx, viewport.scale);
 
         // Get bodies and remove conditional logging
         const bodies = bodiesGetter();
@@ -239,21 +348,34 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
             if (body.label === 'planet' || body.label === 'orange-planet') {
                  drawPlanet(ctx, body);
             } else if (body.label.startsWith('ship-')) {
-                drawShip(ctx, body);
-                // Draw aiming indicator
-                const aimLength = SHIP_RADIUS_DRAW * 1.5;
+                drawShip(ctx, body, blueShipImage, redShipImage, settings); 
+                
+                // Aiming indicator based on settings.SHIP_RADIUS and aim power
+                const playerIndex = parseInt(body.label.split('-')[1], 10) as 0 | 1;
+                const currentPower = aimStates[playerIndex]?.power || 0; // Get power for this ship
+                const minIndicatorLength = settings.SHIP_RADIUS * 0.5; 
+                const maxIndicatorLength = settings.SHIP_RADIUS * 2.5; 
+                const aimLength = minIndicatorLength + (maxIndicatorLength - minIndicatorLength) * (currentPower / 100);
+                
+                // Use the RAW physics angle for the indicator direction
                 const angle = body.angle;
-                const startX = body.position.x + Math.cos(angle) * SHIP_RADIUS_DRAW;
-                const startY = body.position.y + Math.sin(angle) * SHIP_RADIUS_DRAW;
-                const endX = body.position.x + Math.cos(angle) * (SHIP_RADIUS_DRAW + aimLength);
-                const endY = body.position.y + Math.sin(angle) * (SHIP_RADIUS_DRAW + aimLength);
+                // Increase startOffset to create a gap between ship and line start
+                const startOffset = settings.SHIP_RADIUS * 1.;
+                const centerOffsetX = Math.cos(angle) * startOffset;
+                const centerOffsetY = Math.sin(angle) * startOffset;
+                const startX = body.position.x + centerOffsetX;
+                const startY = body.position.y + centerOffsetY;
+                const endX = startX + Math.cos(angle) * aimLength; 
+                const endY = startY + Math.sin(angle) * aimLength;
                 ctx.beginPath();
                 ctx.moveTo(startX, startY);
                 ctx.lineTo(endX, endY);
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
-                ctx.lineWidth = 2;
-                ctx.setLineDash([5, 5]);
+                ctx.strokeStyle = 'rgba(251, 126, 17, 0.86)';
+                ctx.lineWidth = 2 / viewport.scale;
+                // Invert dash pattern (gap longer than dash) and scale
+                ctx.setLineDash([8 / viewport.scale, 3 / viewport.scale]);
                 ctx.stroke();
+                // Reset line dash for other drawing operations
                 ctx.setLineDash([]);
             } else if (body.label.startsWith('projectile-')) {
                 drawProjectile(ctx, body as ProjectileBody);
@@ -271,7 +393,7 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
 
     animationFrameId = requestAnimationFrame(renderLoop);
     return () => cancelAnimationFrame(animationFrameId);
-  }, [viewport, physicsHandles, backgroundImage]); 
+  }, [viewport, physicsHandles, backgroundImage, blueShipImage, redShipImage, settings, aimStates]); 
 
   return (
       <canvas 

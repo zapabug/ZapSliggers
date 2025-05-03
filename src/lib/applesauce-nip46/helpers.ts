@@ -24,15 +24,13 @@ export function createDefer<T>() {
   let _resolve: (value?: T | PromiseLike<T>) => void;
   let _reject: (reason?: unknown) => void;
   const promise = new Promise<T>((resolve, reject) => {
+    // @ts-expect-error Assigning resolve function with incompatible signature
     _resolve = resolve;
-    // @ts-expect-error Assigning to let variables before initialization is intended
     _reject = reject;
   }) as Deferred<T>;
 
-  // @ts-expect-error Assigning properties to promise object is intended
-  promise.resolve = _resolve;
-  // @ts-expect-error Assigning properties to promise object is intended
-  promise.reject = _reject;
+  promise.resolve = _resolve!;
+  promise.reject = _reject!;
 
   return promise;
 }

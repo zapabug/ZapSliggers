@@ -12,7 +12,7 @@
     6.  **Aiming Aids (`useShotTracers`):** Render historical traces and active trails. - *Done*.
     7.  **Klunkstr Rules (Partial):** Implement HP as resource, ability selection UI/logic, basic win condition callback. - *Done*.
     8.  **Authentication (`useAuth`):** Implement NIP-07/NIP-46/nsec login. - *Done*.
-    9.  **Lobby:** Implement `LobbyScreen` with interactive `LobbyPlayground`. - *Done*.
+    9.  **Lobby:** Implement `LobbyScreen`. - *Done*
    10. **Challenges (`ChallengeHandler`):** Implement basic DM challenge handling. - *Done*.
    11. **Viewport/Camera (`useDynamicViewport`):** Implement adaptive zoom/pan. - *Done*.
    12. **PWA Setup:** Configure `vite-plugin-pwa`. - *Configured*

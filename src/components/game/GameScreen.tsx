@@ -6,7 +6,7 @@ import AimingInterface from '../ui_overlays/AimingInterface';
 import { PlayerHUD } from '../ui_overlays/PlayerHUD';
 import ActionButtons from '../ui_overlays/ActionButtons';
 import { useGameLogic } from '../../hooks/useGameLogic';
-import { mainSettings } from '../../config/gameSettings';
+import { gameSettings } from '../../config/gameSettings';
 import { useKeyboardControls } from '../../hooks/useKeyboardControls';
 import { GameEndResult } from '../../types/game';
 
@@ -28,7 +28,6 @@ const GameScreen: React.FC<GameScreenProps> = ({
     onBackToMenu,
 }) => {
     const handleMultiplayerGameEnd = useCallback((result: GameEndResult) => {
-        console.log(`[GameScreen] Multiplayer game ended. Winner: ${result.winnerIndex === null ? 'Draw' : `Player ${result.winnerIndex}`}, Reason: ${result.reason}, Score: ${result.finalScore[0]}-${result.finalScore[1]}`);
         onGameEnd(result);
     }, [onGameEnd]);
 
@@ -47,7 +46,7 @@ const GameScreen: React.FC<GameScreenProps> = ({
         shotTracerHandlers,
         settings,
     } = useGameLogic({
-        settings: mainSettings,
+        settings: gameSettings,
         mode: 'multiplayer',
         localPlayerPubkey: localPlayerPubkey,
         opponentPubkey: opponentPubkey,
@@ -85,7 +84,7 @@ const GameScreen: React.FC<GameScreenProps> = ({
                     Match vs {opponentPubkey.slice(0, 10)}...
                 </h1>
                 <div className="ml-auto text-lg font-semibold text-yellow-300 flex items-center space-x-4 pr-4">
-                    <span>Round: {currentRound} / {mainSettings.MAX_ROUNDS}</span>
+                    <span>Round: {currentRound} / {gameSettings.MAX_ROUNDS}</span>
                     <span>Score: {score[myPlayerIndex]} - {score[opponentPlayerIndex]}</span>
                 </div>
             </div>
@@ -95,7 +94,7 @@ const GameScreen: React.FC<GameScreenProps> = ({
                     <PlayerHUD
                         pubkey={localPlayerPubkey}
                         currentHp={localPlayerState.hp}
-                        maxHp={mainSettings.MAX_HP}
+                        maxHp={gameSettings.MAX_HP}
                         isPlayer1={myPlayerIndex === 0}
                         ndk={ndk}
                     />
@@ -104,17 +103,19 @@ const GameScreen: React.FC<GameScreenProps> = ({
                     <PlayerHUD
                         pubkey={opponentPubkey}
                         currentHp={opponentPlayerState.hp}
-                        maxHp={mainSettings.MAX_HP}
+                        maxHp={gameSettings.MAX_HP}
                         isPlayer1={opponentPlayerIndex === 0}
                         ndk={ndk}
                     />
                 </div>
 
                 <div className="absolute inset-0 z-0 w-full h-full">
-                    {levelData && physicsHandles && shotTracerHandlers && (
+                    {levelData && physicsHandles && shotTracerHandlers && aimStates && settings && (
                         <GameRenderer
                             physicsHandles={physicsHandles}
                             shotTracerHandlers={shotTracerHandlers}
+                            settings={settings}
+                            aimStates={aimStates}
                         />
                     )}
                     {(!levelData || !physicsHandles) && (
@@ -139,9 +140,9 @@ const GameScreen: React.FC<GameScreenProps> = ({
                         selectedAbility={selectedAbility}
                         usedAbilities={localPlayerState.usedAbilities}
                         currentHp={localPlayerState.hp}
-                        abilityCost={mainSettings.ABILITY_COST_HP}
-                        maxAbilityUsesTotal={mainSettings.MAX_ABILITIES_TOTAL}
-                        maxAbilityUsesPerType={mainSettings.MAX_ABILITIES_PER_TYPE}
+                        abilityCost={gameSettings.ABILITY_COST_HP}
+                        maxAbilityUsesTotal={settings.MAX_ABILITIES_TOTAL}
+                        maxAbilityUsesPerType={settings.MAX_ABILITIES_PER_TYPE}
                         disabled={!isMyTurn}
                         availableAbilities={settings.AVAILABLE_ABILITIES}
                     />

@@ -140,6 +140,8 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
                     <GameRenderer
                         physicsHandles={physicsHandles}
                         shotTracerHandlers={shotTracerHandlers}
+                        settings={settings}
+                        aimStates={aimStates}
                     />
                 </div>
 

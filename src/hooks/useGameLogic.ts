@@ -174,7 +174,6 @@ export function useGameLogic({
                 reason,
             };
 
-            console.log(`Game Over! Winner: ${winnerIndex === null ? 'Draw' : `Player ${winnerIndex}`}, Reason: ${reason}. Final Score: ${finalScore[0]}-${finalScore[1]}`);
             onGameEnd(result);
 
         } else if (mode === 'practice' || mode === 'custom'){
@@ -208,7 +207,6 @@ export function useGameLogic({
                     finalScore: updatedScore,
                     reason,
                 };
-                console.log(`Multiplayer Game Over Detected. Triggering onGameEnd. Score: ${updatedScore[0]}-${updatedScore[1]}, Winner: ${winnerIndex}`);
                 onGameEnd(result);
             } else {
                 // Multiplayer next round logic (unchanged)

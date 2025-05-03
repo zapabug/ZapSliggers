@@ -214,3 +214,15 @@
         - Added `currentPlayerIndex` to `useEffect` dependencies.
 **Decisions:** Basic fire action synchronization implemented using Nostr `kind:30079` events. Keyboard controls updated (Angle=LR, Power=UD). Player 2 practice mode aim inversion fixed.
 **Steps Explained:** Detailed modifications to `useGameLogic`, `GameScreen`, and `PracticeScreen` to implement event publishing/subscription and update keyboard handlers. Updated documentation (`testGameplay.md`, `Gameplay.md`, `Build.md`) to reflect new sync status and controls.
+
+## Interaction 25: Refactor GameScreen & Resolve Build Errors (Current Date Placeholder)
+**User Input:** Build failing with 5 errors in `GameScreen.tsx` after previous refactoring attempts. Need to integrate `useGameLogic` properly.
+**VibeStorm Response:** Analyzed build errors (unused React import in `App.tsx`, missing `GameRendererRef`, incorrect `useGameInitialization` call, incorrect `ActionButtons` props, incorrect `GameRenderer` props). Refactored `GameScreen.tsx`:
+    1. Removed local state management (`gameState`, `playerHp`, `playerScores`, etc.) and associated effects/handlers (`handleFire`, `handlePlayerHit`, etc.).
+    2. Imported and called `useGameLogic` hook, passing necessary props (`settings`, `mode`, `ndk`, `matchId`, etc.).
+    3. Updated child components (`GameRenderer`, `PlayerHUD`, `ActionButtons`) to receive correct props from `useGameLogic` and `settings`.
+    4. Fixed import errors (e.g., `PlayerHUD` named import).
+    5. Removed unused variables/imports resulting from refactor.
+    6. Verified build success after refactoring.
+**Decisions:** `GameScreen.tsx` fully refactored to delegate state management and core logic to `useGameLogic`. Build errors resolved.
+**Steps Explained:** Detailed the process of removing local state, integrating `useGameLogic`, correcting prop passing to children, fixing imports, and cleaning up unused code in `GameScreen.tsx`. Confirmed build success.

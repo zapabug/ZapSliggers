@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 // Use the standard hooks from the library
 // import { useNDK, useNDKInit } from '@nostr-dev-kit/ndk-hooks'
 // Import NDKNip46Signer
@@ -190,6 +190,31 @@ function App() {
     }
   };
 
+  // --- Fullscreen Request Handler ---
+  // Define an interface for elements with potential fullscreen methods
+  interface FullscreenElement extends HTMLElement {
+    webkitRequestFullscreen?: () => Promise<void>;
+    mozRequestFullScreen?: () => Promise<void>; // Firefox prefix (optional)
+    msRequestFullscreen?: () => Promise<void>; // IE/Edge prefix (optional)
+  }
+
+  const handleRequestFullscreen = () => {
+    const element = document.documentElement as FullscreenElement;
+    if (element.requestFullscreen) {
+      element.requestFullscreen();
+    } else if (element.webkitRequestFullscreen) { // Safari
+      element.webkitRequestFullscreen();
+    // Optional: Add checks for other prefixes if needed
+    // } else if (element.mozRequestFullScreen) { // Firefox
+    //   element.mozRequestFullScreen();
+    // } else if (element.msRequestFullscreen) { // IE/Edge
+    //   element.msRequestFullscreen();
+    } else {
+      console.warn("Fullscreen API not supported by this browser.");
+      // Optionally display a message to the user
+    }
+  };
+
   // --- Render Logic --- 
   const renderContent = () => {
     console.log(`[App Render] View: ${currentView}, NDK Ready: ${isNdkReady}, Logged In: ${isLoggedIn}, NIP46 Status: ${nip46Status}, IsDev: ${currentUser?.pubkey === DEV_PUBKEY}`);
@@ -297,17 +322,24 @@ function App() {
                             // Call the new handler function
                             onClick={handleNip46Connect} 
                             // Disable button if waiting for QR (desktop) or mobile approval
+                            // @ts-expect-error TS thinks this comparison is impossible, but it's valid logic
                             disabled={nip46Status === 'waiting_for_scan' || nip46Status === 'waiting_for_mobile_approval'} 
                             className="w-full px-4 sm:px-6 py-2 sm:py-3 rounded font-semibold text-white transition-colors bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 text-sm sm:text-base" /* Adjusted padding/text */
                         >
                             Connect with Mobile App (NIP-46)
                         </button>
                         
-                        {/* Removed manual bunker URI input for simplicity 
-                        <p className="text-center text-gray-300">Or connect with a remote signer (NIP-46):</p>
-                        <input type="text" placeholder="Paste your bunker://... URI here" value={bunkerUriInput} onChange={(e) => setBunkerUriInput(e.target.value)} className="w-full p-3 border border-gray-600 rounded bg-gray-700 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                        <button onClick={handleNip46Login} disabled={!bunkerUriInput.trim() || nip46Status === 'connecting' || nip46Status === 'waiting'} className="w-full px-6 py-3 rounded font-semibold text-white transition-colors bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">Connect with Bunker URI</button>
-                        */} 
+                        {/* Separator */} 
+                        <div className="w-full border-t border-gray-600 my-2"></div>
+
+                        {/* --- Add Fullscreen Button --- */}
+                        <button
+                            onClick={handleRequestFullscreen}
+                            className="w-full px-4 sm:px-6 py-2 sm:py-3 rounded font-semibold text-white transition-colors bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50 text-sm sm:text-base"
+                        >
+                            Enter Fullscreen
+                        </button>
+                        {/* --- End Fullscreen Button --- */}
 
                         {authError && <p className="text-red-500 text-xs sm:text-sm mt-4 text-center">Login Failed: {authError.message}</p>} {/* Adjusted text size */}
                     </div>

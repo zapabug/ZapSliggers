@@ -4,24 +4,25 @@ This document outlines the core gameplay loop and dynamics for Klunkstr.
 
 **Current Status (Implementation):**
 *   Core game state management and logic handlers (aim, fire, abilities, hit detection, round structure, scoring) extracted to `useGameLogic` hook.
-*   `PracticeScreen` uses `useGameLogic` in `'practice'` mode. ***Status: Broken (Rendering issues after refactor).*** Expected: Provides a turn-based local gameplay loop on a **2D Canvas** featuring:
+*   `PracticeScreen` uses `useGameLogic` in `'practice'` mode. ***Status: Needs testing after refactor.*** Expected: Provides a turn-based local gameplay loop on a **2D Canvas** featuring:
     *   Best of 3 rounds format.
     *   Scoring based on round wins.
     *   HP tie-breaker if scores are tied after 3 rounds.
     *   Alternating starting player each round.
     *   Opponent profile display based on a predefined Npub.
-    *   **Keyboard controls updated:** Left/Right for angle, Up/Down for power. Player 2 controls inverted.
-*   `GameScreen` uses `useGameLogic` in `'multiplayer'` mode. This currently allows simultaneous local control (each player controls their assigned ship). **Basic network sync for fire actions (`kind:30079`) implemented.**
-*   Physics engine (`matter-js` via hooks) handles custom planetary gravity (size-based), basic collisions (planet/boundary), projectile timeout, and dynamic viewport.
-*   Random level generation (`useGameInitialization`) places ships and planets.
+    *   Keyboard controls updated: Left/Right for angle, Up/Down for power. Player 2 controls inverted.
+*   `GameScreen` uses `useGameLogic` in `'multiplayer'` mode. **Successfully refactored and builds.** Allows simultaneous local control (each player controls their assigned ship). Basic network sync for fire actions (`kind:30079`) implemented within `useGameLogic`.
+*   Physics engine (`matter-js` via `useMatterPhysics` hook, called by `useGameLogic`) handles custom planetary gravity, collisions, projectile timeout, and dynamic viewport.
+*   Random level generation (`useGameInitialization` hook, called by `useGameLogic`) places ships and planets.
 *   Aiming controls (**Left/Right for angle, Up/Down for power** via UI/keyboard) and firing are functional (routed via `useGameLogic`).
-*   Active/Historical shot tracers (`useShotTracers`) are displayed.
+*   Active/Historical shot tracers (`useShotTracers` hook, state managed by `useGameLogic`) are displayed.
 *   Basic Klunkstr rules are partially implemented within `useGameLogic`: HP system used as ability resource, ability selection UI/logic works, standard hits trigger win callback.
 *   Nostr login (`useAuth`) is implemented.
 *   Lobby screen (`LobbyScreen`) displays user ID and hosts the challenge component.
 *   Nostr Challenge/Acceptance handshake (`ChallengeHandler`) via DMs (`kind:4`) successfully transitions both players to `GameScreen`.
 *   **Remaining Implementation Focus:**
-    *   Nostr Network Synchronization for `GameScreen`: **Refine action sync (aiming?), implement turn structure, sync collision results/game state**.
+    *   **Testing:** Verify `PracticeScreen` functionality post-refactor.
+    *   Nostr Network Synchronization for `GameScreen`: Refine action sync (aiming?), implement turn structure, sync collision results/game state.
     *   Full Klunkstr Rules: Ability effects (Splitter, Gravity, Plastic implementation), round/match win conditions, Sudden Death mechanics.
     *   Wagering: Payment integration (NUT-18).
     *   Visuals: Rendering actual ship/planet sprites, particle effects.
@@ -52,8 +53,8 @@ This document outlines the core gameplay loop and dynamics for Klunkstr.
      - (Future: Submit move via Nostr `kind:30079` before timer ends).
    - **B. Resolution Phase (Currently Local/Immediate per Client):**
      - (Future: Triggered after both players submit moves or timer expires).
-     - **Practice:** Projectile added for current player. Turn switches to opponent. Collision detection determines round winner based on HP reduction (or self-hit). Logic handles scoring, round advancement (up to 3 rounds), tie-breakers, and alternating starting player.
-     - **Multiplayer (Current):** Fire actions sent/received via Nostr `kind:30079`. Both local optimistic rendering and rendering of received opponent actions trigger `fireProjectile`. **Collision detection and results are still purely local.**
+     - **Practice:** Projectile added for current player via `useGameLogic`. Turn switches to opponent. Collision detection determines round winner based on HP reduction (or self-hit). Logic within `useGameLogic` handles scoring, round advancement, tie-breakers, and alternating starting player.
+     - **Multiplayer (Current):** Fire actions sent/received via Nostr `kind:30079` within `useGameLogic`. Both local optimistic rendering and rendering of received opponent actions trigger `fireProjectile` (via `useGameLogic`). Collision detection and results are still purely local to each client's `useGameLogic` instance.
      - **Visuals:** Distinct projectile colors/trails. Ability visuals TBD. Active trail (solid line). *(Goal: Particles)*.
      - **Simulation:** Physics engine calculates paths under planetary gravity.
      - **Collision Detection (Current Implementation):**

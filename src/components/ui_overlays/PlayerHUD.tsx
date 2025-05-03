@@ -1,4 +1,3 @@
-import React from 'react';
 import { UserProfileDisplay } from './UserProfileDisplay';
 import { HealthBar } from './HealthBar';
 import NDK from '@nostr-dev-kit/ndk'; // Import NDK type
