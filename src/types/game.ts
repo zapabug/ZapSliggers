@@ -49,3 +49,15 @@ export interface PlayerState {
 
 // Add other game-related types here as needed
 // e.g., Player, GameState, Level, Move 
+
+export interface AimState {
+    angle: number;
+    power: number;
+}
+
+// Add GameEndResult type
+export type GameEndResult = {
+    winnerIndex: 0 | 1 | null; // 0 for player 1, 1 for player 2, null for draw/tie
+    finalScore: [number, number]; // Final round scores [P1, P2]
+    reason: 'score' | 'hp_tiebreaker' | 'opponent_left' | 'error'; // Reason for game end
+}; 

@@ -1,5 +1,5 @@
 'use strict';
-import React from 'react';
+import React, { useCallback } from 'react';
 import NDK from '@nostr-dev-kit/ndk';
 import GameRenderer from '../game/GameRenderer';
 import AimingInterface from '../ui_overlays/AimingInterface';
@@ -8,13 +8,14 @@ import ActionButtons from '../ui_overlays/ActionButtons';
 import { useGameLogic } from '../../hooks/useGameLogic';
 import { mainSettings } from '../../config/gameSettings';
 import { useKeyboardControls } from '../../hooks/useKeyboardControls';
+import { GameEndResult } from '../../types/game';
 
 interface GameScreenProps {
     ndk: NDK;
     localPlayerPubkey: string;
     opponentPubkey: string;
     matchId: string;
-    onGameEnd: (finalScore: [number, number]) => void;
+    onGameEnd: (result: GameEndResult) => void;
     onBackToMenu: () => void;
 }
 
@@ -26,6 +27,11 @@ const GameScreen: React.FC<GameScreenProps> = ({
     onGameEnd,
     onBackToMenu,
 }) => {
+    const handleMultiplayerGameEnd = useCallback((result: GameEndResult) => {
+        console.log(`[GameScreen] Multiplayer game ended. Winner: ${result.winnerIndex === null ? 'Draw' : `Player ${result.winnerIndex}`}, Reason: ${result.reason}, Score: ${result.finalScore[0]}-${result.finalScore[1]}`);
+        onGameEnd(result);
+    }, [onGameEnd]);
+
     const {
         playerStates,
         myPlayerIndex,
@@ -45,7 +51,7 @@ const GameScreen: React.FC<GameScreenProps> = ({
         mode: 'multiplayer',
         localPlayerPubkey: localPlayerPubkey,
         opponentPubkey: opponentPubkey,
-        onGameEnd: onGameEnd,
+        onGameEnd: handleMultiplayerGameEnd,
         ndk: ndk,
         matchId: matchId,
     });

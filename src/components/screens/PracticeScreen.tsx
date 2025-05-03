@@ -8,6 +8,7 @@ import ActionButtons from '../ui_overlays/ActionButtons'; // Adjust path
 import { useGameLogic } from '../../hooks/useGameLogic'; // Import hook only
 import { practiceSettings } from '../../config/gameSettings'; // Import practice settings
 import { useKeyboardControls } from '../../hooks/useKeyboardControls'; // Import the new hook
+import { GameEndResult } from '../../types/game'; // <-- Import GameEndResult
 
 // Define opponent Npub
 const OPPONENT_NPUB = "npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6"; // Example Npub
@@ -36,20 +37,20 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
         opponentPubkey = currentUser.pubkey; // Fallback to current user on error
     }
 
-    // --- Callback to handle game end (copied from previous correct state) ---
-    const handlePracticeGameEnd = useCallback((finalScore?: [number, number]) => {
+    // --- Callback to handle game end (accepts GameEndResult) ---
+    const handlePracticeGameEnd = useCallback((result: GameEndResult) => {
         let message = "Game Over!";
-        if (finalScore) {
-            if (finalScore[0] >= 2) {
-                message = "Blue Wins!";
-            } else if (finalScore[1] >= 2) {
-                message = "Red Wins!";
-            } else {
-                // Neither reached 2 wins
-                message = `Game Over!\nDraw: ${finalScore[0]} - ${finalScore[1]}`;
-            }
-        } 
-        alert(message);
+        const scoreText = `Score: ${result.finalScore[0]} - ${result.finalScore[1]}`;
+
+        if (result.winnerIndex === 0) {
+            message = `Blue Wins! (${result.reason})`;
+        } else if (result.winnerIndex === 1) {
+            message = `Red Wins! (${result.reason})`;
+        } else { // winnerIndex is null
+            message = `Draw! (${result.reason})`;
+        }
+ 
+        alert(`${message}\n${scoreText}`);
         onBackToMenu(); // Call the original navigation callback
     }, [onBackToMenu]);
 
