@@ -147,12 +147,10 @@ export const useMatterPhysics = ({
 
     // Destructure settings needed within this callback
     const {
-        PLANET_MIN_RADIUS,
-        GRAVITY_AOE_BONUS_FACTOR,
-        VIRTUAL_WIDTH, 
         GRAVITY_CONSTANT,
         // --- Orange Planet Settings ---
-        ORANGE_PLANET_REPULSION_CONSTANT, // Need this
+        ORANGE_PLANET_REPULSION_CONSTANT,
+        ORANGE_PLANET_MAX_INTERACTION_RANGE_FACTOR,
         // ---------------------------
         PLASTIC_GRAVITY_FACTOR,
         SHIP_GRAVITY_RANGE_FACTOR,
@@ -241,70 +239,83 @@ export const useMatterPhysics = ({
 
           const distanceVector = Vector.sub(staticBody.position, projectileBody.position);
           const distanceSq = Vector.magnitudeSquared(distanceVector);
-          if (distanceSq <= 10) return; // Avoid extreme forces at very close range (reduced threshold slightly)
-
-          const planetRadius = staticBody.plugin?.Zapsliggers?.radius || PLANET_MIN_RADIUS;
-          let netForce = Vector.create(0, 0); // Start with zero net force from this planet
-
-          // --- Calculate Base Attractive Force (Always applies unless overridden) ---
-          const effectiveRadius = planetRadius * (1 + GRAVITY_AOE_BONUS_FACTOR * (planetRadius / VIRTUAL_WIDTH));
-          let attractiveForceMagnitude = (GRAVITY_CONSTANT * projectileBody.mass * effectiveRadius) / distanceSq;
-
-          // Adjust attraction for Plastic ability 
-          if (projectileBody.custom?.abilityType === 'plastic') {
-              attractiveForceMagnitude *= PLASTIC_GRAVITY_FACTOR;
+          // --- SAFETY CHECK --- Add a minimum distance threshold
+          const MIN_DISTANCE_SQ_THRESHOLD = 1; // Avoid division by zero/very small numbers
+          if (distanceSq < MIN_DISTANCE_SQ_THRESHOLD) {
+              // console.warn(`[Physics] Projectile ${projectileBody.id} too close to ${staticBody.label} ${staticBody.id}. Skipping force.`);
+              return; // Skip force calculation for this body pair
           }
-          
-          const attractiveForce = Vector.mult(Vector.normalise(distanceVector), attractiveForceMagnitude);
-          netForce = Vector.add(netForce, attractiveForce); // Add attraction to net force
+          // --- END SAFETY CHECK ---
 
-          // --- Add Repulsion if Orange Planet Core is Hit ---
+          let netForce = Vector.create(0, 0);
+
+          // --- Calculate Base Attractive Force ---
+          const scaleFactor = (projectileBody.custom?.abilityType === 'plastic' ? PLASTIC_GRAVITY_FACTOR : 1);
+          const baseGravityMagnitude = scaleFactor * GRAVITY_CONSTANT * staticBody.mass * projectileBody.mass / distanceSq; // distanceSq is now checked
+          const attractiveForce = Vector.mult(Vector.normalise(distanceVector), baseGravityMagnitude);
+
+          // --- Apply Planet Logic ---
           if (staticBody.label === 'orange-planet') {
-              const coreRadius = staticBody.plugin?.Zapsliggers?.coreRadius;
-              const distance = Vector.magnitude(distanceVector); // Need actual distance now
-              
-              if (coreRadius && distance <= coreRadius) {
-                  // Inside core radius - Add strong Repulsive force
-                  // NOTE: ORANGE_PLANET_REPULSION_CONSTANT likely needs to be significantly larger than GRAVITY_CONSTANT 
-                  // and might need distance scaling adjusted (e.g., 1/distance^3) for a strong slingshot.
-                  // Start with 1/distanceSq scaling for now.
-                  const repulsiveForceMagnitude = (ORANGE_PLANET_REPULSION_CONSTANT * projectileBody.mass * coreRadius) / distanceSq; 
-                  const repulsiveForce = Vector.mult(Vector.normalise(distanceVector), -repulsiveForceMagnitude); // Negative magnitude for repulsion
-                  
-                  netForce = Vector.add(netForce, repulsiveForce); // Add repulsion to the net force
-                  
-                  // Optional: Log when repulsion is active
-                  // console.log(`Orange planet ${staticBody.id} core hit! Repulsion applied. Dist: ${distance.toFixed(1)}, CoreRadius: ${coreRadius.toFixed(1)}`);
+              const radius = staticBody.plugin?.ZapSlinggers?.radius; // <-- Corrected case
+              if (!radius) {
+                  console.warn(`[Physics] Orange planet ${staticBody.id} missing radius plugin data.`);
+                  return; // Skip force calculation if no radius
               }
-          } 
+              const maxInteractionDistanceSq = Math.pow(radius * ORANGE_PLANET_MAX_INTERACTION_RANGE_FACTOR, 2);
 
-          // Apply the final net force (attraction + optional repulsion)
-          if (Vector.magnitudeSquared(netForce) > 0) {
-              Body.applyForce(projectileBody, projectileBody.position, netForce);
+              // --- Check if outside MAX interaction range ---
+              if (distanceSq > maxInteractionDistanceSq) {
+                 netForce = Vector.create(0, 0); // No force outside max range
+              } else {
+                 // --- Within Max Range: Check for Core Repulsion or Outer Attraction ---
+                 const coreRadius = staticBody.plugin?.ZapSlinggers?.coreRadius; // <-- Corrected case
+                 if (!coreRadius) {
+                     // Should not happen if initialization is correct, but handle defensively
+                     console.warn(`[Physics] Orange planet ${staticBody.id} missing core radius plugin data. Applying attraction.`);
+                     netForce = attractiveForce;
+                 } else if (distanceSq < coreRadius * coreRadius) {
+                     // --- Apply Repulsion (Inside Core) ---
+                     // distanceSq is already checked to be >= MIN_DISTANCE_SQ_THRESHOLD
+                     const repulsionMagnitude = ORANGE_PLANET_REPULSION_CONSTANT * staticBody.mass * projectileBody.mass / distanceSq;
+                     netForce = Vector.mult(Vector.normalise(distanceVector), -repulsionMagnitude);
+                 } else {
+                     // --- Apply Attraction (Outside Core, Inside Max Range) ---
+                     netForce = attractiveForce;
+                 }
+              }
+          } else {
+              // --- Apply Standard Planet Attraction (Infinite Range) ---
+              netForce = attractiveForce;
           }
+
+          // --- Apply Calculated Force (if any) ---
+          if (Vector.magnitudeSquared(netForce) > 0) {
+             Body.applyForce(projectileBody, projectileBody.position, netForce);
+          }
+
+          // --- Apply Ship Gravity ---
+          if (projectileBody.custom?.firedByPlayerIndex !== undefined) {
+             const opponentShipIndex = 1 - projectileBody.custom.firedByPlayerIndex;
+             const opponentShip = shipBodiesRef.current[opponentShipIndex];
+             if (opponentShip) {
+                 const shipDistVector = Vector.sub(opponentShip.position, projectileBody.position);
+                 const shipDistSq = Vector.magnitudeSquared(shipDistVector);
+
+                 // Only apply gravity within a certain range of the ship
+                 // --- SAFETY CHECK --- Also check ship distance
+                 if (shipDistSq < SHIP_GRAVITY_RANGE_SQ && shipDistSq > MIN_DISTANCE_SQ_THRESHOLD) {
+                      const shipGravityMagnitude = SHIP_GRAVITY_CONSTANT * opponentShip.mass * projectileBody.mass / shipDistSq;
+                      const shipGravityForce = Vector.mult(Vector.normalise(shipDistVector), shipGravityMagnitude);
+                      Body.applyForce(projectileBody, projectileBody.position, shipGravityForce);
+                 }
+             }
+          }
+
         });
-        // --- End Planet Gravity / Repulsion ---
+        // --- End Planet/Ship Gravity ---
 
-        // --- Apply Opponent Ship Gravity (for 'gravity' ability) ---
-        if (projectileBody.custom?.abilityType === 'gravity') {
-            const firingPlayerIndex = projectileBody.custom.firedByPlayerIndex;
-            const opponentPlayerIndex = firingPlayerIndex === 0 ? 1 : 0;
-            const opponentShipBody = shipBodiesRef.current[opponentPlayerIndex];
-
-            if (opponentShipBody) {
-                const shipDistanceVector = Vector.sub(opponentShipBody.position, projectileBody.position);
-                const shipDistanceSq = Vector.magnitudeSquared(shipDistanceVector);
-
-                // Use calculated SHIP_GRAVITY_RANGE_SQ from settings
-                if (shipDistanceSq > 100 && shipDistanceSq < SHIP_GRAVITY_RANGE_SQ) { 
-                    // Use SHIP_GRAVITY_CONSTANT from settings
-                    const shipForceMagnitude = (SHIP_GRAVITY_CONSTANT * projectileBody.mass * opponentShipBody.mass) / shipDistanceSq;
-                    const shipForceVector = Vector.mult(Vector.normalise(shipDistanceVector), shipForceMagnitude);
-                    Body.applyForce(projectileBody, projectileBody.position, shipForceVector);
-                }
-            }
-        }
-        // --- End Opponent Ship Gravity ---
+        // --- Log Projectile State AFTER forces ---
+        console.log(`[Physics Update] Proj ${projectileBody.id} updated. Pos: (${projectileBody.position.x.toFixed(1)}, ${projectileBody.position.y.toFixed(1)}), Vel: (${projectileBody.velocity.x.toFixed(1)}, ${projectileBody.velocity.y.toFixed(1)})`);
 
         // --- Timeout Check ---
         const projectileAge = Date.now() - (projectileBody.custom?.createdAt ?? Date.now());
@@ -485,7 +496,14 @@ export const useMatterPhysics = ({
     // Set initial velocity
     Body.setVelocity(projectile, velocity);
 
+    // --- Log before adding to world ---
+    console.log(`[Physics Fire] PRE-ADD Proj ${projectile.id}. Pos: (${startPosition.x.toFixed(1)}, ${startPosition.y.toFixed(1)}), Vel: (${velocity.x.toFixed(1)}, ${velocity.y.toFixed(1)}), Angle: ${angle.toFixed(2)}, Power: ${power}, Ability: ${abilityType}`);
+    // -----------------------------------
+
+    console.log(`[Physics] Firing projectile ${projectile.id}. PRE-World.add. Pos: (${startPosition.x.toFixed(1)}, ${startPosition.y.toFixed(1)}), Vel: (${velocity.x.toFixed(1)}, ${velocity.y.toFixed(1)})`); // LOG BEFORE ADD
     World.add(engine.world, projectile);
+    console.log(`[Physics] Projectile ${projectile.id} added to world. POST-World.add.`); // LOG AFTER ADD
+
     shotTracerHandlersRef.current.handleProjectileFired(projectile);
     console.log(`[Physics] Fired projectile ${projectile.id} by P${playerIndex}, Power: ${power}, Ability: ${abilityType || 'None'}`);
 

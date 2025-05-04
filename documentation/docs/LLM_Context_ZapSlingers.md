@@ -10,7 +10,7 @@ ZapSlingers is a 2-player, turn-based steampunk space artillery game. It feature
 
 **2. Planning & Decision Summary (See @<documentation/docs/Planning.md> for full history):**
 
-*   **Origin:** Branched from the "Zapsliggers" concept.
+*   **Origin:** Branched from the "ZapSlinggers" concept.
 *   **Initial Ideas:** Explored a viewer-interaction feature using Nostr zaps for a "streaming chaos" mode (Deferred to future enhancement).
 *   **Theme Evolution:**
     *   Initial: Standard space artillery.
@@ -18,7 +18,7 @@ ZapSlingers is a 2-player, turn-based steampunk space artillery game. It feature
     *   Explored: Steampunk Cosmic Pirates with whirlpools (Deemed too arcadey).
     *   **Final Theme:** Steampunk Contraptions vs. Space Physics (Planets & Gas Giants).
 *   **Key Mechanic Decisions:**
-    *   **Gas Giants:** Implemented as two overlapping physics bodies (larger attractive outer, smaller limited-range repulsive inner) to simulate complex gravity/repulsion without overly complex single-body physics. Spawn randomly like standard planets.
+    *   **Gas Giants:** Implemented as two overlapping physics bodies (larger attractive outer, smaller limited-range repulsive inner) to simulate complex gravity/repulsion. **Spawn randomly across the entire map** (unlike centrally placed normal planets) and have a **limited maximum interaction range**.
     *   **Boundaries:** Destructive by default, with a configurable setting (`gameSettings.ts`) to enable bouncing for sandbox/future modes.
     *   **Abilities:** Final names chosen: `ZapSplits` (Splitter), `Magnetar` (Gravity/Magnetic), `Gyro` (Plastic). HP (25) cost and usage limits (3 total/1 per type per match) remain.
     *   **UX:** No intro pop-up, no tooltips. Added explicit end-of-round score display (e.g., "1 - 0").
@@ -36,6 +36,7 @@ To provide full context, ensure the system processes the following links along w
 *   @<documentation/docs/Gameplay.md> : Describes the original core game mechanics, rules, and systems.
 *   @<documentation/docs/Gamemodes.md> : Outlines the different game modes/screens.
 *   @<documentation/docs/layout.md> : **Crucial** for understanding the existing project structure, key components, and custom hooks.
+*   @<documentation/docs/troubleshooting.md> : Tracks runtime issues, errors, and bug reporting format.
 
 **(Optional but potentially helpful):**
 

@@ -1,9 +1,9 @@
 # Vibe Coding Build Log
 
-## LLD 1: Zapsliggers (Current State)
+## LLD 1: ZapSlinggers (Current State)
 
 **1. Goal:**
-   - Complete the Zapsliggers game: A turn-based, 2-player online space artillery game **rendered in 2D on HTML Canvas** using `matter-js` for physics.
+   - Complete the ZapSlinggers game: A turn-based, 2-player online space artillery game **rendered in 2D on HTML Canvas** using `matter-js` for physics.
    - Players shoot projectiles affected by planet gravity (scaling with size) to hit their opponent.
    - Implement Nostr integration for login (`nostr-login`), matchmaking (DMs `kind:4`), and potentially turn communication (`kind:30079`).
    - Implement mandatory wagering using NUT-18 via a backend service.
@@ -11,13 +11,13 @@
    - **Game NPub** `npub10nxjs7e4vh7a05a0qz8u7x4kdtlq6nk5lugeczddk5l40x5kdysqt2e96x`
 
 **2. Features:**
-   **Current Implementation (Local Zapsliggers Core + Basic Sync):**
+   **Current Implementation (Local ZapSlinggers Core + Basic Sync):**
    - **Rendering:** 2D rendering on HTML Canvas via `GameRenderer.tsx`. Uses `useGameAssets` for loading. Adaptive camera/viewport implemented (`useDynamicViewport`).
    - **Physics (`useMatterPhysics`):** `matter-js` engine running. Encapsulated within `useGameLogic`. Tuned planetary gravity implemented. Basic projectile-planet/boundary collisions handled. Projectile timeout functional.
    - **Level Setup (`useGameInitialization`):** Random initial placement of ships/planets respecting distance constraints. Encapsulated within `useGameLogic`.
    - **Controls & Firing:** Aiming (rotation/power via UI/keyboard) and firing implemented via `GameScreen`/`PracticeScreen` -> `useGameLogic` -> `GameRenderer`.
    - **Aiming Aids (`useShotTracers`):** Historical shot traces and active projectile trails rendered. State managed via `useGameLogic`.
-   - **Zapsliggers Rules (Partial):** Basic HP system (as resource), ability selection UI/logic functional. Standard projectile hits trigger round win callback. **Core game logic managed by `useGameLogic` hook.**
+   - **ZapSlinggers Rules (Partial):** Basic HP system (as resource), ability selection UI/logic functional. Standard projectile hits trigger round win callback. **Core game logic managed by `useGameLogic` hook.**
    - **Practice Mode:** Implemented (`PracticeScreen` + `useGameLogic`): turn-based, best-of-3 rounds, scoring, HP tie-breaker, alternating start player, opponent Npub display. - ***Status: Refactored, needs testing.***
    - **Authentication (`useAuth`):** Centralized authentication logic via custom `useAuth` hook. Supports NIP-07 and NIP-46 flows.
    - **Lobby (`LobbyScreen`):** Basic lobby structure exists.
@@ -26,7 +26,7 @@
 
    **Target Features (To Be Implemented/Completed):**
    - **Visuals:** Render actual sprites/assets for ships, planets, projectiles, effects.
-   - **Zapsliggers Gameplay:** Implement ability *effects* (Splitter, Gravity, Plastic). Implement full win conditions (based on HP/Vulnerability). Implement Vulnerability state. Enforce match-level ability limits (3 total, 1/type). Implement turn structure (timer, 5-shot limit), round scoring (Best of 3), and Sudden Death mechanics.
+   - **ZapSlinggers Gameplay:** Implement ability *effects* (Splitter, Gravity, Plastic). Implement full win conditions (based on HP/Vulnerability). Implement Vulnerability state. Enforce match-level ability limits (3 total, 1/type). Implement turn structure (timer, 5-shot limit), round scoring (Best of 3), and Sudden Death mechanics.
    - **Advanced Levels:** Add Gas Giants, moving planets.
    - **Nostr Integration:** Full matchmaking flow (Accept/Reject challenges). **Refine/Complete Turn/State synchronization (`kind:30079`)**. Robust error handling.
    - **Wagering (Mandatory):** NUT-18 backend service integration (API definition, frontend flow, verification).
@@ -52,8 +52,8 @@
 **5. Setup Commands:**
    ```bash
    # 1. Create Vite project
-   pnpm create vite@latest Zapsliggers --template react-ts
-   cd Zapsliggers
+   pnpm create vite@latest ZapSlinggers --template react-ts
+   cd ZapSlinggers
 
    # 2. Install dependencies
    pnpm install tailwindcss@3.4.13 postcss autoprefixer
@@ -103,8 +103,8 @@
    - Authentication: Handled by `useAuth` hook. Uses `NDKNip07Signer` for NIP-07. Uses **integrated Applesauce NIP-46 code via wrapper** for NIP-46 (bunker, QR, mobile deeplink). - *Done*.
    - NDK Setup: Singleton instance initialized via `useNDKInit` within `useAuth`. **Manual NDK calls preferred over `ndk-hooks` library.** - *Done*.
    - State Mgt: Component state/prop drilling. `useAuth` for global auth state. - *Confirmed*.
-   - Zapsliggers Gameplay Rules (Target): Defined (Turn-based, Bo3, 5 shots/round, HP/Abilities, Vuln, Sudden Death). - *Confirmed Target*
-   - Zapsliggers Abilities (Target): Defined (Splitter, Gravity, Plastic - Cost/Limits TBD based on final HP implementation). - *Confirmed Target*
+   - ZapSlinggers Gameplay Rules (Target): Defined (Turn-based, Bo3, 5 shots/round, HP/Abilities, Vuln, Sudden Death). - *Confirmed Target*
+   - ZapSlinggers Abilities (Target): Defined (Splitter, Gravity, Plastic - Cost/Limits TBD based on final HP implementation). - *Confirmed Target*
    - Matchmaking (Target): DM challenges (`kind:4`), potentially preceded by LFG notes (`kind:1`). - *Confirmed Target*
    - **Wagering (Target): Mandatory Cashu token based via agent/bot.** - *Confirmed Target*
    - UX (Target): Sci-Fi 2D (Canvas), Final Controls Layout, Mobile-First PWA. - *Confirmed Target*
@@ -135,9 +135,9 @@
      - ~~Implement random generation of ship starting positions (within side zones, min separation enforced).~~ - *Done*.
      - ~~Implement random generation of planet positions (respecting min distance from ships and other planets).~~ - *Done*.
      - ~~Implement wider aspect ratio (1200x600) for the game's virtual coordinate system.~~ - *Done*.
-   - **Phase 1B: Zapsliggers Rules & Features:**
+   - **Phase 1B: ZapSlinggers Rules & Features:**
      - Implement HP system, Ability selection/effects, Vulnerability, Sudden Death.
-     - Implement Zapsliggers win conditions.
+     - Implement ZapSlinggers win conditions.
      - Implement turn structure (timer, state changes).
      - Add Gas Giants, moving planets.
    - **Phase 2: Nostr Multiplayer & Wagering:**
@@ -154,7 +154,7 @@
      - **Matchmaking:** Implement full challenge accept/reject flow in `ChallengeHandler`/`LobbyScreen`.
      - **Wagering (Cashu):** Define/Implement Agent/Bot logic for receiving stakes and sending payouts via Cashu tokens.
      - **Turn/State Sync:** Refine/complete synchronization of game state (collisions, turns, aiming?) using `kind:30079`.
-   - **Zapsliggers Gameplay Completion:**
+   - **ZapSlinggers Gameplay Completion:**
      - Implement ability physics effects.
      - Implement full win conditions (HP/Vulnerability based).
      - Implement Vulnerability state logic.

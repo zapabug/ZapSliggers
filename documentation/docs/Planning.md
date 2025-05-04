@@ -136,11 +136,11 @@
 **User Input:** Desire for fullscreen, landscape experience, potentially via PWA.
 **VibeStorm Questions:** Confirmed understanding: Implement PWA using `vite-plugin-pwa` to achieve better fullscreen/landscape behavior on installation.
 **VibeStorm Response:** Agreed to adopt the PWA strategy. Detailed the necessary steps: install `vite-plugin-pwa`, configure `vite.config.ts` with manifest options (`display: 'fullscreen'`, `orientation: 'landscape'`, icons), generate necessary assets (icons, potentially service worker).
-**Decisions:** Zapsliggers will be developed as a PWA using `vite-plugin-pwa`. Updated `Build.md`, `roadmap.md` to reflect this.
+**Decisions:** ZapSlinggers will be developed as a PWA using `vite-plugin-pwa`. Updated `Build.md`, `roadmap.md` to reflect this.
 **Steps Explained:** Outlined the process of adding PWA capabilities via the Vite plugin and configuring the manifest for the desired display behavior.
 
 ## Interaction 18: Strategy Shift - Replicate Original First (2025-07-31 Placeholder)
-**User Input:** Desire to replicate the original Python Slingshot game's physics and core mechanics first using the web stack (React/TS/Canvas/Matter.js) before implementing the full Zapsliggers ruleset (abilities, HP, etc.). Also requested using original game assets.
+**User Input:** Desire to replicate the original Python Slingshot game's physics and core mechanics first using the web stack (React/TS/Canvas/Matter.js) before implementing the full ZapSlinggers ruleset (abilities, HP, etc.). Also requested using original game assets.
 **VibeStorm Questions:** Clarified key original mechanics (planet gravity based on size, no bounce, projectile timeout, aiming trail). Located original assets.
 **VibeStorm Response:** Agreed on the strategy to build a replica foundation. Copied assets from `slingshot/src/slingshot/data` to `public/images`. Updated `GameRenderer.tsx` to initialize `matter-js`, add static planets, and implement a basic render loop. Updated `GameRenderer.tsx` and `GameScreen.tsx` to implement a projectile firing mechanism triggered by the UI.
 **Decisions:** Shifted immediate focus to replicating core original Slingshot mechanics: Gravity (planet size based attraction), Collisions (destroy on planet hit), Aiming (no preview), Projectile Timeout. Use original assets for now. Implemented basic Matter.js setup and firing.
@@ -175,9 +175,9 @@
 **Steps Explained:** Created hook, modified `GameRenderer` to use hook, implemented drawing logic for both trail types, diagnosed and fixed the state closure issue with the ref pattern.
 
 ## Interaction 22: HP Resource & Ability Selection Logic (Placeholder Date)
-**User Input:** Implement HP system based on Zapsliggers rules (HP as resource), ability selection UI/logic, and basic round win condition.
+**User Input:** Implement HP system based on ZapSlinggers rules (HP as resource), ability selection UI/logic, and basic round win condition.
 **VibeStorm Response:**
-    1. Confirmed Zapsliggers rules: HP is only for abilities, standard hits win round.
+    1. Confirmed ZapSlinggers rules: HP is only for abilities, standard hits win round.
     2. Refactored state in `GameScreen.tsx` to manage HP (starting 100), used abilities (Set), and vulnerability per player.
     3. Implemented `handleSelectAbility` in `GameScreen.tsx` to check cost (25 HP), max uses (3 total, 1 per type), update player state, set vulnerability (>=2 uses), and manage `selectedAbility` state.
     4. Updated `ActionButtons.tsx` to receive new props (`selectedAbility`, `usedAbilities`, `currentHp`, `abilityCost`) and provide visual feedback (highlight selection, disable based on cost/limits).
@@ -192,8 +192,8 @@
 
 ## Interaction 23: Status Update & Focus Shift (Placeholder Date)
 **User Input:** Game mechanics (gravity, HP/ability resource, basic collisions, aiming, tracers, local play) are functional. Need to update docs to remove Slingshot replica references and focus on next steps: Nostr integration (login, matchmaking, payments) and mobile testing.
-**VibeStorm Response:** Acknowledged current status. Confirmed plan to update documentation (`Build.md`, `Gameplay.md`, `Planning.md`, `roadmap.md`) to reflect the implemented Zapsliggers core, remove replica-phase language, and highlight the shift in focus towards Nostr features and testing.
-**Decisions:** Documentation updated to represent the current state where local Zapsliggers mechanics are implemented. Focus shifted to integrating Nostr (login testing, matchmaking flow, turn sync) and payments (NUT-18 backend).
+**VibeStorm Response:** Acknowledged current status. Confirmed plan to update documentation (`Build.md`, `Gameplay.md`, `Planning.md`, `roadmap.md`) to reflect the implemented ZapSlinggers core, remove replica-phase language, and highlight the shift in focus towards Nostr features and testing.
+**Decisions:** Documentation updated to represent the current state where local ZapSlinggers mechanics are implemented. Focus shifted to integrating Nostr (login testing, matchmaking flow, turn sync) and payments (NUT-18 backend).
 **Steps Explained:** Outlined the documentation update process across all relevant files.
 
 ## Interaction 24: Basic Network Sync & Control Update (Current Date Placeholder)

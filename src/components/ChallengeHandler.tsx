@@ -58,7 +58,7 @@ interface ChallengeHandlerProps {
 
 // --- Constants ---
 const CHALLENGE_EXPIRY_MS = 3 * 60 * 1000;
-const LOCALSTORAGE_KEY = 'Zapsliggers_active_sent_challenge';
+const LOCALSTORAGE_KEY = 'ZapSlinggers_active_sent_challenge';
 
 // --- Type for stored challenge data ---
 interface StoredChallenge {

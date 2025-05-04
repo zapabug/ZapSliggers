@@ -1,6 +1,6 @@
-# Zapsliggers 🎮 - Nostr Artillery Fun!
+# ZapSlinggers 🎮 - Nostr Artillery Fun!
 
-Zapsliggers is a 2-player space artillery game built on Nostr. Challenge your friends, lob projectiles around planets, and maybe win some sats!
+ZapSlinggers is a 2-player space artillery game built on Nostr. Challenge your friends, lob projectiles around planets, and maybe win some sats!
 
 We're using React, Vite, TypeScript, Matter.js for physics, and NDK for all things Nostr. It's designed mobile-first, so play anywhere!
 
@@ -9,7 +9,7 @@ We're using React, Vite, TypeScript, Matter.js for physics, and NDK for all thin
 *   **Physics Fun:** Launch projectiles that curve around planets. Bank shots ftw!
 *   **Nostr Powered:** Uses Nostr for logins (`nostr-login`), challenges (DMs), and syncing game actions (`kind:30079`).
 *   **eCash Wagering (Planned):** Put your sats where your mouth is! Mandatory NUT-18 wagers via a backend are planned.
-*   **Zapsliggers Rules (Work in Progress):**
+*   **ZapSlinggers Rules (Work in Progress):**
     *   Spend HP on abilities (Max 3 per match).
     *   Abilities like Splitter, Gravity, and Plastic are coming soon.
     *   Sudden Death mode planned for tie rounds.
@@ -20,7 +20,7 @@ We're using React, Vite, TypeScript, Matter.js for physics, and NDK for all thin
 
 ## 🚀 Getting Started
 
-1.  Clone the repo: `git clone <your-repo-url> && cd Zapsliggers`
+1.  Clone the repo: `git clone <your-repo-url> && cd ZapSlinggers`
 2.  Install deps: `pnpm install`
 3.  Run dev server: `pnpm run dev`
 
@@ -40,7 +40,7 @@ We've got the core local gameplay loop working, including practice mode (best-of
 
 **What's Next:**
 *   🎨 **Visuals:** Replacing placeholders with actual game sprites!
-*   룰 **Zapsliggers Rules:** Implementing ability effects, vulnerability, turns, sudden death.
+*   룰 **ZapSlinggers Rules:** Implementing ability effects, vulnerability, turns, sudden death.
 *   🔗 **Multiplayer Sync:** Fully sync game state (collisions, turns, etc.).
 *   💰 **Wagering:** Building the NUT-18 backend.
 *   🔧 **Polish:** PWA setup, UI tweaks, testing.
