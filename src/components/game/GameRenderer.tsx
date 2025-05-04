@@ -8,12 +8,12 @@ import { UseGameLogicReturn } from '../../hooks/useGameLogic';
 import { GameSettingsProfile } from '../../config/gameSettings'; // <-- Import settings type
 
 // Constants for rendering/layout
-const VIRTUAL_WIDTH = 2400;
-const VIRTUAL_HEIGHT = 1200;
-const DESIGN_ASPECT_RATIO = VIRTUAL_WIDTH / VIRTUAL_HEIGHT;
+// Remove local constants
+// const VIRTUAL_WIDTH = 2400;
+// const VIRTUAL_HEIGHT = 1200;
+// const DESIGN_ASPECT_RATIO = VIRTUAL_WIDTH / VIRTUAL_HEIGHT;
 // const SHIP_RADIUS = 63; // Keep if needed by drawing helpers below
 // const PLANET_MIN_RADIUS = 40; // Keep if needed by drawing helpers below
-const PROJECTILE_RADIUS = 5; 
 
 // Define props for the GameRenderer component
 interface GameRendererProps {
@@ -117,36 +117,53 @@ const drawBackground = (ctx: CanvasRenderingContext2D, img: HTMLImageElement | n
         ctx.fillRect(pt00.x, pt00.y, ptWH.x - pt00.x, ptWH.y - pt00.y);
     }
 };
-const drawBorder = (ctx: CanvasRenderingContext2D, scale: number) => {
+const drawBorder = (ctx: CanvasRenderingContext2D, scale: number, settings: GameSettingsProfile) => {
     ctx.strokeStyle = 'rgba(207, 145, 30, 0.76)';
     ctx.lineWidth = 2 / scale;
-    const borderX = -VIRTUAL_WIDTH / 2;
-    const borderY = -VIRTUAL_HEIGHT;
-    const borderWidth = VIRTUAL_WIDTH * 2;
-    const borderHeight = VIRTUAL_HEIGHT * 3;
+    // Use settings values
+    const borderX = -settings.VIRTUAL_WIDTH / 2;
+    const borderY = -settings.VIRTUAL_HEIGHT / 2; // Centered vertically
+    const borderWidth = settings.VIRTUAL_WIDTH;
+    const borderHeight = settings.VIRTUAL_HEIGHT;
     ctx.strokeRect(borderX, borderY, borderWidth, borderHeight);
- }; // Removed unused vars
+ };
 const drawPlanet = (ctx: CanvasRenderingContext2D, body: Matter.Body) => {
     const { x, y } = body.position;
     const radius = body.plugin?.Zapsliggers?.radius || PLANET_MIN_RADIUS_DRAW;
+    const coreRadius = body.plugin?.Zapsliggers?.coreRadius; // Get coreRadius, might be undefined for normal planets
 
     let gradient: CanvasGradient;
 
-    if (body.label === 'orange-planet') {
-        // Orange planet: Radial gradient, brighter for larger planets
-        const baseOrange = '#D97706'; // Tailwind orange-600
-        const brightOrange = '#F59E0B'; // Tailwind amber-500
-        const veryBrightOrange = '#FCD34D'; // Tailwind amber-300
-        const maxRadius = 250; // Example max radius for full brightness
-        const brightnessFactor = Math.min(1, Math.max(0, radius / maxRadius));
-        const centerColor = brightnessFactor < 0.5 ? brightOrange : veryBrightOrange;
+    // --- Sligger Styling ---
+    if (body.label === 'sligger') {
+        // Orange/Red glowing gradient for Sliggers
+        const centerColor = '#EF4444'; // Tailwind red-500 (Glowing Center)
+        const midColor = '#F97316';    // Tailwind orange-500 (Mid Gradient)
+        const edgeColor = '#B45309';    // Tailwind orange-700 (Darker Edge)
 
-        gradient = ctx.createRadialGradient(x, y, radius * 0.1, x, y, radius);
+        gradient = ctx.createRadialGradient(x, y, radius * 0.1, x, y, radius); // Start gradient closer to center for glow
         gradient.addColorStop(0, centerColor); 
-        gradient.addColorStop(0.7, brightOrange);
-        gradient.addColorStop(1, baseOrange); 
+        gradient.addColorStop(0.5, midColor); // Transition faster to orange
+        gradient.addColorStop(1, edgeColor); // Use edgeColor for the outer stop
+        
+        // Draw the main Sligger body
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, 2 * Math.PI);
+        ctx.fillStyle = gradient; 
+        ctx.fill();
 
-    } else {
+        // Optional: Draw core indicator if coreRadius exists
+        if (coreRadius && coreRadius > 0) {
+            ctx.beginPath();
+            ctx.arc(x, y, coreRadius, 0, 2 * Math.PI);
+            // Use a subtle overlay or outline for the core
+            ctx.strokeStyle = 'rgba(230, 230, 255, 0.4)'; // Light purple-ish glow
+            ctx.lineWidth = 2; // Adjust as needed
+            ctx.stroke();
+        }
+
+    // --- Default Planet Styling ---
+    } else if (body.label === 'planet') {
         // Default planet: Subtle gray radial gradient for 3D effect
         const centerGray = '#A0A0A0'; // Lighter gray
         const edgeGray = '#606060';   // Darker gray
@@ -154,14 +171,16 @@ const drawPlanet = (ctx: CanvasRenderingContext2D, body: Matter.Body) => {
         gradient = ctx.createRadialGradient(x, y, radius * 0.2, x, y, radius);
         gradient.addColorStop(0, centerGray);  
         gradient.addColorStop(1, edgeGray);    
-    }
 
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, 2 * Math.PI);
-    ctx.fillStyle = gradient; // Use the gradient
-    ctx.fill();
+        // Draw the main planet body
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, 2 * Math.PI);
+        ctx.fillStyle = gradient; // Use the gradient
+        ctx.fill();
+    } 
+    // Removed obsolete orange-planet check
 
-    // Optional: Add a subtle inner shadow or highlight for more 3D effect
+    // Optional: Add a subtle inner shadow or highlight for more 3D effect (Could apply to both)
     /*
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, 2 * Math.PI);
@@ -208,9 +227,11 @@ const drawShip = (
  };
 const drawProjectile = (ctx: CanvasRenderingContext2D, body: ProjectileBody) => {
     ctx.beginPath();
-    ctx.arc(body.position.x, body.position.y, PROJECTILE_RADIUS, 0, 2 * Math.PI);
+    // Use the body's actual radius, falling back to a default if undefined
+    const radius = body.circleRadius ?? 5; // Use body's radius, default 5
+    ctx.arc(body.position.x, body.position.y, radius, 0, 2 * Math.PI);
     const ownerIndex = body.custom?.firedByPlayerIndex ?? 0;
-    ctx.fillStyle = ownerIndex === 0 ? '#add8e6' : '#ffcccb';
+    ctx.fillStyle = ownerIndex === 0 ? '#add8e6' : '#ffcccb'; // Example colors
     ctx.fill();
  };
 const drawHistoricalTrace = (ctx: CanvasRenderingContext2D, trace: Matter.Vector[]) => {
@@ -243,9 +264,11 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
   const viewport = useDynamicViewport({
       engine: physicsHandles?.engine ?? null,
       getDynamicBodies: physicsHandles?.getDynamicBodies ?? (() => []),
-      virtualWidth: VIRTUAL_WIDTH,
-      virtualHeight: VIRTUAL_HEIGHT,
-      designAspectRatio: DESIGN_ASPECT_RATIO,
+      // Pass settings object instead of individual props
+      // virtualWidth: VIRTUAL_WIDTH, // Keep local constants for now if preferred
+      // virtualHeight: VIRTUAL_HEIGHT,
+      // designAspectRatio: DESIGN_ASPECT_RATIO,
+      settings: settings, // Pass the settings object
       canvasSize,
   });
 
@@ -336,16 +359,19 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
         ctx.translate(viewport.offsetX, viewport.offsetY);
         ctx.scale(viewport.scale, viewport.scale);
 
+        // -- DEBUGGING START --
+        // -- DEBUGGING END --
+
         // Draw Background and Border first
+        drawBorder(ctx, viewport.scale, settings);
         drawBackground(ctx, backgroundImage);
-        drawBorder(ctx, viewport.scale);
 
         // Get bodies and remove conditional logging
         const bodies = bodiesGetter();
 
         // Iterate and draw
         bodies.forEach(body => {
-            if (body.label === 'planet' || body.label === 'orange-planet') {
+            if (body.label === 'planet' || body.label === 'sligger') {
                  drawPlanet(ctx, body);
             } else if (body.label.startsWith('ship-')) {
                 drawShip(ctx, body, blueShipImage, redShipImage, settings); 

@@ -6,7 +6,7 @@
 
 **1. Project Goal & Core Concept:**
 
-ZapSlingers is a 2-player, turn-based steampunk space artillery game. It features physics-based projectiles influenced by standard planets and unique gas giants, rendered on an HTML Canvas. The game emphasizes a physics-grounded steampunk aesthetic, utilizes Nostr for matchmaking and basic gameplay communication, and is designed with a mobile-first approach.
+ZapSlingers is a 2-player, turn-based steampunk space artillery game. It features physics-based projectiles influenced by standard planets and unique **Sliggers** (special planets, typically placed at map edges, with distinct attraction/repulsion zones), rendered on an HTML Canvas. The game emphasizes a physics-grounded steampunk aesthetic, utilizes Nostr for matchmaking and basic gameplay communication, and is designed with a mobile-first approach.
 
 **2. Planning & Decision Summary (See @<documentation/docs/Planning.md> for full history):**
 
@@ -18,7 +18,7 @@ ZapSlingers is a 2-player, turn-based steampunk space artillery game. It feature
     *   Explored: Steampunk Cosmic Pirates with whirlpools (Deemed too arcadey).
     *   **Final Theme:** Steampunk Contraptions vs. Space Physics (Planets & Gas Giants).
 *   **Key Mechanic Decisions:**
-    *   **Gas Giants:** Implemented as two overlapping physics bodies (larger attractive outer, smaller limited-range repulsive inner) to simulate complex gravity/repulsion without overly complex single-body physics. Spawn randomly like standard planets.
+    *   **Sliggers (Formerly Gas Giants):** Implemented as single physics bodies with conditional attraction/repulsion logic based on distance from the core. Spawn randomly in designated edge zones, separate from standard planets in the central area. *(Physics logic pending in `useMatterPhysics.ts`, Initialization logic pending in `useGameInitialization.ts`)*.
     *   **Boundaries:** Destructive by default, with a configurable setting (`gameSettings.ts`) to enable bouncing for sandbox/future modes.
     *   **Abilities:** Final names chosen: `ZapSplits` (Splitter), `Magnetar` (Gravity/Magnetic), `Gyro` (Plastic). HP (25) cost and usage limits (3 total/1 per type per match) remain.
     *   **UX:** No intro pop-up, no tooltips. Added explicit end-of-round score display (e.g., "1 - 0").
@@ -49,6 +49,6 @@ To provide full context, ensure the system processes the following links along w
 3.  Consult @<documentation/docs/Planning.md> to understand the rationale behind decisions.
 4.  Use @<documentation/docs/layout.md> to understand the existing code structure and component responsibilities.
 5.  Use @<documentation/docs/Gameplay.md> and @<documentation/docs/Gamemodes.md> for foundational rules and mode descriptions.
-6.  Implement features according to the LLD, placing code within the structure outlined in @<documentation/docs/layout.md>. Modify hooks like `useMatterPhysics` and `useGameInitialization` as specified in the LLD.
+6.  Implement features according to the LLD, placing code within the structure outlined in @<documentation/docs/layout.md>. Modify hooks like `useMatterPhysics` (for **Sligger** attraction/repulsion) and `useGameInitialization` (for **Sligger** placement and labeling) as specified in the LLD and `solutions.md` plan.
 
 --- 

@@ -1,8 +1,9 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import Matter from 'matter-js';
+import { GameSettingsProfile } from '../config/gameSettings';
 
 // --- Constants ---
-const ZOOM_LERP_FACTOR = 0.08; 
+const ZOOM_LERP_FACTOR = 0.16; 
 const MAX_ZOOM_FACTOR = 1.5;   
 const MAX_VIEW_FACTOR = 1.5;   
 const VIEWPORT_PADDING = 100;  
@@ -10,11 +11,8 @@ const VIEWPORT_PADDING = 100;
 // --- Interfaces ---
 interface UseDynamicViewportProps {
     engine: Matter.Engine | null;
-    // Changed back to getDynamicBodies
     getDynamicBodies: () => Matter.Body[]; 
-    virtualWidth: number;
-    virtualHeight: number;
-    designAspectRatio: number; 
+    settings: GameSettingsProfile;
     canvasSize: { width: number; height: number };
 }
 interface DynamicViewportResult { 
@@ -26,30 +24,33 @@ interface DynamicViewportResult {
 export const useDynamicViewport = ({
     engine,
     getDynamicBodies, // Use getDynamicBodies
-    virtualWidth,
-    virtualHeight,
-    designAspectRatio, 
+    settings, // <-- Destructure settings
     canvasSize,
 }: UseDynamicViewportProps): DynamicViewportResult => {
-    const currentVirtualWidthRef = useRef(virtualWidth);
-    const currentVirtualHeightRef = useRef(virtualHeight);
-    const currentCenterXRef = useRef(virtualWidth / 2);
-    const currentCenterYRef = useRef(virtualHeight / 2);
-    const targetVirtualWidthRef = useRef(virtualWidth);
-    const targetVirtualHeightRef = useRef(virtualHeight);
-    const targetCenterXRef = useRef(virtualWidth / 2);
-    const targetCenterYRef = useRef(virtualHeight / 2);
+    // Initialize refs using settings
+    const currentVirtualWidthRef = useRef(settings.VIRTUAL_WIDTH);
+    const currentVirtualHeightRef = useRef(settings.VIRTUAL_HEIGHT);
+    const currentCenterXRef = useRef(settings.VIRTUAL_WIDTH / 2);
+    const currentCenterYRef = useRef(settings.VIRTUAL_HEIGHT / 2);
+    const targetVirtualWidthRef = useRef(settings.VIRTUAL_WIDTH);
+    const targetVirtualHeightRef = useRef(settings.VIRTUAL_HEIGHT);
+    const targetCenterXRef = useRef(settings.VIRTUAL_WIDTH / 2);
+    const targetCenterYRef = useRef(settings.VIRTUAL_HEIGHT / 2);
 
     const [viewport, setViewport] = useState<DynamicViewportResult>({ scale: 1, offsetX: 0, offsetY: 0 });
 
     const updateTargetViewport = useCallback(() => {
         if (!engine) return;
+        
+        // Calculate designAspectRatio internally
+        const designAspectRatio = settings.VIRTUAL_WIDTH / settings.VIRTUAL_HEIGHT;
 
         // Use getDynamicBodies
         const dynamicBodies = getDynamicBodies(); 
         const hasDynamicBodies = dynamicBodies.length > 0;
 
-        let minX = virtualWidth, maxX = 0, minY = virtualHeight, maxY = 0;
+        // Use settings for initial bounds if no dynamic bodies
+        let minX = settings.VIRTUAL_WIDTH, maxX = 0, minY = settings.VIRTUAL_HEIGHT, maxY = 0;
 
         if (hasDynamicBodies) {
             // Calculate bounds based on dynamic bodies
@@ -63,11 +64,11 @@ export const useDynamicViewport = ({
                 maxY = Math.max(maxY, bounds.max.y);
             });
         } else {
-            // Default view uses central 60%
-            minX = virtualWidth * 0.2;
-            maxX = virtualWidth * 0.8;
-            minY = virtualHeight * 0.2;
-            maxY = virtualHeight * 0.8;
+            // Default view uses central 60% of settings dimensions
+            minX = settings.VIRTUAL_WIDTH * 0.2;
+            maxX = settings.VIRTUAL_WIDTH * 0.8;
+            minY = settings.VIRTUAL_HEIGHT * 0.2;
+            maxY = settings.VIRTUAL_HEIGHT * 0.8;
         } 
         
         // Add padding
@@ -77,18 +78,18 @@ export const useDynamicViewport = ({
         const centerX = (minX + maxX) / 2;
         const centerY = (minY + maxY) / 2;
 
-        // Adjust for aspect ratio
+        // Adjust for aspect ratio (calculated internally)
         if (requiredWidth / requiredHeight > designAspectRatio) {
             requiredHeight = requiredWidth / designAspectRatio;
         } else {
             requiredWidth = requiredHeight * designAspectRatio;
         }
 
-        // Clamp zoom
-        requiredWidth = Math.max(requiredWidth, virtualWidth / MAX_ZOOM_FACTOR);
-        requiredHeight = Math.max(requiredHeight, virtualHeight / MAX_ZOOM_FACTOR);
-        requiredWidth = Math.min(requiredWidth, virtualWidth * MAX_VIEW_FACTOR);
-        requiredHeight = Math.min(requiredHeight, virtualHeight * MAX_VIEW_FACTOR);
+        // Clamp zoom using settings dimensions
+        requiredWidth = Math.max(requiredWidth, settings.VIRTUAL_WIDTH / MAX_ZOOM_FACTOR);
+        requiredHeight = Math.max(requiredHeight, settings.VIRTUAL_HEIGHT / MAX_ZOOM_FACTOR);
+        requiredWidth = Math.min(requiredWidth, settings.VIRTUAL_WIDTH * MAX_VIEW_FACTOR);
+        requiredHeight = Math.min(requiredHeight, settings.VIRTUAL_HEIGHT * MAX_VIEW_FACTOR);
 
         // Set target refs
         targetVirtualWidthRef.current = requiredWidth;
@@ -96,7 +97,7 @@ export const useDynamicViewport = ({
         targetCenterXRef.current = centerX;
         targetCenterYRef.current = centerY;
 
-    }, [engine, getDynamicBodies, virtualWidth, virtualHeight, designAspectRatio]); 
+    }, [engine, getDynamicBodies, settings]); 
 
     useEffect(() => {
         let animationFrameId: number;
@@ -125,7 +126,7 @@ export const useDynamicViewport = ({
 
     useEffect(() => {
         updateTargetViewport(); 
-        const intervalId = setInterval(updateTargetViewport, 100);
+        const intervalId = setInterval(updateTargetViewport, 50);
         return () => clearInterval(intervalId);
     }, [updateTargetViewport]);
 

@@ -37,9 +37,9 @@ export const generateInitialPositions = (settings: GameSettingsProfile): Initial
         PLANET_MAX_RADIUS,
         NUM_PLANETS,
         // --- Orange Planet Settings ---
-        NUM_ORANGE_PLANETS,
-        ORANGE_PLANET_MAX_RADIUS,
-        ORANGE_PLANET_CORE_RADIUS_FACTOR,
+        // NUM_ORANGE_PLANETS,
+        // ORANGE_PLANET_MAX_RADIUS,
+        // ORANGE_PLANET_CORE_RADIUS_FACTOR,
         // ORANGE_PLANET_MIN_SPAWN_DIST_FACTOR, // REMOVED - Not used in edge placement
         // ---------------------------
         INITIAL_VIEW_WIDTH_FACTOR,
@@ -48,7 +48,13 @@ export const generateInitialPositions = (settings: GameSettingsProfile): Initial
         PLANET_SPAWN_AREA_FACTOR,
         MIN_SHIP_SEPARATION_FACTOR,
         MIN_PLANET_SHIP_DISTANCE,
-        MIN_PLANET_PLANET_DISTANCE
+        MIN_PLANET_PLANET_DISTANCE,
+        // --- Sligger Settings ---
+        NUM_SLIGGERS,
+        SLIGGER_MAX_RADIUS,
+        SLIGGER_CORE_RADIUS_FACTOR,
+        SLIGGER_BORDER_PADDING, // Add new setting for edge padding
+        // SLIGGER_MIN_SPAWN_DIST_FACTOR, // REMOVED - Not used in edge placement
     } = settings;
 
     // --- Calculate Initial View Bounds and Center ---
@@ -127,33 +133,32 @@ export const generateInitialPositions = (settings: GameSettingsProfile): Initial
     let attemptsPlanets = 0;
     const maxAttemptsPlanets = 750;
     let normalPlanetsPlaced = 0;
-    let orangePlanetsPlaced = 0;
-    const totalPlanetsToPlace = NUM_PLANETS + NUM_ORANGE_PLANETS;
+    let sliggersPlaced = 0; // Renamed previously, confirming state
+    const totalPlanetsToPlace = NUM_PLANETS + NUM_SLIGGERS; // Use Sligger setting
 
     while (planets.length < totalPlanetsToPlace && attemptsPlanets < maxAttemptsPlanets) {
         attemptsPlanets++;
         
-        // Determine if trying to place orange this attempt
-        const isOrangeCandidate = orangePlanetsPlaced < NUM_ORANGE_PLANETS;
+        // Determine if trying to place sligger this attempt
+        const isSliggerCandidate = sliggersPlaced < NUM_SLIGGERS; // Use Sligger vars
         const isNormalCandidate = normalPlanetsPlaced < NUM_PLANETS;
-        const attemptIsOrange = isOrangeCandidate && (!isNormalCandidate || Math.random() < 0.5);
+        const attemptIsSligger = isSliggerCandidate && (!isNormalCandidate || Math.random() < 0.5);
         
         // Determine radius based on type
-        const maxRadius = attemptIsOrange ? ORANGE_PLANET_MAX_RADIUS : PLANET_MAX_RADIUS;
+        const maxRadius = attemptIsSligger ? SLIGGER_MAX_RADIUS : PLANET_MAX_RADIUS; // Use Sligger setting
         const minRadiusForAttempt = Math.min(PLANET_MIN_RADIUS, maxRadius);
         const radius = Math.random() * (maxRadius - minRadiusForAttempt) + minRadiusForAttempt;
         
         let x: number = 0; 
         let y: number = 0; 
         let placedSuccessfully = false;
-        let isOrange = false; // Will be set true if orange placement succeeds
-        const edgePadding = 50; // Added padding from virtual edge and initial view edge
+        let isSligger = false; // Renamed previously, confirming state
+        const edgePadding = SLIGGER_BORDER_PADDING;
 
-        // Try placing Orange first if decided
-        if (attemptIsOrange) {
-            let orangeAttempts = 0;
-            let foundOrangeSpot = false;
-            // Padding from virtual edge
+        // Try placing Sligger first if decided
+        if (attemptIsSligger) { // Use Sligger variable
+            let sliggerAttempts = 0;
+            let foundSliggerSpot = false;
             const planetEdgePadding = radius + edgePadding;
 
             do {
@@ -192,25 +197,25 @@ export const generateInitialPositions = (settings: GameSettingsProfile): Initial
                 let collision = false;
                 // Ensure not too close to ships (only check ships, not planets initially for edge placement)
                 for (const ship of ships) { if (calculateDistance(candidatePos, ship) < radius + SHIP_RADIUS + MIN_PLANET_SHIP_DISTANCE) { collision = true; break; } }
-                if (collision) { orangeAttempts++; continue; }
+                if (collision) { sliggerAttempts++; continue; }
                 // Check collision with other planets AFTER checking ships
                 for (const existingPlanet of planets) { const existingRadius = existingPlanet.plugin?.Zapsliggers?.radius || PLANET_MIN_RADIUS; if (calculateDistance(candidatePos, existingPlanet.position) < radius + existingRadius + MIN_PLANET_PLANET_DISTANCE) { collision = true; break; } }
-                if (collision) { orangeAttempts++; continue; }
+                if (collision) { sliggerAttempts++; continue; }
                 
                 // Spot is valid, assign and mark success
                 x = candidateX;
                 y = candidateY;
-                isOrange = true; // Set type for body creation
+                isSligger = true; // Set type for body creation - Confirming state
                 placedSuccessfully = true;
-                foundOrangeSpot = true;
+                foundSliggerSpot = true;
                 break; 
                 
-            } while (orangeAttempts < 50); 
+            } while (sliggerAttempts < 50); 
             
-            if (!foundOrangeSpot && !isNormalCandidate) continue; 
+            if (!foundSliggerSpot && !isNormalCandidate) continue; 
         }
         
-        // If didn't place orange (or wasn't candidate, or failed and normal is available)
+        // If didn't place sligger (or wasn't candidate, or failed and normal is available)
         if (!placedSuccessfully && isNormalCandidate) {
             let normalAttempts = 0;
             do { // Attempt to place a normal planet
@@ -228,7 +233,7 @@ export const generateInitialPositions = (settings: GameSettingsProfile): Initial
                 // Spot is valid
                 x = candidateX;
                 y = candidateY;
-                isOrange = false; // Ensure it's marked as normal
+                isSligger = false; // Ensure it's marked as normal - Confirming state
                 placedSuccessfully = true;
                 break;
             } while (normalAttempts < 50); // Limit placement attempts for normal
@@ -237,19 +242,20 @@ export const generateInitialPositions = (settings: GameSettingsProfile): Initial
         // If no spot found in either attempt, continue
         if (!placedSuccessfully) continue;
 
-        // Create planet body based on type (isOrange flag is now reliable)
+        // Create planet body based on type (isSligger flag is now reliable)
         let planetBody: Matter.Body;
-        if (isOrange) {
-            const coreRadius = radius * ORANGE_PLANET_CORE_RADIUS_FACTOR;
+        if (isSligger) { // Use Sligger flag
+            // Use SLIGGER settings for core radius
+            const coreRadius = radius * SLIGGER_CORE_RADIUS_FACTOR;
             planetBody = Bodies.circle(x, y, radius, {
                 isStatic: true,
-                label: 'orange-planet',
+                label: 'sligger',
                 friction: 0.5,
                 restitution: 0.5,
                 plugin: { Zapsliggers: { radius: radius, coreRadius: coreRadius } }
             });
-            orangePlanetsPlaced++;
-            console.log(`Placed Orange Planet ${orangePlanetsPlaced}/${NUM_ORANGE_PLANETS} at (${x.toFixed(0)}, ${y.toFixed(0)})`);
+            sliggersPlaced++; // Increment correct counter
+            console.log(`Placed Sligger ${sliggersPlaced}/${NUM_SLIGGERS} at (${x.toFixed(0)}, ${y.toFixed(0)})`);
         } else {
             const grayValue = Math.floor(Math.random() * (160 - 80 + 1)) + 80;
             const grayHex = grayValue.toString(16).padStart(2, '0');

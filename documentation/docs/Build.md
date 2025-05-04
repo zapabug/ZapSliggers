@@ -13,8 +13,8 @@
 **2. Features:**
    **Current Implementation (Local Zapsliggers Core + Basic Sync):**
    - **Rendering:** 2D rendering on HTML Canvas via `GameRenderer.tsx`. Uses `useGameAssets` for loading. Adaptive camera/viewport implemented (`useDynamicViewport`).
-   - **Physics (`useMatterPhysics`):** `matter-js` engine running. Encapsulated within `useGameLogic`. Tuned planetary gravity implemented. Basic projectile-planet/boundary collisions handled. Projectile timeout functional.
-   - **Level Setup (`useGameInitialization`):** Random initial placement of ships/planets respecting distance constraints. Encapsulated within `useGameLogic`.
+   - **Physics (`useMatterPhysics`):** `matter-js` engine running. Encapsulated within `useGameLogic`. Tuned planetary gravity implemented (using `radius^2` proxy, requires `GRAVITY_CONSTANT` tuning). Basic projectile-planet/boundary collisions handled. Projectile timeout functional. **Sligger attraction/repulsion logic structure implemented (requires tuning `SLIGGER_ATTRACTION/REPULSION_FACTOR`).**
+   - **Level Setup (`useGameInitialization`):** Random initial placement of ships/planets respecting distance constraints (requires tuning `MIN_PLANET_PLANET_DISTANCE`, `MIN_PLANET_SHIP_DISTANCE`). **Normal planets placed using factor-based horizontal centering, full vertical height.** **Sliggers placed in edge zones (using `SLIGGER_BORDER_PADDING`).** Encapsulated within `useGameLogic`.
    - **Controls & Firing:** Aiming (rotation/power via UI/keyboard) and firing implemented via `GameScreen`/`PracticeScreen` -> `useGameLogic` -> `GameRenderer`.
    - **Aiming Aids (`useShotTracers`):** Historical shot traces and active projectile trails rendered. State managed via `useGameLogic`.
    - **Zapsliggers Rules (Partial):** Basic HP system (as resource), ability selection UI/logic functional. Standard projectile hits trigger round win callback. **Core game logic managed by `useGameLogic` hook.**
@@ -24,12 +24,13 @@
    - **Challenges (`ChallengeHandler`):** Basic Nostr DM challenge sending/receiving implemented.
    - **Multiplayer Sync (Basic):** Fire actions synchronized via Nostr events (`kind:30079`) using `useGameLogic` and manual NDK calls. **`GameScreen` refactored to use `useGameLogic`.**
 
-   **Target Features (To Be Implemented/Completed):**
+   **Target Features (To Be Implemented/Completed / Tuned):**
    - **Visuals:** Render actual sprites/assets for ships, planets, projectiles, effects.
+   - **Tuning (Manual): Adjust `GRAVITY_CONSTANT`, distance settings (`MIN_PLANET_PLANET_DISTANCE`), view factor (`INITIAL_VIEW_WIDTH_FACTOR`), Sligger factors/padding in `gameSettings.ts`.**
    - **Zapsliggers Gameplay:** Implement ability *effects* (Splitter, Gravity, Plastic). Implement full win conditions (based on HP/Vulnerability). Implement Vulnerability state. Enforce match-level ability limits (3 total, 1/type). Implement turn structure (timer, 5-shot limit), round scoring (Best of 3), and Sudden Death mechanics.
-   - **Advanced Levels:** Add Gas Giants, moving planets.
+   - **Advanced Levels:** Add moving planets. (Sligger logic structure is in place).
    - **Nostr Integration:** Full matchmaking flow (Accept/Reject challenges). **Refine/Complete Turn/State synchronization (`kind:30079`)**. Robust error handling.
-   - **Wagering (Mandatory):** NUT-18 backend service integration (API definition, frontend flow, verification).
+   - **Wagering (Mandatory):** NUT-18 backend service integration (API definition, frontend flow, verification). *(Current focus is Cashu)*
    - **UX:** Finalize UI controls, add tutorials/tooltips, refine PWA behavior.
    - **Testing:** Thorough testing, especially mobile login flows.
 
@@ -111,10 +112,13 @@
    - PWA Strategy: Adopted `vite-plugin-pwa`. - *Configured*
    - Lobby Flow: Dedicated `LobbyScreen` with `LobbyPlayground` (for testing). - *Done*.
    - Viewport & Positioning: Implemented wider virtual viewport, random placement, adaptive camera zoom. - *Done*.
-   - Gravity Tuning: Implemented effectiveRadius calculation. - *Done*.
+   - Gravity Tuning: Implemented effectiveRadius calculation. - *Done*. The gravity formula uses `radius^2` as a mass proxy. **Requires `GRAVITY_CONSTANT` tuning.**
    - HP/Ability Logic: Basic resource management and selection UI implemented. - *Done*
    - Practice Mode Logic: Implemented best-of-3 rounds, scoring, HP tie-breaker, alternating start via `useGameLogic`. - ***Status: Refactored, needs testing.***.
    - **Multiplayer Sync (Basic):** Fire actions synchronized via `kind:30079` using manual NDK calls within `useGameLogic`. `GameScreen` uses this hook. - *Refactored*. Build successful.
+   - **Projectile Rendering:** Fixed `GameRenderer` to use `body.circleRadius` instead of hardcoded value. - *Done*.
+   - **Virtual Dimensions:** Refactored `GameRenderer` and `useDynamicViewport` to consistently use `VIRTUAL_WIDTH`/`HEIGHT` from the `settings` object. - *Done*.
+   - **Border Rendering:** Fixed visual glitch where the border ignored camera transform by swapping draw order of border and background in `GameRenderer`. - *Done*.
 
 **8. Comments & Education:**
    - `@nostr-dev-kit/ndk` provides a comprehensive toolkit...
@@ -139,30 +143,27 @@
      - Implement HP system, Ability selection/effects, Vulnerability, Sudden Death.
      - Implement Zapsliggers win conditions.
      - Implement turn structure (timer, state changes).
-     - Add Gas Giants, moving planets.
+     - Add **Sliggers** (with attraction/repulsion zones) and moving planets.
    - **Phase 2: Nostr Multiplayer & Wagering:**
      - **Challenge Flow:** Refine `LobbyScreen` UI for listing/accepting challenges... 
-     - **Wagering (NUT-18):** Define/Implement Backend Service API...
+     - **Wagering (NUT-18 / Cashu):** Define/Implement Agent/Bot logic for receiving stakes and sending payouts via Cashu tokens.
      - **Turn Sync:** Implement sending/receiving moves (`kind:30079`)...
    - **Shot Tracers:** `useShotTracers` hook manages state for active/historical traces. `useState` for historical traces ensures re-renders, while `useRef` for active trails avoids unnecessary renders tied to Matter.js bodies. `GameRenderer` uses a ref (`latestTracesRef`) updated via `useEffect` to access the latest historical state in the `renderLoop` closure.
 
 **9. Next Steps:**
-   - **Integration & Testing (Current Focus):**
-     - **Practice Mode:** Test functionality after `useGameLogic` refactor.
-     - **Visuals:** Render actual sprites/assets in `GameRenderer`. - *Immediate Next*
-     - **Nostr Login:** Testing complete. Both NIP-07 and NIP-46 (QR/Deeplink) flows are functional using `useAuth` and the Applesauce wrapper.
+   - **Integration & Testing (Immediate Focus):**
+     - **Sligger Visibility:** Investigate why Sliggers aren't rendering. Check generation logic (`useGameInitialization`) and add specific drawing logic (`GameRenderer`). - *Immediate Next*
+     - **Manual Tuning & Testing:** Once Sliggers are visible, adjust settings (`GRAVITY_CONSTANT`, `MIN_PLANET_PLANET_DISTANCE`, `INITIAL_VIEW_WIDTH_FACTOR`, Sligger factors/padding) in `gameSettings.ts` and test placement, gravity, spacing, Sligger behavior.
+     - **Practice Mode:** Test functionality after `useGameLogic` refactor and tuning.
+     - **Visuals:** Render actual sprites/assets in `GameRenderer` (Ships, Planets, Sliggers, Projectiles).
+   - **Nostr & Gameplay Completion:**
+     - **Nostr Login:** Further testing on mobile devices.
      - **Matchmaking:** Implement full challenge accept/reject flow in `ChallengeHandler`/`LobbyScreen`.
      - **Wagering (Cashu):** Define/Implement Agent/Bot logic for receiving stakes and sending payouts via Cashu tokens.
      - **Turn/State Sync:** Refine/complete synchronization of game state (collisions, turns, aiming?) using `kind:30079`.
-   - **Zapsliggers Gameplay Completion:**
-     - Implement ability physics effects.
-     - Implement full win conditions (HP/Vulnerability based).
-     - Implement Vulnerability state logic.
-     - Enforce ability usage limits.
-     - Implement turn timer and limits.
-     - Implement Sudden Death mechanics.
+     - **Zapsliggers Gameplay Completion:** Implement ability physics effects, full win conditions (HP/Vulnerability based), Vulnerability state logic, enforce ability usage limits.
    - **Polish:**
-     - Add Gas Giants, moving planets.
+     - Add moving planets.
      - Visual polish (animations, effects), Sound, Error Handling, Tutorials.
 
 --- 
