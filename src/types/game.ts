@@ -17,28 +17,41 @@ export interface PathPoint {
 // Type for the full path data
 export type ProjectilePathData = PathPoint[];
 
-// Define the structure for game action events sent over Nostr
-// Keeping 'fire' separate from 'shotResolved' for clarity
-export interface FireActionEvent {
-    type: 'fire';
-    matchId: string; // Include matchId for filtering
+// Define the structure for game action events sent over Nostr (Kind 30079)
+// We'll use a single event type for simplicity in turn-based sync
+export interface GameActionEvent {
+    type: 'game_action'; // Consolidated type
+    matchId: string;
     senderPubkey: string;
-    aim: { angle: number; power: number };
-    ability: string | null; // Use string representation if AbilityType is complex
-    // shotId: string; // Consider adding a unique ID per shot if needed later
+    turnIndex: 0 | 1; // Index of the player WHOSE turn it was
+    action: {
+        type: 'fire';
+        aim: { angle: number; power: number };
+        ability: AbilityType | null; // Keep AbilityType if serializable, else string
+        // shotId?: string; // Optional: if needed for reconciling specific shots
+    } | {
+        type: 'sync_request'; // Future: For requesting state sync
+    } | {
+        type: 'state_update'; // Future: For sending full state snapshots
+        // state: GameState; // TBD
+    };
+    // Consider adding a sequence number if event ordering becomes critical
+    // sequence?: number;
 }
 
-// Define the structure for sending the resolved path data
+// Define the structure for sending the resolved path data (Optional - keep for potential debug/resync)
 export interface ShotResolvedEvent {
     type: 'shotResolved';
     matchId: string; // Include matchId for filtering
     senderPubkey: string;
     path: ProjectilePathData;
+    turnIndex: 0 | 1; // Add turn index here too if sending this
     // shotId: string; // Include if added to FireActionEvent
 }
 
 // Union type for Nostr game events (Kind 30079)
-export type GameNostrEventContent = FireActionEvent | ShotResolvedEvent;
+// export type GameNostrEventContent = FireActionEvent | ShotResolvedEvent; // Old union
+export type GameNostrEventContent = GameActionEvent | ShotResolvedEvent; // New union using GameActionEvent
 
 // Export PlayerState
 export interface PlayerState {

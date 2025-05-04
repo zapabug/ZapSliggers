@@ -161,3 +161,33 @@ VibeStorm Questions: None. LLD Generation.
 VibeStorm Response: Confirmed final UX decisions: no intro, no tooltips, but add end-of-round score display. Stated LLD generation would commence. Generated LLD for ZapSlingers (Steampunk Space theme) incorporating all decisions (Gas Giant implementation, ability names, boundary toggle, score display, etc.) and added it to `Build.md`.
 Decisions: Finalized UX: No intro, no tooltips, add end-of-round score display. Generated LLD 1.
 Steps Explained: Summarized the final UX choices. Confirmed LLD generation based on all accumulated decisions throughout the planning process. Logged LLD to `Build.md`. 
+
+## Interaction X: YYYY-MM-DD HH:MM
+
+**User Input:**
+- Request to switch focus from Sligger rendering issues to implementing multiplayer functionality.
+
+**VibeStorm Questions:**
+- (Implicit) What part of multiplayer to start with? (Decided on Matchmaking)
+- (Implicit) Where is the matchmaking logic? (Identified `ChallengeHandler.tsx`)
+- (Implicit) How is `ChallengeHandler` integrated? (Checked `App.tsx` and `LobbyScreen.tsx`)
+
+**VibeStorm Response Summary:**
+- Reviewed `ChallengeHandler.tsx` for Nostr DM challenge logic (sending, receiving, accepting).
+- Identified missing rejection handling.
+- Verified integration via `App.tsx` state and `LobbyScreen.tsx` usage.
+
+**Decisions Made:**
+- Implement sending/handling of rejection messages in `ChallengeHandler.tsx`.
+- Confirmed matchmaking flow is sufficiently implemented for now.
+- Next focus: Gameplay Synchronization (`useGameLogic.ts`).
+
+**Steps Explained:**
+- Added `RejectPayload` interface.
+- Modified `handleDMEvent` to process incoming rejections.
+- Created `sendRejection` function.
+- Updated `handleDismissChallenge` to call `sendRejection`.
+- Verified `App.tsx` passes `onChallengeAccepted` to `LobbyScreen`.
+- Verified `LobbyScreen` correctly renders `ChallengeHandler` with necessary props.
+
+**Timestamp:** {{TIMESTAMP}} 

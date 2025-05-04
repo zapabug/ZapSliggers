@@ -48,6 +48,11 @@ interface AcceptPayload {
     type: 'accept';
 }
 
+// ADD: Reject Payload Interface
+interface RejectPayload {
+    type: 'reject';
+}
+
 interface ChallengeHandlerProps {
     loggedInPubkey: string | null;
     ndk: NDK;
@@ -222,7 +227,7 @@ export function ChallengeHandler({
             }
 
             const content = decryptedContent.trim();
-            let payload: ChallengePayload | AcceptPayload | null = null;
+            let payload: ChallengePayload | AcceptPayload | RejectPayload | null = null;
             try { payload = JSON.parse(content); } catch { /* Ignore if not JSON */ }
 
             const challengeTag = event.tags.find(t => t[0] === 't');
@@ -234,12 +239,20 @@ export function ChallengeHandler({
 
             if (currentActiveSentChallenge && event.pubkey === currentActiveSentChallenge.opponentPubkey && challengeTag && challengeTag[1] === currentActiveSentChallenge.eventId) {
                 const isAcceptMessage = (payload && payload.type === 'accept') || content.toLowerCase() === 'accept';
+                const isRejectMessage = (payload && payload.type === 'reject') || content.toLowerCase() === 'reject'; // ADD: Check for reject
                 if (isAcceptMessage) {
                     console.log(`[ChallengeHandler] Received ACCEPTANCE ${event.encode()} for our challenge ${currentActiveSentChallenge.eventId} from ${event.pubkey}`);
                     const opponentPubkey = currentActiveSentChallenge.opponentPubkey;
                     const matchIdentifier = currentActiveSentChallenge.eventId;
                     clearSentChallengeState(); // Clear state AND localStorage
                     onChallengeAccepted(opponentPubkey, matchIdentifier);
+                    return;
+                // ADD: Handle rejection of our sent challenge
+                } else if (isRejectMessage) {
+                    console.log(`[ChallengeHandler] Received REJECTION ${event.encode()} for our challenge ${currentActiveSentChallenge.eventId} from ${event.pubkey}`);
+                    setError(`Challenge rejected by ${nip19.npubEncode(event.pubkey).substring(0,12)}...`);
+                    clearSentChallengeState(); // Clear our sent state
+                    // Optionally set an error or notification state here
                     return;
                 }
             }
@@ -496,12 +509,61 @@ export function ChallengeHandler({
         }
     }, [ndk, loggedInPubkey, activeReceivedChallenge, onChallengeAccepted, clearReceivedChallengeState]);
 
-    const handleDismissChallenge = useCallback(() => {
-        if (!activeReceivedChallenge) return; // Prevent multiple calls
+    // ADD: Function to send rejection DM
+    const sendRejection = useCallback(async () => {
+        const currentSigner = ndk?.signer;
+        if (!ndk || !loggedInPubkey || !activeReceivedChallenge || !currentSigner) {
+            console.warn("[ChallengeHandler] Cannot send rejection: Invalid state or signer missing.");
+            return; // Don't set error, just fail silently for now
+        }
+
+        const { challengerPubkey, eventId: originalChallengeId } = activeReceivedChallenge;
+
+        try {
+            const rejectPayload: RejectPayload = { type: 'reject' };
+            const event = new NDKEvent(ndk);
+            event.kind = NDKKind.EncryptedDirectMessage;
+            event.tags = [
+                ['p', challengerPubkey],
+                ['t', originalChallengeId] // Tag with original challenge ID
+            ];
+
+            const payloadStringReject = JSON.stringify(rejectPayload);
+            let encryptedContentReject: string;
+
+            console.log(`[ChallengeHandler] Attempting manual NIP-04 encrypt (reject challenge) for recipient ${challengerPubkey}`);
+            if (currentSigner && hasNip04Wrapper(currentSigner)) {
+                console.log("[ChallengeHandler] Using Wrapper NIP-04 encrypt...");
+                encryptedContentReject = await currentSigner.nip04.encrypt(challengerPubkey, payloadStringReject);
+            } else if (hasNip04StandardGlobal()) {
+                console.log("[ChallengeHandler] Using Standard NIP-07 (window.nostr) encrypt...");
+                if (!window.nostr?.nip04?.encrypt) throw new Error("window.nostr.nip04.encrypt not available");
+                encryptedContentReject = await window.nostr.nip04.encrypt(challengerPubkey, payloadStringReject);
+            } else {
+                throw new Error("Current signer or environment does not support NIP-04 encryption.");
+            }
+            event.content = encryptedContentReject;
+            console.log("[ChallengeHandler] Manual NIP-04 encryption (reject challenge) successful.");
+
+            await event.publish();
+            console.log(`Rejection sent to ${challengerPubkey} for challenge ${originalChallengeId}.`);
+
+        } catch (e) {
+            console.error("Failed to send rejection:", e);
+            // Don't set component error, just log. Failure isn't critical.
+        }
+    }, [ndk, loggedInPubkey, activeReceivedChallenge]); // Dependencies
+
+    const handleDismissChallenge = useCallback(async () => {
+        if (!activeReceivedChallenge) return; 
         console.log(`[ChallengeHandler] Dismissing incoming challenge: ${activeReceivedChallenge?.eventId}`);
+        
+        // Send rejection first
+        await sendRejection();
+
+        // Then clear local state
         clearReceivedChallengeState();
-        // setActiveReceivedChallenge(null); // Done by clearReceivedChallengeState
-    }, [activeReceivedChallenge, clearReceivedChallengeState]);
+    }, [activeReceivedChallenge, clearReceivedChallengeState, sendRejection]); // Add sendRejection dependency
 
     const canInteract = loggedInPubkey && !activeSentChallenge && !activeReceivedChallenge;
     const isWaitingForAcceptance = !!activeSentChallenge;

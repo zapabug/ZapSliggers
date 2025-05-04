@@ -151,9 +151,10 @@ export const useMatterPhysics = ({
         GRAVITY_AOE_BONUS_FACTOR,
         VIRTUAL_WIDTH, 
         GRAVITY_CONSTANT,
-        // --- Orange Planet Settings ---
-        ORANGE_PLANET_REPULSION_CONSTANT, // Need this
-        // ---------------------------
+        // --- Sligger Settings ---
+        SLIGGER_ATTRACTION_FACTOR,
+        SLIGGER_REPULSION_FACTOR,
+        // ----------------------
         PLASTIC_GRAVITY_FACTOR,
         SHIP_GRAVITY_RANGE_FACTOR,
         SHIP_RADIUS,
@@ -236,8 +237,8 @@ export const useMatterPhysics = ({
 
         // --- Apply Planet Gravity / Repulsion ---
         Composite.allBodies(currentEngine.world).forEach(staticBody => {
-          // Skip if not a planet type
-          if (staticBody.label !== 'planet' && staticBody.label !== 'orange-planet') return;
+          // Skip if not a planet type or sligger
+          if (staticBody.label !== 'planet' && staticBody.label !== 'sligger') return;
 
           const distanceVector = Vector.sub(staticBody.position, projectileBody.position);
           const distanceSq = Vector.magnitudeSquared(distanceVector);
@@ -258,23 +259,32 @@ export const useMatterPhysics = ({
           const attractiveForce = Vector.mult(Vector.normalise(distanceVector), attractiveForceMagnitude);
           netForce = Vector.add(netForce, attractiveForce); // Add attraction to net force
 
-          // --- Add Repulsion if Orange Planet Core is Hit ---
-          if (staticBody.label === 'orange-planet') {
+          // --- Apply Sligger specific forces (Attraction/Repulsion based on core) ---
+          if (staticBody.label === 'sligger') {
               const coreRadius = staticBody.plugin?.Zapsliggers?.coreRadius;
               const distance = Vector.magnitude(distanceVector); // Need actual distance now
               
               if (coreRadius && distance <= coreRadius) {
-                  // Inside core radius - Add strong Repulsive force
-                  // NOTE: ORANGE_PLANET_REPULSION_CONSTANT likely needs to be significantly larger than GRAVITY_CONSTANT 
-                  // and might need distance scaling adjusted (e.g., 1/distance^3) for a strong slingshot.
-                  // Start with 1/distanceSq scaling for now.
-                  const repulsiveForceMagnitude = (ORANGE_PLANET_REPULSION_CONSTANT * projectileBody.mass * coreRadius) / distanceSq; 
-                  const repulsiveForce = Vector.mult(Vector.normalise(distanceVector), -repulsiveForceMagnitude); // Negative magnitude for repulsion
-                  
-                  netForce = Vector.add(netForce, repulsiveForce); // Add repulsion to the net force
+                  // --- Repulsion Zone (Inside Core) ---
+                  // Calculate base repulsive force magnitude (similar to attraction, but using coreRadius? Or planetRadius? Let's use coreRadius for scaling)
+                  // We will scale the standard GRAVITY_CONSTANT by the SLIGGER_REPULSION_FACTOR.
+                  const baseRepulsiveMagnitude = (GRAVITY_CONSTANT * projectileBody.mass * coreRadius) / distanceSq;
+                  const finalRepulsiveMagnitude = baseRepulsiveMagnitude * SLIGGER_REPULSION_FACTOR; // Scale by factor
+                  const repulsiveForce = Vector.mult(Vector.normalise(distanceVector), -finalRepulsiveMagnitude); // Negative for repulsion
+
+                  // *Replace* the default attraction with repulsion
+                  netForce = repulsiveForce; 
                   
                   // Optional: Log when repulsion is active
-                  // console.log(`Orange planet ${staticBody.id} core hit! Repulsion applied. Dist: ${distance.toFixed(1)}, CoreRadius: ${coreRadius.toFixed(1)}`);
+                  // console.log(`Sligger ${staticBody.id} core hit! Repulsion applied. Dist: ${distance.toFixed(1)}, CoreRadius: ${coreRadius.toFixed(1)}`);
+
+              } else {
+                  // --- Attraction Zone (Outside Core) ---
+                  // Scale the already calculated attractive force by the SLIGGER_ATTRACTION_FACTOR
+                  // The base attractive force is already in netForce from the calculation above.
+                  // We need to scale it.
+                  // Note: If FACTOR is 1, it remains unchanged. If > 1, stronger attraction. If < 1, weaker.
+                  netForce = Vector.mult(netForce, SLIGGER_ATTRACTION_FACTOR); 
               }
           } 
 
