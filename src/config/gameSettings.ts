@@ -38,19 +38,16 @@ export interface GameSettingsProfile {
     SHIP_GRAVITY_RANGE_FACTOR: number;
     SHIP_GRAVITY_CONSTANT: number;
     GRAVITY_FRICTION_AIR: number;
+    // Gas Giant Specific Physics (Replaces Orange Planet)
+    GAS_GIANT_CORE_RADIUS_FACTOR: number; // Defines inner repulsive core size relative to total radius.
+    GAS_GIANT_REPULSION_FACTOR: number; // Multiplier for how much stronger repulsion is than attraction at the same distance.
     // Gameplay Rules & Limits (May vary per profile)
     ABILITY_COST_HP: number;
     MAX_ABILITIES_TOTAL: number;
     MAX_ABILITIES_PER_TYPE: number;
     MAX_HP: number;
     MAX_ROUNDS: number;
-    // Orange Planet Settings (May vary per profile)
-    NUM_ORANGE_PLANETS: number;
-    ORANGE_PLANET_MAX_RADIUS: number;
     ORANGE_PLANET_CORE_RADIUS_FACTOR: number; // Repulsion Range: Multiplier for total radius defining the inner repulsive core (e.g., 0.3 = core is 30% of total radius).
-    ORANGE_PLANET_REPULSION_CONSTANT: number; // Repulsion Strength: Constant factor for the repulsive force magnitude (higher value = stronger repulsion).
-    ORANGE_PLANET_MIN_SPAWN_DIST_FACTOR: number; // Note: Currently unused by random placement logic.
-    ORANGE_PLANET_MAX_INTERACTION_RANGE_FACTOR: number; // Max Range: Multiplier for total radius defining the maximum distance at which attraction/repulsion apply (e.g., 3.0 = effect stops at 3x radius).
     // Available Abilities
     AVAILABLE_ABILITIES: AbilityType[];
 }
@@ -75,6 +72,9 @@ const basePhysicsAndCore = {
     SHIP_GRAVITY_RANGE_FACTOR: 4,
     SHIP_GRAVITY_CONSTANT: 0.4,
     GRAVITY_FRICTION_AIR: 0.005,
+    // Gas Giant Specific Physics (Values added here will be inherited)
+    GAS_GIANT_CORE_RADIUS_FACTOR: 0.3, // Example: Core is 30% of radius
+    GAS_GIANT_REPULSION_FACTOR: 3.0, // Example: Repulsion is 3x attraction
     // Core Gameplay Rules
     ABILITY_COST_HP: 25,
     MAX_HP: 100,
@@ -98,13 +98,14 @@ const standardLevelGeneration = {
     MIN_SHIP_SEPARATION_FACTOR: 0.97,
     MIN_PLANET_SHIP_DISTANCE: 150,
     MIN_PLANET_PLANET_DISTANCE: 75,
-    // Orange Planet Settings
-    NUM_ORANGE_PLANETS: 2,
     ORANGE_PLANET_MAX_RADIUS: 160,
-    ORANGE_PLANET_CORE_RADIUS_FACTOR: 0.3,
-    ORANGE_PLANET_REPULSION_CONSTANT: 1.6,
-    ORANGE_PLANET_MIN_SPAWN_DIST_FACTOR: 0.8,
-    ORANGE_PLANET_MAX_INTERACTION_RANGE_FACTOR: 3.0,
+    // Remove Orange Planet Settings section from standardLevelGeneration
+    // NUM_ORANGE_PLANETS: 2,
+    // ORANGE_PLANET_MAX_RADIUS: 160,
+    // ORANGE_PLANET_CORE_RADIUS_FACTOR: 0.3,
+    // ORANGE_PLANET_REPULSION_CONSTANT: 1.6,
+    // ORANGE_PLANET_MIN_SPAWN_DIST_FACTOR: 0.8,
+    // ORANGE_PLANET_MAX_INTERACTION_RANGE_FACTOR: 3.0,
 };
 
 
@@ -145,12 +146,14 @@ export const sandboxSettings: GameSettingsProfile = {
     MIN_SHIP_SEPARATION_FACTOR: 0.97,
     MIN_PLANET_SHIP_DISTANCE: 150,
     MIN_PLANET_PLANET_DISTANCE: 75,
-    NUM_ORANGE_PLANETS: 2,
-    ORANGE_PLANET_MAX_RADIUS: 160,
     ORANGE_PLANET_CORE_RADIUS_FACTOR: 0.3,
-    ORANGE_PLANET_REPULSION_CONSTANT: 1.6,
-    ORANGE_PLANET_MIN_SPAWN_DIST_FACTOR: 0.8,
-    ORANGE_PLANET_MAX_INTERACTION_RANGE_FACTOR: 3.0,
+    // Remove Orange Planet Settings section from Sandbox settings
+    // NUM_ORANGE_PLANETS: 2,
+    // ORANGE_PLANET_MAX_RADIUS: 160,
+    // ORANGE_PLANET_CORE_RADIUS_FACTOR: 0.3,
+    // ORANGE_PLANET_REPULSION_CONSTANT: 1.6,
+    // ORANGE_PLANET_MIN_SPAWN_DIST_FACTOR: 0.8,
+    // ORANGE_PLANET_MAX_INTERACTION_RANGE_FACTOR: 3.0,
     // Sandbox-specific rules (unlimited/high values for testing)
     MAX_ROUNDS: 999,
     MAX_ABILITIES_TOTAL: 999,
