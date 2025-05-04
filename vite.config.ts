@@ -43,4 +43,15 @@ export default defineConfig({
     }),
     basicSsl()
   ],
+  // --- Server Configuration ---
+  server: {
+    port: 4173,
+    https: true // Keep HTTPS enabled since basicSsl is used
+    // host: true // Uncomment to expose on network (use with caution)
+  },
+  // --- Preview Configuration ---
+  preview: {
+    port: 4173,
+    https: true // Keep HTTPS enabled for preview consistency
+  }
 })

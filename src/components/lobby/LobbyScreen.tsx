@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import NDK, { NDKUser } from '@nostr-dev-kit/ndk';
 import { ChallengeHandler } from '../ChallengeHandler';
 import { QRCodeCanvas } from 'qrcode.react';
-import { QrReader, OnResultFunction } from 'react-qr-reader';
+import { Html5QrcodeScanner } from 'html5-qrcode';
 import { nip19 } from 'nostr-tools';
 
 interface LobbyScreenProps {
@@ -11,6 +11,8 @@ interface LobbyScreenProps {
     onChallengeAccepted: (opponentPubkey: string, matchId: string) => void;
     onBackToMenu: () => void;
 }
+
+const qrcodeRegionId = "qr-reader-container";
 
 const LobbyScreen: React.FC<LobbyScreenProps> = ({ 
     ndk, 
@@ -24,52 +26,80 @@ const LobbyScreen: React.FC<LobbyScreenProps> = ({
     const [recipientNpubOrHex, setRecipientNpubOrHex] = useState('');
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [showPermissionHelper, setShowPermissionHelper] = useState(false);
+    const [scannerError, setScannerError] = useState<string | null>(null);
 
-    const handleScanResult: OnResultFunction = (result, error) => {
-        if (result) {
-            const scannedText = result.getText();
-            console.log('Scanned QR Code:', scannedText);
-            if (scannedText && scannedText.startsWith('nostr:npub1')) {
-                const potentialNpub = scannedText.substring(6);
+    useEffect(() => {
+        let html5QrcodeScanner: Html5QrcodeScanner | null = null;
+
+        const qrCodeSuccessCallback = (decodedText: string) => {
+            console.log('Scanned QR Code:', decodedText);
+            setScannerError(null);
+
+            if (decodedText && decodedText.startsWith('nostr:npub1')) {
+                const potentialNpub = decodedText.substring(6);
                 try {
                     nip19.decode(potentialNpub);
                     setRecipientNpubOrHex(potentialNpub);
                     setIsScannerOpen(false);
                     console.log('Successfully parsed and set npub:', potentialNpub);
                 } catch (e) {
-                     console.error('Scanned text is not a valid npub:', scannedText, e);
-                     alert('Scanned QR code does not contain a valid Nostr npub URI (nostr:npub1...). Try again.');
+                    console.error('Scanned text is not a valid npub:', decodedText, e);
+                    setScannerError('Scanned QR code does not contain a valid Nostr npub URI (nostr:npub1...). Try again.');
                 }
             } else {
-                 console.warn('Scanned text is not in the expected format (nostr:npub1...):', scannedText);
-                 alert('Scanned QR code does not contain a valid Nostr npub URI (nostr:npub1...). Try again.');
+                console.warn('Scanned text is not in the expected format (nostr:npub1...):', decodedText);
+                setScannerError('Scanned QR code does not contain a valid Nostr npub URI (nostr:npub1...). Try again.');
             }
+        };
+
+        const qrCodeErrorCallback = (errorMessage: string) => {
+            if (!errorMessage.toLowerCase().includes("qrcode parse error")) {
+                console.error(`QR Scanner Error: ${errorMessage}`);
+                setScannerError(`Scan Error: ${errorMessage}`);
+            }
+        };
+
+        const config = {
+            fps: 10,
+            qrbox: { width: 250, height: 250 },
+            rememberLastUsedCamera: true,
+        };
+
+        if (isScannerOpen) {
+            try {
+                if (window.location.protocol !== 'https:') {
+                    throw new Error("Camera access requires a secure connection (HTTPS).");
+                }
+                
+                html5QrcodeScanner = new Html5QrcodeScanner(
+                    qrcodeRegionId,
+                    config,
+                    /* verbose= */ false
+                );
+                html5QrcodeScanner.render(qrCodeSuccessCallback, qrCodeErrorCallback);
+                setScannerError(null);
+
+            } catch (error: unknown) {
+                 console.error("Failed to initialize or start scanner:", error);
+                 const errorMsg = error instanceof Error ? error.message : "Failed to start scanner.";
+                 setScannerError(errorMsg);
+                 html5QrcodeScanner = null; 
+            }
+
         }
 
-        if (error) {
-            setIsScannerOpen(false);
-            console.error('QR Scanner Error:', error);
-            let alertMessage = `QR Scan Error: ${error.message}.`;
-
-            if (error.name === 'NotAllowedError') {
-                alertMessage = "Camera access was denied. Please grant permission in your browser settings and try again.";
-            } else if (error.name === 'NotFoundError') {
-                 alertMessage = "No camera found on this device.";
-            } else if (error.name === 'NotReadableError') {
-                 alertMessage = "Could not access the camera. Another app or browser tab might be using it.";
-            } else if (error.message.includes('secure context')) {
-                 alertMessage = "Camera access requires a secure connection (HTTPS). Please ensure the app is served over HTTPS.";
+        return () => {
+            if (html5QrcodeScanner) {
+                html5QrcodeScanner.clear().catch(error => {
+                    console.error("Failed to clear html5QrcodeScanner.", error);
+                });
+                html5QrcodeScanner = null;
             }
-            
-            alert(alertMessage);
-        }
-    };
+        };
+    }, [isScannerOpen]);
 
     const openScanner = () => {
-        if (window.location.protocol !== 'https:') {
-             alert("Camera access requires a secure connection (HTTPS). Please ensure the app is served over HTTPS.");
-             return;
-        }
+        setScannerError(null);
         setShowPermissionHelper(true);
         setTimeout(() => {
             setIsScannerOpen(true);
@@ -77,39 +107,40 @@ const LobbyScreen: React.FC<LobbyScreenProps> = ({
         }, 500); 
     };
     
+    const closeScanner = () => {
+        setIsScannerOpen(false);
+        setScannerError(null);
+    };
+
     return (
         <div className="w-full h-full flex flex-col items-center justify-start pt-4 p-4 text-white bg-gray-800 overflow-y-auto">
             {isScannerOpen && (
                  <div 
                     className="fixed inset-0 bg-black bg-opacity-75 flex flex-col items-center justify-center z-50 p-4"
-                    onClick={() => setIsScannerOpen(false)}
+                    onClick={closeScanner}
                  >
                     <div 
                         className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full relative"
                         onClick={(e) => e.stopPropagation()}
                     >
-                         <h3 className="text-xl font-semibold mb-4 text-gray-800 text-center">Scan Opponent's QR Code</h3>
-                        <QrReader
-                            onResult={handleScanResult}
-                            constraints={{ facingMode: 'environment' }}
-                            scanDelay={500}
-                            containerStyle={{ width: '100%' }}
-                            videoContainerStyle={{ paddingTop: '100%', position: 'relative' }}
-                            videoStyle={{ 
-                                position: 'absolute', 
-                                top: 0, 
-                                left: 0, 
-                                width: '100%', 
-                                height: '100%', 
-                                objectFit: 'cover' 
-                            }}
-                        />
-                        <button 
-                            onClick={() => setIsScannerOpen(false)}
+                         <h3 className="text-xl font-semibold mb-4 text-gray-800 text-center">
+                            {scannerError ? 'Scan Error' : "Scan Opponent's QR Code"}
+                         </h3>
+                         
+                         <div id={qrcodeRegionId} style={{ width: '100%' }}></div>
+
+                         {scannerError ? (
+                            <div className="text-center text-red-600 my-4">
+                                <p>{scannerError}</p>
+                            </div>
+                         ) : null}
+                        
+                         <button 
+                            onClick={closeScanner} 
                             className="mt-4 w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
-                        >
-                            Cancel Scan
-                        </button>
+                         >
+                             {scannerError ? 'Close' : 'Cancel Scan'}
+                         </button>
                     </div>
                  </div>
             )}
