@@ -271,7 +271,7 @@ function App() {
              return (
                  <div className="w-full h-full flex flex-col items-center justify-center p-4 sm:p-6 text-center">
                      <p className="text-lg mb-4">Check your Nostr mobile app</p>
-                     <p className="text-gray-400 mb-4">Approve the connection request from Zapsliggers in your signer (e.g., Amber, Damus).</p>
+                     <p className="text-gray-400 mb-4">Approve the connection request from ZapSlinggers in your signer (e.g., Amber, Damus).</p>
                      {/* Add a Cancel button */} 
                      <button 
                          onClick={cancelNip46LoginAttempt} 
@@ -290,7 +290,7 @@ function App() {
                 // Center the login box, responsive padding and width. Use flex-col on small screens.
                 <div className="w-full min-h-screen flex flex-col sm:flex-row items-center justify-center p-4"> {/* Changed to min-h-screen, flex-col default */}
                     <div className="flex flex-col items-center justify-center p-6 sm:p-8 bg-gray-800 rounded-lg shadow-xl space-y-4 sm:space-y-6 w-full max-w-md"> {/* Adjusted max-w, consistent padding */}
-                        <h1 className="text-2xl sm:text-3xl font-bold text-purple-400 mb-4 text-center">Zapsliggers Login</h1>
+                        <h1 className="text-2xl sm:text-3xl font-bold text-purple-400 mb-4 text-center">ZapSlinggers Login</h1>
                         
                         {/* NIP-07 Section - Explain if unavailable */} 
                         {window.nostr ? (
@@ -353,7 +353,7 @@ function App() {
         case 'menu':
           return (
             <div className="w-full h-full flex flex-col items-center justify-center space-y-4 p-4">
-              <h1 className="text-3xl font-bold mb-6 text-purple-300">Zapsliggers Menu</h1>
+              <h1 className="text-3xl font-bold mb-6 text-purple-300">ZapSlinggers Menu</h1>
               <p className="text-gray-400">Logged in as: {currentUser.profile?.displayName || currentUser.profile?.name || currentUser.pubkey.slice(0,10)}...</p>
               <button onClick={handleSelectPractice} className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded text-white font-semibold">Practice Mode</button>
               <button onClick={handleSelectMultiplayer} className="px-6 py-3 bg-green-600 hover:bg-green-700 rounded text-white font-semibold">Multiplayer Lobby</button>

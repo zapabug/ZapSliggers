@@ -3,14 +3,14 @@ import Matter from 'matter-js';
 import { ProjectileBody } from '../../hooks/useShotTracers';
 // import { InitialGamePositions } from '../../hooks/useGameInitialization'; // Removed unused import
 import { MatterPhysicsHandles } from '../../hooks/useMatterPhysics';
-import { useDynamicViewport } from '../../hooks/useDynamicViewport';
+// import { useDynamicViewport } from '../../hooks/useDynamicViewport';
 import { UseGameLogicReturn } from '../../hooks/useGameLogic';
 import { GameSettingsProfile } from '../../config/gameSettings'; // <-- Import settings type
 
 // Constants for rendering/layout
 const VIRTUAL_WIDTH = 2400;
 const VIRTUAL_HEIGHT = 1200;
-const DESIGN_ASPECT_RATIO = VIRTUAL_WIDTH / VIRTUAL_HEIGHT;
+// const DESIGN_ASPECT_RATIO = VIRTUAL_WIDTH / VIRTUAL_HEIGHT; // No longer needed for static render
 // const SHIP_RADIUS = 63; // Keep if needed by drawing helpers below
 // const PLANET_MIN_RADIUS = 40; // Keep if needed by drawing helpers below
 const PROJECTILE_RADIUS = 5; 
@@ -29,6 +29,7 @@ interface GameRendererProps {
 // Ensure SHIP_RADIUS and PLANET_MIN_RADIUS are available if needed by helpers
 // const SHIP_RADIUS_DRAW = 50; // Decreased for visual scale
 const PLANET_MIN_RADIUS_DRAW = 100; // Increased to match settings minimum
+/* // Temporarily commented out function definition for unused variable error
 const drawBackground = (ctx: CanvasRenderingContext2D, img: HTMLImageElement | null) => {
     const canvas = ctx.canvas;
     const canvasWidth = canvas.width;
@@ -117,6 +118,7 @@ const drawBackground = (ctx: CanvasRenderingContext2D, img: HTMLImageElement | n
         ctx.fillRect(pt00.x, pt00.y, ptWH.x - pt00.x, ptWH.y - pt00.y);
     }
 };
+*/
 const drawBorder = (ctx: CanvasRenderingContext2D, scale: number) => {
     ctx.strokeStyle = 'rgba(207, 145, 30, 0.76)';
     ctx.lineWidth = 2 / scale;
@@ -128,7 +130,7 @@ const drawBorder = (ctx: CanvasRenderingContext2D, scale: number) => {
  }; // Removed unused vars
 const drawPlanet = (ctx: CanvasRenderingContext2D, body: Matter.Body) => {
     const { x, y } = body.position;
-    const radius = body.plugin?.Zapsliggers?.radius || PLANET_MIN_RADIUS_DRAW;
+    const radius = body.plugin?.ZapSlingers?.radius || PLANET_MIN_RADIUS_DRAW;
 
     let gradient: CanvasGradient;
 
@@ -207,24 +209,26 @@ const drawShip = (
     ctx.restore();
  };
 const drawProjectile = (ctx: CanvasRenderingContext2D, body: ProjectileBody) => {
+    console.log(`[Renderer] drawProjectile called for ${body.label}. Pos: (${body.position.x.toFixed(1)}, ${body.position.y.toFixed(1)}) Radius: ${PROJECTILE_RADIUS}`);
     ctx.beginPath();
     ctx.arc(body.position.x, body.position.y, PROJECTILE_RADIUS, 0, 2 * Math.PI);
     const ownerIndex = body.custom?.firedByPlayerIndex ?? 0;
     ctx.fillStyle = ownerIndex === 0 ? '#add8e6' : '#ffcccb';
     ctx.fill();
  };
-const drawHistoricalTrace = (ctx: CanvasRenderingContext2D, trace: Matter.Vector[]) => {
+const drawHistoricalTrace = (ctx: CanvasRenderingContext2D, trace: Matter.Vector[], scale: number) => {
     if (trace.length < 2) return;
     ctx.beginPath();
     ctx.moveTo(trace[0].x, trace[0].y);
     for (let i = 1; i < trace.length; i++) {
       ctx.lineTo(trace[i].x, trace[i].y);
     }
-    ctx.strokeStyle = '#C0C0C0'; 
-    ctx.lineWidth = 2; 
-    ctx.setLineDash([8, 4]); 
+    ctx.strokeStyle = '#C0C0C0';
+    // Use scale for line width and dash
+    ctx.lineWidth = 2 / scale;
+    ctx.setLineDash([8 / scale, 4 / scale]);
     ctx.stroke();
-    ctx.setLineDash([]); 
+    ctx.setLineDash([]);
  };
 
 
@@ -236,18 +240,18 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
   const [blueShipImage, setBlueShipImage] = useState<HTMLImageElement | null>(null);
   const [redShipImage, setRedShipImage] = useState<HTMLImageElement | null>(null);
 
-  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  // const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 }); // No longer needed for static render
 
   const { lastShotTraces } = shotTracerHandlers;
 
-  const viewport = useDynamicViewport({
-      engine: physicsHandles?.engine ?? null,
-      getDynamicBodies: physicsHandles?.getDynamicBodies ?? (() => []),
-      virtualWidth: VIRTUAL_WIDTH,
-      virtualHeight: VIRTUAL_HEIGHT,
-      designAspectRatio: DESIGN_ASPECT_RATIO,
-      canvasSize,
-  });
+  // const viewport = useDynamicViewport({
+  //     engine: physicsHandles?.engine ?? null,
+  //     getDynamicBodies: physicsHandles?.getDynamicBodies ?? (() => []),
+  //     virtualWidth: VIRTUAL_WIDTH,
+  //     virtualHeight: VIRTUAL_HEIGHT,
+  //     designAspectRatio: DESIGN_ASPECT_RATIO,
+  //     canvasSize,
+  // });
 
   const latestTracesRef = useRef(lastShotTraces);
   useEffect(() => {
@@ -288,7 +292,8 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
         for (const entry of entries) {
             const { width, height } = entry.contentRect;
             console.log(`[GameRenderer ResizeObserver] Canvas resized to: ${width}x${height}`);
-            setCanvasSize({ width, height });
+            // No longer need to set canvasSize state
+            // setCanvasSize({ width, height });
             // Also update canvas element dimensions directly
             // This is crucial for the drawing context resolution
             canvas.width = width;
@@ -303,7 +308,8 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
     const initialHeight = canvas.clientHeight;
     if (initialWidth > 0 && initialHeight > 0) {
         console.log(`[GameRenderer Resize] Setting initial canvas size: ${initialWidth}x${initialHeight}`);
-        setCanvasSize({ width: initialWidth, height: initialHeight });
+        // No longer need to set canvasSize state
+        // setCanvasSize({ width: initialWidth, height: initialHeight });
         canvas.width = initialWidth;
         canvas.height = initialHeight;
     }
@@ -333,12 +339,27 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
 
         ctx.save();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.translate(viewport.offsetX, viewport.offsetY);
-        ctx.scale(viewport.scale, viewport.scale);
+
+        // --- Calculate Simpler Static Transform ---
+        const scaleX = canvas.width / VIRTUAL_WIDTH;
+        const scaleY = canvas.height / VIRTUAL_HEIGHT;
+        const scale = Math.min(scaleX, scaleY); // Maintain aspect ratio
+
+        // Center the scaled content horizontally
+        const offsetX = (canvas.width - VIRTUAL_WIDTH * scale) / 2;
+        // Center the scaled content vertically
+        const offsetY = (canvas.height - VIRTUAL_HEIGHT * scale) / 2;
+
+        // Apply simple scale and top-left offset
+        ctx.translate(offsetX, offsetY);
+        ctx.scale(scale, scale);
+        // --- End Simpler Transform ---
 
         // Draw Background and Border first
-        drawBackground(ctx, backgroundImage);
-        drawBorder(ctx, viewport.scale);
+        // console.log("[Renderer] Skipping background draw for debug."); // Temporarily disable background
+        // drawBackground(ctx, backgroundImage);
+        // Use the calculated scale for the border
+        drawBorder(ctx, scale);
 
         // Get bodies and remove conditional logging
         const bodies = bodiesGetter();
@@ -348,15 +369,15 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
             if (body.label === 'planet' || body.label === 'orange-planet') {
                  drawPlanet(ctx, body);
             } else if (body.label.startsWith('ship-')) {
-                drawShip(ctx, body, blueShipImage, redShipImage, settings); 
-                
+                drawShip(ctx, body, blueShipImage, redShipImage, settings);
+
                 // Aiming indicator based on settings.SHIP_RADIUS and aim power
                 const playerIndex = parseInt(body.label.split('-')[1], 10) as 0 | 1;
                 const currentPower = aimStates[playerIndex]?.power || 0; // Get power for this ship
-                const minIndicatorLength = settings.SHIP_RADIUS * 0.5; 
-                const maxIndicatorLength = settings.SHIP_RADIUS * 2.5; 
+                const minIndicatorLength = settings.SHIP_RADIUS * 0.5;
+                const maxIndicatorLength = settings.SHIP_RADIUS * 2.5;
                 const aimLength = minIndicatorLength + (maxIndicatorLength - minIndicatorLength) * (currentPower / 100);
-                
+
                 // Use the RAW physics angle for the indicator direction
                 const angle = body.angle;
                 // Increase startOffset to create a gap between ship and line start
@@ -365,15 +386,15 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
                 const centerOffsetY = Math.sin(angle) * startOffset;
                 const startX = body.position.x + centerOffsetX;
                 const startY = body.position.y + centerOffsetY;
-                const endX = startX + Math.cos(angle) * aimLength; 
+                const endX = startX + Math.cos(angle) * aimLength;
                 const endY = startY + Math.sin(angle) * aimLength;
                 ctx.beginPath();
                 ctx.moveTo(startX, startY);
                 ctx.lineTo(endX, endY);
                 ctx.strokeStyle = 'rgba(251, 126, 17, 0.86)';
-                ctx.lineWidth = 2 / viewport.scale;
-                // Invert dash pattern (gap longer than dash) and scale
-                ctx.setLineDash([8 / viewport.scale, 3 / viewport.scale]);
+                // Use calculated scale for line width and dash
+                ctx.lineWidth = 2 / scale;
+                ctx.setLineDash([8 / scale, 3 / scale]);
                 ctx.stroke();
                 // Reset line dash for other drawing operations
                 ctx.setLineDash([]);
@@ -384,8 +405,9 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
 
         // Draw Historical Traces (Corrected iteration)
         const currentTraces = latestTracesRef.current;
-        currentTraces[0].forEach(trace => drawHistoricalTrace(ctx, trace)); // Player 0 traces
-        currentTraces[1].forEach(trace => drawHistoricalTrace(ctx, trace)); // Player 1 traces
+        // Adjust historical trace drawing for scale
+        currentTraces[0].forEach(trace => drawHistoricalTrace(ctx, trace, scale)); // Player 0 traces
+        currentTraces[1].forEach(trace => drawHistoricalTrace(ctx, trace, scale)); // Player 1 traces
 
         ctx.restore(); 
         animationFrameId = requestAnimationFrame(renderLoop);
@@ -393,7 +415,7 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
 
     animationFrameId = requestAnimationFrame(renderLoop);
     return () => cancelAnimationFrame(animationFrameId);
-  }, [viewport, physicsHandles, backgroundImage, blueShipImage, redShipImage, settings, aimStates]); 
+  }, [physicsHandles, backgroundImage, blueShipImage, redShipImage, settings, aimStates, latestTracesRef]); // Added latestTracesRef to deps
 
   return (
       <canvas 

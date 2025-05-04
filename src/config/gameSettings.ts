@@ -1,5 +1,5 @@
 /**
- * Centralized configuration settings for the Zapsliggers game.
+ * Centralized configuration settings for the ZapSlinggers game.
  * Defines different profiles for various game modes.
  */
 
@@ -47,9 +47,10 @@ export interface GameSettingsProfile {
     // Orange Planet Settings (May vary per profile)
     NUM_ORANGE_PLANETS: number;
     ORANGE_PLANET_MAX_RADIUS: number;
-    ORANGE_PLANET_CORE_RADIUS_FACTOR: number;
-    ORANGE_PLANET_REPULSION_CONSTANT: number;
-    ORANGE_PLANET_MIN_SPAWN_DIST_FACTOR: number;
+    ORANGE_PLANET_CORE_RADIUS_FACTOR: number; // Repulsion Range: Multiplier for total radius defining the inner repulsive core (e.g., 0.3 = core is 30% of total radius).
+    ORANGE_PLANET_REPULSION_CONSTANT: number; // Repulsion Strength: Constant factor for the repulsive force magnitude (higher value = stronger repulsion).
+    ORANGE_PLANET_MIN_SPAWN_DIST_FACTOR: number; // Note: Currently unused by random placement logic.
+    ORANGE_PLANET_MAX_INTERACTION_RANGE_FACTOR: number; // Max Range: Multiplier for total radius defining the maximum distance at which attraction/repulsion apply (e.g., 3.0 = effect stops at 3x radius).
     // Available Abilities
     AVAILABLE_ABILITIES: AbilityType[];
 }
@@ -103,6 +104,7 @@ const standardLevelGeneration = {
     ORANGE_PLANET_CORE_RADIUS_FACTOR: 0.3,
     ORANGE_PLANET_REPULSION_CONSTANT: 1.6,
     ORANGE_PLANET_MIN_SPAWN_DIST_FACTOR: 0.8,
+    ORANGE_PLANET_MAX_INTERACTION_RANGE_FACTOR: 3.0,
 };
 
 
@@ -148,6 +150,7 @@ export const sandboxSettings: GameSettingsProfile = {
     ORANGE_PLANET_CORE_RADIUS_FACTOR: 0.3,
     ORANGE_PLANET_REPULSION_CONSTANT: 1.6,
     ORANGE_PLANET_MIN_SPAWN_DIST_FACTOR: 0.8,
+    ORANGE_PLANET_MAX_INTERACTION_RANGE_FACTOR: 3.0,
     // Sandbox-specific rules (unlimited/high values for testing)
     MAX_ROUNDS: 999,
     MAX_ABILITIES_TOTAL: 999,

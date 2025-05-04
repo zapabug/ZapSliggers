@@ -1,12 +1,26 @@
-# Zapsliggers Troubleshooting Log
+# ZapSlinggers Troubleshooting Log
 
 This file tracks known issues, errors, and potential problems encountered during development.
 
-**Status (Current Activity):** Build is currently successful. Focus is on testing Practice mode and implementing further multiplayer synchronization and visuals.
+**Status (Current Activity):** Build is successful. Testing recent physics changes (orange planet range/repulsion). Investigating planet placement.
 
 ## Current Build Errors (`pnpm build` output as of YYYY-MM-DD):
 
 *   None. Build successful.
+
+## Runtime Issues & Investigations
+
+1.  **Firing Causes Zoom/Freeze (Likely Fixed 2024-06-08):**
+    *   **Symptoms:** Firing a projectile using either the spacebar or the on-screen Fire button caused the game view to zoom erratically and sometimes freeze.
+    *   **Investigation:**
+        *   Confirmed `useKeyboardControls` called `handleFire` correctly.
+        *   Confirmed `handleFire` in `useGameLogic` called `physicsHandles.fireProjectile`.
+        *   Logs showed the physics engine added the projectile (`World.add`) successfully, but instability occurred immediately after.
+        *   Temporarily disabling dynamic viewport calculations prevented the zoom, indicating the viewport was reacting to physics instability.
+        *   Temporarily disabling orange planet repulsion *did not* fix the issue.
+        *   Identified that the infinite range of default gravity applied to orange planets might be causing interactions leading to instability when projectiles spawn.
+    *   **Fix/Mitigation:** Introduced a maximum interaction range (`ORANGE_PLANET_MAX_INTERACTION_RANGE_FACTOR`) for orange planets in `gameSettings.ts`. Modified `useMatterPhysics.ts` to only apply attraction/repulsion forces from orange planets if the projectile is within this range.
+    *   **Status:** Believed fixed, requires testing confirmation.
 
 ## Previously Fixed Issues
 

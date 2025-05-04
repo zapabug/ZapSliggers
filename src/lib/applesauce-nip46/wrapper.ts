@@ -3,7 +3,7 @@ import { EventTemplate, NostrEvent } from "nostr-tools";
 import { NostrConnectSigner, NostrConnectSignerOptions, Observer, NostrConnectAppMetadata } from "./nostr-connect-signer";
 import debug from 'debug';
 
-const logger = debug("Zapsliggers:applesauce-wrapper");
+const logger = debug("ZapSlinggers:applesauce-wrapper");
 
 // Interface for the serializable payload
 interface NostrConnectWrapperPayload {

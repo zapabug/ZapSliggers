@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
 import Matter from 'matter-js';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { GameSettingsProfile } from '../config/gameSettings'; // Import the settings profile type
+// import { applyStandardGravity, applyGasGiantInnerRepulsion } from './useMatterPhysics'; // Assuming force logic is here or passed in - Temporarily unused
 
 // Destructure Matter.js modules for convenience
-const { Bodies } = Matter;
+const { Bodies, World } = Matter; // World might be needed for World.add
 
 // Constants removed - now passed via settings object
 
@@ -125,153 +126,109 @@ export const generateInitialPositions = (settings: GameSettingsProfile): Initial
     // --- Generate Planets (Normal + Orange) ---
     const planets: Matter.Body[] = [];
     let attemptsPlanets = 0;
-    const maxAttemptsPlanets = 750;
+    const maxAttemptsPlanets = 750; // Max attempts *total* across both types
     let normalPlanetsPlaced = 0;
     let orangePlanetsPlaced = 0;
-    const totalPlanetsToPlace = NUM_PLANETS + NUM_ORANGE_PLANETS;
 
-    while (planets.length < totalPlanetsToPlace && attemptsPlanets < maxAttemptsPlanets) {
+    // --- Place NORMAL Planets Centered ---
+    while (normalPlanetsPlaced < NUM_PLANETS && attemptsPlanets < maxAttemptsPlanets) {
         attemptsPlanets++;
-        
-        // Determine if trying to place orange this attempt
-        const isOrangeCandidate = orangePlanetsPlaced < NUM_ORANGE_PLANETS;
-        const isNormalCandidate = normalPlanetsPlaced < NUM_PLANETS;
-        const attemptIsOrange = isOrangeCandidate && (!isNormalCandidate || Math.random() < 0.5);
-        
-        // Determine radius based on type
-        const maxRadius = attemptIsOrange ? ORANGE_PLANET_MAX_RADIUS : PLANET_MAX_RADIUS;
-        const minRadiusForAttempt = Math.min(PLANET_MIN_RADIUS, maxRadius);
-        const radius = Math.random() * (maxRadius - minRadiusForAttempt) + minRadiusForAttempt;
-        
-        let x: number = 0; 
-        let y: number = 0; 
+        const radius = Math.random() * (PLANET_MAX_RADIUS - PLANET_MIN_RADIUS) + PLANET_MIN_RADIUS;
+
         let placedSuccessfully = false;
-        let isOrange = false; // Will be set true if orange placement succeeds
-        const edgePadding = 50; // Added padding from virtual edge and initial view edge
+        let normalAttempts = 0;
+        const maxNormalAttempts = 100; // Attempts per *single* normal planet
 
-        // Try placing Orange first if decided
-        if (attemptIsOrange) {
-            let orangeAttempts = 0;
-            let foundOrangeSpot = false;
-            // Padding from virtual edge
-            const planetEdgePadding = radius + edgePadding;
+        do {
+            normalAttempts++;
+            // Generate position within the central spawn area
+            const candidateX = Math.random() * (planetSpawnMaxX - planetSpawnMinX) + planetSpawnMinX;
+            const candidateY = Math.random() * (planetSpawnMaxY - planetSpawnMinY) + planetSpawnMinY;
+            const candidatePos = { x: candidateX, y: candidateY };
 
-            do {
-                // Choose a random edge zone (0: Left, 1: Right, 2: Top, 3: Bottom)
-                const edgeZone = Math.floor(Math.random() * 4);
-                let candidateX = 0;
-                let candidateY = 0;
+            // Check collision
+            let collision = false;
+            for (const ship of ships) { if (calculateDistance(candidatePos, ship) < radius + SHIP_RADIUS + MIN_PLANET_SHIP_DISTANCE) { collision = true; break; } }
+            if (collision) continue;
+            for (const existingPlanet of planets) { const existingRadius = existingPlanet.plugin?.ZapSlinggers?.radius || PLANET_MIN_RADIUS; if (calculateDistance(candidatePos, existingPlanet.position) < radius + existingRadius + MIN_PLANET_PLANET_DISTANCE) { collision = true; break; } }
+            if (collision) continue;
 
-                switch(edgeZone) {
-                    case 0: // Left Edge
-                        // Spawn between edgePadding and (initialViewMinX - edgePadding)
-                        candidateX = Math.random() * (initialViewMinX - edgePadding * 2) + edgePadding;
-                        candidateY = Math.random() * (VIRTUAL_HEIGHT - planetEdgePadding * 2) + planetEdgePadding;
-                        break;
-                    case 1: // Right Edge
-                        // Spawn between (initialViewMaxX + edgePadding) and (VIRTUAL_WIDTH - edgePadding)
-                        candidateX = Math.random() * (VIRTUAL_WIDTH - initialViewMaxX - edgePadding * 2) + initialViewMaxX + edgePadding;
-                        candidateY = Math.random() * (VIRTUAL_HEIGHT - planetEdgePadding * 2) + planetEdgePadding;
-                        break;
-                    case 2: // Top Edge
-                        // Spawn between edgePadding and (initialViewMinY - edgePadding)
-                        candidateY = Math.random() * (initialViewMinY - edgePadding * 2) + edgePadding;
-                        // Keep within central X band, but ensure padding from initialView edges if they extend beyond
-                        candidateX = Math.random() * (initialViewMaxX - initialViewMinX - planetEdgePadding * 2) + initialViewMinX + planetEdgePadding; 
-                        break;
-                    case 3: // Bottom Edge
-                         // Spawn between (initialViewMaxY + edgePadding) and (VIRTUAL_HEIGHT - edgePadding)
-                        candidateY = Math.random() * (VIRTUAL_HEIGHT - initialViewMaxY - edgePadding * 2) + initialViewMaxY + edgePadding;
-                        // Keep within central X band, ensuring padding
-                        candidateX = Math.random() * (initialViewMaxX - initialViewMinX - planetEdgePadding * 2) + initialViewMinX + planetEdgePadding;
-                        break;
-                }
-                
-                // Check collision for this specific spot
-                const candidatePos = { x: candidateX, y: candidateY };
-                let collision = false;
-                // Ensure not too close to ships (only check ships, not planets initially for edge placement)
-                for (const ship of ships) { if (calculateDistance(candidatePos, ship) < radius + SHIP_RADIUS + MIN_PLANET_SHIP_DISTANCE) { collision = true; break; } }
-                if (collision) { orangeAttempts++; continue; }
-                // Check collision with other planets AFTER checking ships
-                for (const existingPlanet of planets) { const existingRadius = existingPlanet.plugin?.Zapsliggers?.radius || PLANET_MIN_RADIUS; if (calculateDistance(candidatePos, existingPlanet.position) < radius + existingRadius + MIN_PLANET_PLANET_DISTANCE) { collision = true; break; } }
-                if (collision) { orangeAttempts++; continue; }
-                
-                // Spot is valid, assign and mark success
-                x = candidateX;
-                y = candidateY;
-                isOrange = true; // Set type for body creation
-                placedSuccessfully = true;
-                foundOrangeSpot = true;
-                break; 
-                
-            } while (orangeAttempts < 50); 
-            
-            if (!foundOrangeSpot && !isNormalCandidate) continue; 
-        }
-        
-        // If didn't place orange (or wasn't candidate, or failed and normal is available)
-        if (!placedSuccessfully && isNormalCandidate) {
-            let normalAttempts = 0;
-            do { // Attempt to place a normal planet
-                const candidateX = Math.random() * (planetSpawnMaxX - planetSpawnMinX) + planetSpawnMinX;
-                const candidateY = Math.random() * (planetSpawnMaxY - planetSpawnMinY) + planetSpawnMinY;
-                const candidatePos = { x: candidateX, y: candidateY };
-                
-                // Check collision for this specific spot
-                let collision = false;
-                for (const ship of ships) { if (calculateDistance(candidatePos, ship) < radius + SHIP_RADIUS + MIN_PLANET_SHIP_DISTANCE) { collision = true; break; } }
-                if (collision) { normalAttempts++; continue; }
-                for (const existingPlanet of planets) { const existingRadius = existingPlanet.plugin?.Zapsliggers?.radius || PLANET_MIN_RADIUS; if (calculateDistance(candidatePos, existingPlanet.position) < radius + existingRadius + MIN_PLANET_PLANET_DISTANCE) { collision = true; break; } }
-                if (collision) { normalAttempts++; continue; }
-
-                // Spot is valid
-                x = candidateX;
-                y = candidateY;
-                isOrange = false; // Ensure it's marked as normal
-                placedSuccessfully = true;
-                break;
-            } while (normalAttempts < 50); // Limit placement attempts for normal
-        }
-
-        // If no spot found in either attempt, continue
-        if (!placedSuccessfully) continue;
-
-        // Create planet body based on type (isOrange flag is now reliable)
-        let planetBody: Matter.Body;
-        if (isOrange) {
-            const coreRadius = radius * ORANGE_PLANET_CORE_RADIUS_FACTOR;
-            planetBody = Bodies.circle(x, y, radius, {
+            // Spot is valid
+            const planetBody = Bodies.circle(candidateX, candidateY, radius, {
                 isStatic: true,
-                label: 'orange-planet',
+                label: 'planet', // Normal planet
                 friction: 0.5,
                 restitution: 0.5,
-                plugin: { Zapsliggers: { radius: radius, coreRadius: coreRadius } }
+                plugin: { ZapSlinggers: { radius: radius } }
             });
-            orangePlanetsPlaced++;
-            console.log(`Placed Orange Planet ${orangePlanetsPlaced}/${NUM_ORANGE_PLANETS} at (${x.toFixed(0)}, ${y.toFixed(0)})`);
-        } else {
-            const grayValue = Math.floor(Math.random() * (160 - 80 + 1)) + 80;
-            const grayHex = grayValue.toString(16).padStart(2, '0');
-            const grayColor = `#${grayHex}${grayHex}${grayHex}`;
-            planetBody = Bodies.circle(x, y, radius, {
-                isStatic: true,
-                label: 'planet',
-                friction: 0.5,
-                restitution: 0.5,
-                render: { fillStyle: grayColor },
-                plugin: { Zapsliggers: { radius: radius } } // Store radius for normal planets too
-            });
+            planets.push(planetBody);
             normalPlanetsPlaced++;
+            placedSuccessfully = true;
+            break; // Exit attempt loop for this planet
+
+        } while (normalAttempts < maxNormalAttempts);
+
+        if (!placedSuccessfully) {
+           console.warn(`[Init] Could not place normal planet ${normalPlanetsPlaced + 1} after ${maxNormalAttempts} attempts.`);
+           // Optionally break the outer loop if one fails, or just continue to try others
         }
-        planets.push(planetBody);
+    } // End NORMAL planet placement loop
+
+    // --- Place ORANGE Planets Randomly Across Map ---
+    /* // Temporarily disable orange planet creation for NaN debugging
+    while (orangePlanetsPlaced < NUM_ORANGE_PLANETS && attemptsPlanets < maxAttemptsPlanets) {
+        attemptsPlanets++; // Still counting towards the total attempts limit
+        const radius = Math.random() * (ORANGE_PLANET_MAX_RADIUS - PLANET_MIN_RADIUS) + PLANET_MIN_RADIUS; // Use orange max radius
+        const coreRadius = radius * ORANGE_PLANET_CORE_RADIUS_FACTOR;
+        const edgePadding = radius + 50; // Padding from absolute edges
+
+        let placedSuccessfully = false;
+        let orangeAttempts = 0;
+        const maxOrangeAttempts = 100; // Attempts per *single* orange planet
+
+        do {
+             orangeAttempts++;
+             // Generate position anywhere within virtual bounds, respecting padding
+             const candidateX = Math.random() * (VIRTUAL_WIDTH - 2 * edgePadding) + edgePadding;
+             const candidateY = Math.random() * (VIRTUAL_HEIGHT - 2 * edgePadding) + edgePadding;
+             const candidatePos = { x: candidateX, y: candidateY };
+
+             // Check collision (against ships AND existing normal/orange planets)
+             let collision = false;
+             for (const ship of ships) { if (calculateDistance(candidatePos, ship) < radius + SHIP_RADIUS + MIN_PLANET_SHIP_DISTANCE) { collision = true; break; } }
+             if (collision) continue;
+             // Check against ALL planets placed so far
+             for (const existingPlanet of planets) { const existingRadius = existingPlanet.plugin?.ZapSlinggers?.radius || PLANET_MIN_RADIUS; if (calculateDistance(candidatePos, existingPlanet.position) < radius + existingRadius + MIN_PLANET_PLANET_DISTANCE) { collision = true; break; } }
+             if (collision) continue;
+
+             // Spot is valid
+             const planetBody = Bodies.circle(candidateX, candidateY, radius, {
+                 isStatic: true,
+                 label: 'orange-planet',
+                 friction: 0.5,
+                 restitution: 0.5,
+                 plugin: { ZapSlinggers: { radius: radius, coreRadius: coreRadius } }
+             });
+             planets.push(planetBody);
+             orangePlanetsPlaced++;
+             placedSuccessfully = true;
+             break; // Exit attempt loop for this orange planet
+
+        } while (orangeAttempts < maxOrangeAttempts);
+
+        if (!placedSuccessfully) {
+            console.warn(`[Init] Could not place orange planet ${orangePlanetsPlaced + 1} after ${maxOrangeAttempts} attempts.`);
+        }
+    } // End ORANGE planet placement loop
+    */ // End temporary disabling block
+
+
+    if (planets.length < NUM_PLANETS /* + NUM_ORANGE_PLANETS */) { // Adjusted check
+        console.warn(`[Init] Failed to place all requested normal planets. Placed ${planets.length}/${NUM_PLANETS}`);
     }
 
-    if (planets.length < totalPlanetsToPlace) {
-        console.warn(`[generateInitialPositions] Could only place ${planets.length}/${totalPlanetsToPlace} total planets after ${maxAttemptsPlanets} attempts.`);
-    }
+    console.log(`[generateInitialPositions] Level generated. Ships: 2, Normal Planets: ${normalPlanetsPlaced}, Orange Planets: ${orangePlanetsPlaced} (Disabled)`); // Adjusted log
 
-    console.log("[generateInitialPositions] Level generation complete.");
     return { ships, planets };
 };
 
