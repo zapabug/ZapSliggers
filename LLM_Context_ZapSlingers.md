@@ -16,17 +16,26 @@ ZapSlingers is a 2-player, turn-based steampunk space artillery game. It feature
     *   Initial: Standard space artillery.
     *   Explored: Steampunk vs. Cyberpunk contrast.
     *   Explored: Steampunk Cosmic Pirates with whirlpools (Deemed too arcadey).
-    *   **Final Theme:** Steampunk Contraptions vs. Space Physics (Planets & Gas Giants).
+    *   **Final Theme:** Steampunk Contraptions vs. Space Physics (Planets & Sliggers).
 *   **Key Mechanic Decisions:**
-    *   **Sliggers (Formerly Gas Giants):** Implemented as single physics bodies with conditional attraction/repulsion logic based on distance from the core. Spawn randomly in designated edge zones, separate from standard planets in the central area. *(Physics logic pending in `useMatterPhysics.ts`, Initialization logic pending in `useGameInitialization.ts`)*.
+    *   **Sliggers (Formerly Gas Giants):** Implemented as single physics bodies with conditional attraction/repulsion logic based on distance from the core. Spawn randomly in designated edge zones, separate from standard planets in the central area. *(Physics logic implemented in `useMatterPhysics.ts`, Initialization logic implemented in `useGameInitialization.ts`). Tuning needed.*
     *   **Boundaries:** Destructive by default, with a configurable setting (`gameSettings.ts`) to enable bouncing for sandbox/future modes.
-    *   **Abilities:** Final names chosen: `ZapSplits` (Splitter), `Magnetar` (Gravity/Magnetic), `Gyro` (Plastic). HP (25) cost and usage limits (3 total/1 per type per match) remain.
+    *   **Abilities:** Final names chosen: `ZapSplits` (Splitter), `Magnetar` (Gravity/Magnetic), `Gyro` (Plastic). HP cost (25) and usage limits (3 total/1 per type per match) defined.
     *   **UX:** No intro pop-up, no tooltips. Added explicit end-of-round score display (e.g., "1 - 0").
+    *   **Nostr Matchmaking:** Use `kind:4` DMs for challenge handshake (`ChallengeHandler`).
+    *   **Nostr Gameplay Sync:** Basic sync for fire actions (`kind:30079` `GameActionEvent`) implemented in `useGameLogic`. Full state sync needed.
+    *   **Wagering:** Exclusive Cashu token transfer via Agent/Bot.
 
 **3. Final Low-Level Design (LLD):**
 
 *   The **definitive LLD (LLD 1)** detailing the target state, features, tech stack, file structure, setup, and implementation notes is located in:
     *   @<documentation/docs/Build.md>
+*   Key Hooks:
+    *   `useGameLogic`: Manages overall game state, turns, rules, scoring, **and basic multiplayer sync (`kind:30079`)**.
+    *   `useMatterPhysics`: Handles physics simulation, collisions, Sligger forces.
+    *   `useGameInitialization`: Handles level generation (planets, Sliggers).
+    *   `useAuth`: Handles Nostr authentication.
+    *   `ChallengeHandler`: Component handling `kind:4` DM challenges.
 
 **4. Essential Supporting Documentation Files (@<link> format):**
 

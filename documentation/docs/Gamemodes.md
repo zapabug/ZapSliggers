@@ -1,27 +1,22 @@
 # Zapsliggers Game Modes
 
-This document outlines the different game modes available or planned in Zapsliggers. Each mode utilizes a specific configuration profile defined in `src/config/gameSettings.ts` to tailor the gameplay experience.
+This document outlines the different game modes available or planned in Zapsliggers, an installable PWA designed for minimal setup. Each mode utilizes a specific configuration profile defined in `src/config/gameSettings.ts` to tailor the gameplay experience. **Note: There is currently no in-game UI for changing settings; all configuration is managed directly within the codebase.**
 
 ## 1. Main (Multiplayer)
 
-*   **Screen:** `src/components/screens/GameScreen.tsx` (Refactored to use `useGameLogic`)
-*   **Settings Profile:** `mainSettings` from `src/config/gameSettings.ts`
-*   **Description:** The standard player-vs-player (PvP) mode. Players engage in matches consisting of multiple rounds. This mode relies on Nostr for communication (currently basic fire action sync) and state management via the `useGameLogic` hook. It uses the standard ruleset defined in `mainSettings`, including HP, ability costs, physics parameters, etc.
+*   **Screen:** `src/components/screens/GameScreen.tsx`
+*   **Settings Profile:** `gameSettings` from `src/config/gameSettings.ts`
+*   **Description:** The standard PvP mode. Players engage via Nostr for challenges and gameplay events (`kind:30079`). The goal is a **"semi-live" feel achieved solely through Nostr communication within the PWA**, where actions are sent and received, triggering local simulations and animations.
 
 ## 2. Practice
 
 *   **Screen:** `src/components/screens/PracticeScreen.tsx`
 *   **Settings Profile:** `practiceSettings` from `src/config/gameSettings.ts`
-*   **Description:** A single-player mode designed for players to familiarize themselves with the controls, physics, and abilities without the pressure of a live opponent. It uses the `useGameLogic` hook in `'practice'` mode. Settings (`practiceSettings`) might offer more lenient rules, such as increased ability uses or simplified level layouts, although the core mechanics remain the same. Turns alternate between the player and a static opponent position.
-*   **Status:** Refactored to use `useGameLogic`. **Needs testing** to confirm if previous rendering issues are resolved.
+*   **Description:** A single-player mode for learning controls and physics against a static opponent position, using settings potentially different from multiplayer (e.g., no Sliggers). Turns alternate locally.
+*   **Status:** Refactored to use `useGameLogic`. Needs testing.
 
 ## 3. Custom / Developer Sandbox
 
 *   **Screen:** `src/components/screens/DeveloperSandboxScreen.tsx`
-*   **Settings Profile:** Based on `defaultCustomSettings` from `src/config/gameSettings.ts`, likely modifiable via UI controls within the screen.
-*   **Description:** A single-player mode primarily intended for development, testing, and debugging. It functions similarly to Practice mode (likely using `useGameLogic` in `'custom'` mode) but allows developers to load the game with custom parameters defined in `defaultCustomSettings` or modified versions thereof. This provides a flexible environment to test:
-    *   Changes to physics parameters (gravity, friction, etc.).
-    *   Ability balancing (costs, effects).
-    *   Level generation variations (number of planets, sizes).
-    *   Specific edge cases or gameplay scenarios.
-    It does **not** involve multiplayer synchronization via Nostr.
+*   **Settings Profile:** `sandboxSettings` from `src/config/gameSettings.ts`
+*   **Description:** A single-player mode for development, testing, and debugging. It allows loading the game with the `sandboxSettings` profile. **Settings for this mode must be changed directly in the `src/config/gameSettings.ts` file; there is no UI for modification.** Access to this mode may be restricted (e.g., to specific developer/tester `npubs`) and it can serve as a base for testing custom rulesets for potential tournaments or challenges.

@@ -11,22 +11,22 @@ This document outlines the core gameplay loop and dynamics for Zapsliggers.
     *   Alternating starting player each round.
     *   Opponent profile display based on a predefined Npub.
     *   Keyboard controls updated: Left/Right for angle, Up/Down for power. Player 2 controls inverted.
-*   `GameScreen` uses `useGameLogic` in `'multiplayer'` mode. **Successfully refactored and builds.** Allows simultaneous local control (each player controls their assigned ship). Basic network sync for fire actions (`kind:30079`) implemented within `useGameLogic`.
+*   `GameScreen` uses `useGameLogic` in `'multiplayer'` mode. **Successfully refactored and builds.** Allows simultaneous local control (each player controls their assigned ship). **Basic network sync for fire actions (`kind:30079`, `GameActionEvent` type) implemented within `useGameLogic` (publishing local fire, subscribing to/processing opponent's fire).**
 *   Physics engine (`matter-js` via `useMatterPhysics` hook, called by `useGameLogic`) handles custom planetary gravity, collisions, projectile timeout, and dynamic viewport.
-*   Random level generation (`useGameInitialization` hook, called by `useGameLogic`) places ships and planets.
-*   Aiming controls (**Left/Right for angle, Up/Down for power** via UI/keyboard) and firing are functional (routed via `useGameLogic`).
+*   Random level generation (`useGameInitialization` hook, called by `useGameLogic`) places ships and planets/Sliggers.
+*   Aiming controls (**Left/Right for angle, Up/Down for power** via UI/keyboard) and firing are functional (routed via `useGameLogic`). `setShipAim` in physics hook used.
 *   Active/Historical shot tracers (`useShotTracers` hook, state managed by `useGameLogic`) are displayed.
 *   Basic Zapsliggers rules are partially implemented within `useGameLogic`: HP system used as ability resource, ability selection UI/logic works, standard hits trigger win callback.
 *   Nostr login (`useAuth`) is implemented.
 *   Lobby screen (`LobbyScreen`) displays user ID and hosts the challenge component.
 *   Nostr Challenge/Acceptance handshake (`ChallengeHandler`) via DMs (`kind:4`) successfully transitions both players to `GameScreen`.
 *   **Remaining Implementation Focus:**
-    *   **Testing:** Verify `PracticeScreen` functionality post-refactor.
-    *   Nostr Network Synchronization for `GameScreen`: Refine action sync (aiming?), implement turn structure, sync collision results/game state.
-    *   Full Zapsliggers Rules: Ability effects (Splitter, Gravity, Plastic implementation), round/match win conditions, Sudden Death mechanics.
-    *   Wagering: Payment integration (NUT-18).
+    *   **Testing:** Verify `PracticeScreen` functionality post-refactor. **Test basic multiplayer sync.**
+    *   Nostr Network Synchronization for `GameScreen`: **Refine/complete action sync (aiming?), implement strict turn structure, sync collision results/game state.**
+    *   Full Zapsliggers Rules: Ability effects (Splitter, Gravity, Plastic implementation), round/match win conditions (including Vulnerability), Sudden Death mechanics.
+    *   Wagering: Payment integration (Cashu via Agent).
     *   Visuals: Rendering actual ship/planet sprites, particle effects.
-    *   Testing: Especially network play, mobile login, and rule interactions.
+    *   Testing: Especially network play reliability, mobile login, and rule interactions.
 
 **1. Core Concept (Zapsliggers Target):**
    - A 2-player, turn-based space artillery game with **2D physics-based projectiles** affected by planet gravity.
@@ -47,27 +47,29 @@ This document outlines the core gameplay loop and dynamics for Zapsliggers.
 **3. Turn Flow (Target: Simultaneous Turns - Approx. 60s):**
    - **A. Aiming Phase (Practice Mode: Turn-based, Multiplayer Mode: Simultaneous Local Input):**
      - Players aim concurrently.
-     - Controls: Rotate ship (**Keyboard Left/Right**, Joystick), adjust Power (**Keyboard Up/Down**, Slider), select Ability (Buttons), Fire (Spacebar/Button).
+     - Controls: Rotate ship (**Keyboard Left/Right**, Joystick), adjust Power (**Keyboard Up/Down**, Slider), select Ability (Buttons), Fire (Spacebar/Button). Aiming updates sent to `useGameLogic` which calls `physicsHandles.setShipAim`.
      - No trajectory preview.
      - Last 10 shot traces visible.
      - (Future: Submit move via Nostr `kind:30079` before timer ends).
    - **B. Resolution Phase (Currently Local/Immediate per Client):**
      - (Future: Triggered after both players submit moves or timer expires).
-     - **Practice:** Projectile added for current player via `useGameLogic`. Turn switches to opponent. Collision detection determines round winner based on HP reduction (or self-hit). Logic within `useGameLogic` handles scoring, round advancement, tie-breakers, and alternating starting player.
-     - **Multiplayer (Current):** Fire actions sent/received via Nostr `kind:30079` within `useGameLogic`. Both local optimistic rendering and rendering of received opponent actions trigger `fireProjectile` (via `useGameLogic`). Collision detection and results are still purely local to each client's `useGameLogic` instance.
+     - **Practice:** Projectile added for current player via `useGameLogic`. Turn switches after shot resolves. Collision detection determines round winner based on HP reduction (or self-hit). Logic within `useGameLogic` handles scoring, round advancement, tie-breakers, and alternating starting player.
+     - **Multiplayer (Current):**
+        - **Local Fire:** When local player fires, `useGameLogic` optimistically fires the projectile locally via `physicsHandles.fireProjectile`. It also publishes a `kind:30079` `GameActionEvent` (containing aim, power, ability) via Nostr and immediately switches the local turn to the opponent.
+        - **Remote Fire:** `useGameLogic` subscribes to opponent's `kind:30079` events. When an opponent's 'fire' `GameActionEvent` is received, it updates the opponent's state (aim, HP cost), triggers their shot locally via `physicsHandles.fireProjectile`, and switches the local turn back to the player.
+        - **Simulation:** **Physics simulation and collision results are currently calculated independently on each client.** A hit on one screen doesn't affect the other directly.
      - **Visuals:** Distinct projectile colors/trails. Ability visuals TBD. Active trail (solid line). *(Goal: Particles)*.
-     - **Simulation:** Physics engine calculates paths under planetary gravity.
-     - **Collision Detection (Current Implementation):**
+     - **Collision Detection (Local Implementation):**
        - Self-Hit: Instant round loss.
        - Opponent Hit (Standard): Triggers win callback (Target: Instant round win).
-       - Opponent Hit (Ability): Triggers win callback (Target: Win round if opponent Vulnerable).
-       - Planet Hit (Standard/Gas Core): Projectile removed.
+       - Opponent Hit (Ability): Triggers win callback (TEMP: Always wins round). Target: Win round *only if opponent is Vulnerable*.
+       - Planet/Sligger Hit: Projectile removed.
        - Off-Screen / Timeout (45s): Projectile removed.
      - **Path Recording:** Handled by `useShotTracers`.
      - **World Update:** (Future: Moving planets update position).
    - **C. Post-Resolution / Next Turn Prep (Practice Mode / Future Multiplayer):**
      - Last 10 shot traces rendered.
-     - **Practice:** Next turn starts immediately.
+     - **Practice:** Next turn starts after projectile resolves.
      - (Future: Check round/match win conditions based on Zapsliggers rules. Start next turn timer or proceed to Sudden Death/End Match).
    - **D. Sudden Death Phase (Target - End of Round 5 if no winner):**
      - Projectiles bounce off boundaries and planets.

@@ -22,32 +22,32 @@
 
 *   **Goal:** Implement Sligger mechanics, integrate Nostr for multiplayer, complete Zapsliggers ruleset, implement payments (Cashu), and test thoroughly.
 *   **Sligger Implementation Status:** *Done*. Logic for edge-zone placement (using `SLIGGER_BORDER_PADDING`) and conditional attraction/repulsion (using factors) is implemented in `useGameInitialization.ts` and `useMatterPhysics.ts`.
+*   **Nostr Sync Status:** **Basic fire action sync (`kind:30079`) implemented in `useGameLogic`**. Remaining lint errors need manual fixing. Requires testing.
 
-*   **Key Steps (Immediate Focus - Tuning & Testing):**
-    1.  **Manual Settings Tuning (`src/config/gameSettings.ts`):**
-        *   Adjust `GRAVITY_CONSTANT` for overall gravity strength.
-        *   Adjust `MIN_PLANET_PLANET_DISTANCE` (recommend > `SHIP_RADIUS`) for planet spacing.
-        *   Adjust `INITIAL_VIEW_WIDTH_FACTOR` (in `standardLevelGeneration` / `sandboxSettings`) for desired game area width relative to the start view.
-        *   If Sliggers are enabled (`NUM_SLIGGERS > 0`), tune `SLIGGER_BORDER_PADDING`, `SLIGGER_ATTRACTION_FACTOR`, and `SLIGGER_REPULSION_FACTOR`.
-    2.  **Testing (Practice/Sandbox):**
-        *   Verify planet placement adheres to rules (factor-based horizontal, full vertical height for normal; edge zones for Sliggers).
-        *   Confirm gravity strength and planet spacing feel correct after tuning.
-        *   Verify Practice mode functionality after `useGameLogic` refactor.
-        *   Test Sligger interactions if enabled.
+*   **Key Steps (Immediate Focus - Testing & Lint Fixes):**
+    1.  **Manual Lint Fixes (`src/hooks/useGameLogic.ts`):** Fix persistent errors related to callback ref signatures and `cost` variable scope.
+    2.  **Basic Multiplayer Sync Testing (`testGameplay.md`):** Verify `kind:30079` fire events are sent and received correctly using console logs.
+    3.  **Practice Mode Testing:** Verify `PracticeScreen` functionality after `useGameLogic` refactor.
+    4.  **Manual Settings Tuning (`src/config/gameSettings.ts`):**
+        *   Adjust `GRAVITY_CONSTANT`.
+        *   Adjust `MIN_PLANET_PLANET_DISTANCE`.
+        *   Adjust `INITIAL_VIEW_WIDTH_FACTOR`.
+        *   Tune Sligger factors/padding if `NUM_SLIGGERS > 0`.
+    5.  **Testing (Sandbox):** Test tuned settings and Sligger interactions if enabled.
 
-*   **Key Steps (Following Tuning & Testing):**
-    3.  **Visuals:** Render actual sprites/assets in `GameRenderer` (including distinct visuals for Sliggers).
-    4.  **Nostr Login Testing:** Debug and verify login flows (`useAuth`) on mobile devices.
-    5.  **Matchmaking:** Implement full DM (`kind:4`) challenge flow (Accept/Reject) in `ChallengeHandler`/`LobbyScreen`.
-    6.  **Wagering (NUT-18):** Define and implement backend service API, integrate frontend flow for payment requests/verification.
-    7.  **Turn Synchronization (Full):** 
-        *   Implement robust turn state management (Aiming, Waiting, Resolving). 
-        *   Send/Receive move submissions (`kind:30079`) and coordinate start of resolution phase.
-        *   Synchronize simulation results: Send/Receive completed path data (`kind:30079`) for opponent historical traces. 
-        *   Ensure game state (HP changes, hits) is consistently updated based on synchronized results.
-        *   Handle turn timers.
-    8.  **Zapsliggers Rules Completion:** Implement ability physics effects, full win conditions (HP/Vulnerability), Vulnerability state, ability limits, turn timer/limits, Sudden Death.
-    9.  **Lobby Refinement:** Potentially refine challenge UI.
+*   **Key Steps (Following Basic Sync Test & Tuning):**
+    6.  **Visuals:** Render actual sprites/assets in `GameRenderer` (including Sliggers).
+    7.  **Nostr Login Testing:** Debug and verify login flows (`useAuth`) on mobile devices.
+    8.  **Matchmaking:** Implement full DM (`kind:4`) challenge flow (Accept/Reject) in `ChallengeHandler`/`LobbyScreen`.
+    9.  **Wagering (Cashu):** Define and implement Agent/Bot logic, integrate frontend flow.
+   10. **Turn Synchronization (Full):**
+        *   **Status:** Basic fire sync done. Needs refinement/completion.
+        *   Implement robust turn state management (Aiming, Waiting, Resolving).
+        *   Ensure strict turn enforcement prevents out-of-turn actions reliably.
+        *   Synchronize simulation results: Decide method (e.g., send winner/state update event, deterministic simulation checks) to ensure consistent outcomes (hits, HP, score).
+        *   Handle turn timers if desired.
+   11. **Zapsliggers Rules Completion:** Implement ability physics effects, full win conditions (HP/Vulnerability), Vulnerability state, ability limits, Sudden Death.
+   12. **Lobby Refinement:** Potentially refine challenge UI.
 
 **Phase 3: Polish & Refinement**
 

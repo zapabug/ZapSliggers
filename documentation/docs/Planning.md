@@ -226,3 +226,38 @@
     6. Verified build success after refactoring.
 **Decisions:** `GameScreen.tsx` fully refactored to delegate state management and core logic to `useGameLogic`. Build errors resolved.
 **Steps Explained:** Detailed the process of removing local state, integrating `useGameLogic`, correcting prop passing to children, fixing imports, and cleaning up unused code in `GameScreen.tsx`. Confirmed build success.
+
+## Interaction X+1: YYYY-MM-DD HH:MM (Multiplayer Sync Implementation)
+
+**User Input:**
+- Proceed with implementing gameplay synchronization in `src/hooks/useGameLogic.ts`.
+
+**VibeStorm Questions:**
+- (Implicit) How to structure game events? (Defined `GameActionEvent` in `types/game.ts`)
+- (Implicit) How to handle opponent events? (Implemented subscription/handler)
+- (Implicit) How to send local events? (Implemented publishing)
+
+**VibeStorm Response Summary:**
+- Defined `GameActionEvent` type (`kind:30079`) for fire actions.
+- Added `useEffect` in `useGameLogic` to subscribe to opponent's events via `ndk.subscribe`.
+- Implemented `handleIncomingEvent` to process received 'fire' actions (update state, trigger local physics).
+- Modified `handleFire` to publish local 'fire' action and switch turn locally.
+- Added turn enforcement checks.
+- Encountered and iteratively fixed multiple lint errors (type issues, hook dependencies, argument mismatches, unused variables).
+- Confirmed `fireProjectile` signature and `ABILITY_COST_HP` definition.
+- Recommended manual fixes for final persistent lint errors related to callback ref signatures and `cost` variable scope.
+
+**Decisions Made:**
+- Implemented basic multiplayer sync for `fire` actions using `kind:30079` (`GameActionEvent`) within `useGameLogic`.
+- Local state is updated optimistically on send and reactively on receive.
+- Turn switching implemented based on sending/receiving events.
+- Lint errors require final manual intervention.
+
+**Steps Explained:**
+- Modified `types/game.ts`.
+- Added subscription `useEffect` and handler logic to `useGameLogic`.
+- Modified `handleFire` to publish events in `useGameLogic`.
+- Debugged and fixed multiple linter errors through code analysis and edits.
+- Identified root cause of persistent lint errors and provided manual fix instructions.
+
+**Timestamp:** {{TIMESTAMP}}
