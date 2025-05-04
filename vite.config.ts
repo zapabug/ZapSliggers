@@ -16,8 +16,8 @@ export default defineConfig({
       },
       includeAssets: ['favicon.ico', 'apple-touch-icon.png'], // Ensure icons are cached
       manifest: {
-        name: 'Klunkstr',
-        short_name: 'Klunkstr',
+        name: 'Zapsliggers',
+        short_name: 'Zapsliggers',
         description: 'A 2D Nostr space artillery game with eCash wagering.',
         theme_color: '#111827', // Approx bg-gray-900
         background_color: '#111827', // Approx bg-gray-900

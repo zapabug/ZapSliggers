@@ -1,5 +1,5 @@
 
-Okay, let's gather the specific information you need from the `tvapp` project to compare it with `Klunkstr`.
+Okay, let's gather the specific information you need from the `tvapp` project to compare it with `Zapsliggers`.
 
 **1. NDK Versions & `package.json`**
 
@@ -82,11 +82,11 @@ The custom `useNDKInit` hook in `src/hooks/useNDKInit.ts` does the following:
 *   **NIP-46:** Handled primarily within `src/hooks/useAuth.ts`. It uses a manual flow involving temporary keys and event subscriptions to establish the initial connection, storing the remote signer's hex pubkey in IndexedDB. The re-instantiation of `NDKNip46Signer` for signing likely happens later in the hook or when `getNdkSigner` is called (code not fully visible in snippets).
 *   **NDK Init:** Uses a singleton created in `src/ndk.ts` with `explicitRelayUrls` from constants. Connection is managed by a custom `src/hooks/useNDKInit.ts` which calls `ndk.connect()` and sets readiness based on the first `relay:connect` event, not the `connect()` promise resolution.
 
-This detailed information, especially the NDK version (`2.13.2`) and the specific NIP-46 connection flow in `useAuth.ts`, should allow you to compare directly with the `Klunkstr` implementation and identify the differences. It seems plausible that the NDK version difference could be the primary factor if `Klunkstr` is using an older version where NIP-46 handling might have had bugs.
+This detailed information, especially the NDK version (`2.13.2`) and the specific NIP-46 connection flow in `useAuth.ts`, should allow you to compare directly with the `Zapsliggers` implementation and identify the differences. It seems plausible that the NDK version difference could be the primary factor if `Zapsliggers` is using an older version where NIP-46 handling might have had bugs.
 
 
 
-Okay, let's break down how `tvapp` (based on the code snippets we examined, primarily `src/hooks/useAuth.ts`) generates the NIP-46 connection URI and compare that pattern to the points you raised for `Klunkstr`.
+Okay, let's break down how `tvapp` (based on the code snippets we examined, primarily `src/hooks/useAuth.ts`) generates the NIP-46 connection URI and compare that pattern to the points you raised for `Zapsliggers`.
 
 **NIP-46 URI Generation in `tvapp` (Based on `src/hooks/useAuth.ts`):**
 
@@ -108,14 +108,14 @@ Okay, let's break down how `tvapp` (based on the code snippets we examined, prim
     *   The standard parameters are `relay` (one or more) and `metadata` (a JSON string usually containing `{ "name": "AppName" }`).
     *   `tvapp`'s `initiateNip46Connection` likely only includes these standard parameters. Adding non-standard parameters could potentially confuse some signing apps.
 
-**Comparison Points for `Klunkstr`:**
+**Comparison Points for `Zapsliggers`:**
 
 Based on the `tvapp` implementation:
 
-*   **Check `Klunkstr`'s Relays:** Does the code generating the NIP-46 URI in `Klunkstr` use the *same list* of `explicitRelayUrls` as its main NDK instance? Are *all* intended relays being added as separate `&relay=` parameters?
-*   **Verify Encoding in `Klunkstr`:** Is `Klunkstr` correctly applying `encodeURIComponent` to *each individual relay URL* and to the *stringified metadata JSON*? This is a common point of failure.
-*   **Confirm Scheme in `Klunkstr`:** Is `Klunkstr` definitely using `nostrconnect://` for the URI it presents to the user/Amber?
-*   **Inspect Parameters in `Klunkstr`:** Is `Klunkstr` adding any extra, non-standard query parameters to the `nostrconnect://` URI? Is the `metadata` parameter correctly formatted as an encoded JSON string with at least a `name` field?
+*   **Check `Zapsliggers`'s Relays:** Does the code generating the NIP-46 URI in `Zapsliggers` use the *same list* of `explicitRelayUrls` as its main NDK instance? Are *all* intended relays being added as separate `&relay=` parameters?
+*   **Verify Encoding in `Zapsliggers`:** Is `Zapsliggers` correctly applying `encodeURIComponent` to *each individual relay URL* and to the *stringified metadata JSON*? This is a common point of failure.
+*   **Confirm Scheme in `Zapsliggers`:** Is `Zapsliggers` definitely using `nostrconnect://` for the URI it presents to the user/Amber?
+*   **Inspect Parameters in `Zapsliggers`:** Is `Zapsliggers` adding any extra, non-standard query parameters to the `nostrconnect://` URI? Is the `metadata` parameter correctly formatted as an encoded JSON string with at least a `name` field?
 
 **Recalling the Fix / Path Forward:**
 
@@ -125,8 +125,8 @@ I don't have the context of a specific "fix" applied to `tvapp` regarding this i
 
 The most likely culprits for incompatibility often lie in **incorrect relay inclusion** or **improper URI encoding**.
 
-1.  **Compare Code:** Please review the specific code block in `Klunkstr` that constructs the `nostrconnect://` URI. Compare it directly against the points above derived from `tvapp`'s likely implementation. Pay close attention to how the `RELAYS` array is iterated and how `encodeURIComponent` is applied.
-2.  **Test Signer:** If the code seems identical or the differences aren't obvious, trying a different NIP-46 signer app (if available, like Nosta or Finch on desktop/mobile, though mobile options are limited) is still the fastest way to isolate whether the issue is specific to Amber's parsing/handling or if the URI generated by `Klunkstr` is fundamentally problematic.
+1.  **Compare Code:** Please review the specific code block in `Zapsliggers` that constructs the `nostrconnect://` URI. Compare it directly against the points above derived from `tvapp`'s likely implementation. Pay close attention to how the `RELAYS` array is iterated and how `encodeURIComponent` is applied.
+2.  **Test Signer:** If the code seems identical or the differences aren't obvious, trying a different NIP-46 signer app (if available, like Nosta or Finch on desktop/mobile, though mobile options are limited) is still the fastest way to isolate whether the issue is specific to Amber's parsing/handling or if the URI generated by `Zapsliggers` is fundamentally problematic.
 
 
 

@@ -60,6 +60,13 @@ try {
 // Define view states
 type AppView = 'login' | 'connecting_ndk' | 'menu' | 'practice' | 'lobby' | 'game' | 'dev_sandbox';
 
+// Define an interface for elements with potential fullscreen methods
+interface FullscreenElement extends HTMLElement {
+  webkitRequestFullscreen?: () => Promise<void>;
+  mozRequestFullScreen?: () => Promise<void>; // Firefox prefix (optional)
+  msRequestFullscreen?: () => Promise<void>; // IE/Edge prefix (optional)
+}
+
 function App() { 
   // Initialize ndk-hooks with the singleton instance
   // Call useNDKInit directly at the top level of the component
@@ -97,6 +104,24 @@ function App() {
   const [opponentPubkey, setOpponentPubkey] = useState<string | null>(null);
   // State for the unique identifier of the match (derived from the challenge event)
   const [matchId, setMatchId] = useState<string | null>(null);
+
+  // --- Fullscreen Request Handler (Moved here) ---
+  const handleRequestFullscreen = () => {
+    const element = document.documentElement as FullscreenElement;
+    if (element.requestFullscreen) {
+      element.requestFullscreen();
+    } else if (element.webkitRequestFullscreen) { // Safari
+      element.webkitRequestFullscreen();
+    // Optional: Add checks for other prefixes if needed
+    // } else if (element.mozRequestFullScreen) { // Firefox
+    //   element.mozRequestFullScreen();
+    // } else if (element.msRequestFullscreen) { // IE/Edge
+    //   element.msRequestFullscreen();
+    } else {
+      console.warn("Fullscreen API not supported by this browser.");
+      // Optionally display a message to the user
+    }
+  };
 
   // --- Effects to manage view transitions based on NDK and Auth state --- 
   useEffect(() => {
@@ -190,31 +215,6 @@ function App() {
     }
   };
 
-  // --- Fullscreen Request Handler ---
-  // Define an interface for elements with potential fullscreen methods
-  interface FullscreenElement extends HTMLElement {
-    webkitRequestFullscreen?: () => Promise<void>;
-    mozRequestFullScreen?: () => Promise<void>; // Firefox prefix (optional)
-    msRequestFullscreen?: () => Promise<void>; // IE/Edge prefix (optional)
-  }
-
-  const handleRequestFullscreen = () => {
-    const element = document.documentElement as FullscreenElement;
-    if (element.requestFullscreen) {
-      element.requestFullscreen();
-    } else if (element.webkitRequestFullscreen) { // Safari
-      element.webkitRequestFullscreen();
-    // Optional: Add checks for other prefixes if needed
-    // } else if (element.mozRequestFullScreen) { // Firefox
-    //   element.mozRequestFullScreen();
-    // } else if (element.msRequestFullscreen) { // IE/Edge
-    //   element.msRequestFullscreen();
-    } else {
-      console.warn("Fullscreen API not supported by this browser.");
-      // Optionally display a message to the user
-    }
-  };
-
   // --- Render Logic --- 
   const renderContent = () => {
     console.log(`[App Render] View: ${currentView}, NDK Ready: ${isNdkReady}, Logged In: ${isLoggedIn}, NIP46 Status: ${nip46Status}, IsDev: ${currentUser?.pubkey === DEV_PUBKEY}`);
@@ -271,7 +271,7 @@ function App() {
              return (
                  <div className="w-full h-full flex flex-col items-center justify-center p-4 sm:p-6 text-center">
                      <p className="text-lg mb-4">Check your Nostr mobile app</p>
-                     <p className="text-gray-400 mb-4">Approve the connection request from Klunkstr in your signer (e.g., Amber, Damus).</p>
+                     <p className="text-gray-400 mb-4">Approve the connection request from Zapsliggers in your signer (e.g., Amber, Damus).</p>
                      {/* Add a Cancel button */} 
                      <button 
                          onClick={cancelNip46LoginAttempt} 
@@ -290,7 +290,7 @@ function App() {
                 // Center the login box, responsive padding and width. Use flex-col on small screens.
                 <div className="w-full min-h-screen flex flex-col sm:flex-row items-center justify-center p-4"> {/* Changed to min-h-screen, flex-col default */}
                     <div className="flex flex-col items-center justify-center p-6 sm:p-8 bg-gray-800 rounded-lg shadow-xl space-y-4 sm:space-y-6 w-full max-w-md"> {/* Adjusted max-w, consistent padding */}
-                        <h1 className="text-2xl sm:text-3xl font-bold text-purple-400 mb-4 text-center">Klunkstr Login</h1>
+                        <h1 className="text-2xl sm:text-3xl font-bold text-purple-400 mb-4 text-center">Zapsliggers Login</h1>
                         
                         {/* NIP-07 Section - Explain if unavailable */} 
                         {window.nostr ? (
@@ -330,16 +330,15 @@ function App() {
                         </button>
                         
                         {/* Separator */} 
+                        {/* 
                         <div className="w-full border-t border-gray-600 my-2"></div>
-
-                        {/* --- Add Fullscreen Button --- */}
                         <button
                             onClick={handleRequestFullscreen}
                             className="w-full px-4 sm:px-6 py-2 sm:py-3 rounded font-semibold text-white transition-colors bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50 text-sm sm:text-base"
                         >
                             Enter Fullscreen
                         </button>
-                        {/* --- End Fullscreen Button --- */}
+                        */}
 
                         {authError && <p className="text-red-500 text-xs sm:text-sm mt-4 text-center">Login Failed: {authError.message}</p>} {/* Adjusted text size */}
                     </div>
@@ -354,13 +353,21 @@ function App() {
         case 'menu':
           return (
             <div className="w-full h-full flex flex-col items-center justify-center space-y-4 p-4">
-              <h1 className="text-3xl font-bold mb-6 text-purple-300">Klunkstr Menu</h1>
+              <h1 className="text-3xl font-bold mb-6 text-purple-300">Zapsliggers Menu</h1>
               <p className="text-gray-400">Logged in as: {currentUser.profile?.displayName || currentUser.profile?.name || currentUser.pubkey.slice(0,10)}...</p>
               <button onClick={handleSelectPractice} className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded text-white font-semibold">Practice Mode</button>
               <button onClick={handleSelectMultiplayer} className="px-6 py-3 bg-green-600 hover:bg-green-700 rounded text-white font-semibold">Multiplayer Lobby</button>
               {currentUser.pubkey === DEV_PUBKEY && (
                   <button onClick={handleSelectDevSandbox} className="px-6 py-3 bg-yellow-600 hover:bg-yellow-700 rounded text-black font-semibold">Developer Sandbox</button>
               )}
+              {/* --- Add Fullscreen Button Here --- */}
+              <button 
+                  onClick={handleRequestFullscreen} 
+                  className="px-6 py-3 bg-purple-600 hover:bg-purple-700 rounded text-white font-semibold"
+              >
+                  Enter Fullscreen
+              </button>
+              {/* --- End Fullscreen Button --- */}
             </div>
           );
         case 'practice':

@@ -95,28 +95,33 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
     // --- Return JSX (Similar structure to GameScreen, connected to hook) --- 
     return (
         <div className="relative w-full h-dvh bg-black text-white overflow-hidden flex flex-col">
-            {/* Header with Back Button */}
-            <div className="flex-shrink-0 w-full flex justify-start p-2 bg-gray-800 shadow-md z-20">
-                <button 
-                    onClick={onBackToMenu}
-                    className="px-4 py-2 rounded font-semibold text-white bg-gray-600 hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50"
-                >
-                    &larr; Back to Menu
-                </button>
-                <h1 className="text-xl font-bold ml-4 text-purple-300 self-center">
-                    Practice Mode - {currentPlayerIndex === 0 ? 'Player 1' : 'Player 2'}'s Turn
-                </h1>
-                {/* Display Score and Round (copied from previous correct state) */}
-                <div className="ml-auto text-lg font-semibold text-yellow-300 flex items-center space-x-4 pr-4">
-                    <span>Round: {currentRound} / {settings.MAX_ROUNDS}</span>
-                    <span>Score: {score[0]} - {score[1]}</span>
-                </div>
+            {/* REMOVED Absolute Back Button */}
+            {/* <button 
+                onClick={onBackToMenu}
+                className="absolute top-2 left-2 z-20 px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs font-semibold"
+            >
+                &larr; Back to Menu
+            </button> */}
+
+            {/* ADD Minimalist Top-Right Close Button */}
+            <button
+                onClick={onBackToMenu}
+                className="absolute top-2 right-2 z-20 px-2 py-0.5 rounded text-sm font-semibold text-white"
+                aria-label="Back to Menu"
+            >
+                X
+            </button>
+
+            {/* ADD Minimalist Top-Center Score/Round Display */}
+            <div className="absolute top-2 left-1/2 transform -translate-x-1/2 z-20 flex items-center space-x-4 px-3 py-1 bg-black/30 rounded">
+                <span className="text-sm font-semibold text-yellow-300">Round: {currentRound} / {settings.MAX_ROUNDS}</span>
+                <span className="text-sm font-semibold text-yellow-300">Score: {score[0]} - {score[1]}</span>
             </div>
 
-            {/* Game Area Container (takes remaining space) */}
+            {/* Game Area Container (takes remaining space) - Now takes full height */}
             <div className="relative flex-grow w-full h-full">
-                {/* Player HUDs - Note: Both might show the same user in practice */}
-                <div className="absolute top-2 left-2 z-10 pointer-events-auto">
+                {/* Player HUDs - Adjusted slightly */}
+                <div className="absolute top-8 left-2 z-10 pointer-events-auto"> {/* Moved down slightly */}
                     <PlayerHUD
                         pubkey={currentUser.pubkey} // Player 1 (local user)
                         currentHp={playerStates[0].hp} // Use index 0 state
@@ -125,7 +130,7 @@ const PracticeScreen: React.FC<PracticeScreenProps> = ({
                         ndk={ndk}
                     />
                 </div>
-                <div className="absolute top-2 right-2 z-10 pointer-events-auto">
+                <div className="absolute top-8 right-2 z-10 pointer-events-auto"> {/* Moved down slightly */}
                     <PlayerHUD
                         pubkey={opponentPubkey} // Player 2 (use derived opponent pubkey)
                         currentHp={playerStates[1].hp} // Use index 1 state

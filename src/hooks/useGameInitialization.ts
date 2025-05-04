@@ -194,7 +194,7 @@ export const generateInitialPositions = (settings: GameSettingsProfile): Initial
                 for (const ship of ships) { if (calculateDistance(candidatePos, ship) < radius + SHIP_RADIUS + MIN_PLANET_SHIP_DISTANCE) { collision = true; break; } }
                 if (collision) { orangeAttempts++; continue; }
                 // Check collision with other planets AFTER checking ships
-                for (const existingPlanet of planets) { const existingRadius = existingPlanet.plugin?.klunkstr?.radius || PLANET_MIN_RADIUS; if (calculateDistance(candidatePos, existingPlanet.position) < radius + existingRadius + MIN_PLANET_PLANET_DISTANCE) { collision = true; break; } }
+                for (const existingPlanet of planets) { const existingRadius = existingPlanet.plugin?.Zapsliggers?.radius || PLANET_MIN_RADIUS; if (calculateDistance(candidatePos, existingPlanet.position) < radius + existingRadius + MIN_PLANET_PLANET_DISTANCE) { collision = true; break; } }
                 if (collision) { orangeAttempts++; continue; }
                 
                 // Spot is valid, assign and mark success
@@ -222,7 +222,7 @@ export const generateInitialPositions = (settings: GameSettingsProfile): Initial
                 let collision = false;
                 for (const ship of ships) { if (calculateDistance(candidatePos, ship) < radius + SHIP_RADIUS + MIN_PLANET_SHIP_DISTANCE) { collision = true; break; } }
                 if (collision) { normalAttempts++; continue; }
-                for (const existingPlanet of planets) { const existingRadius = existingPlanet.plugin?.klunkstr?.radius || PLANET_MIN_RADIUS; if (calculateDistance(candidatePos, existingPlanet.position) < radius + existingRadius + MIN_PLANET_PLANET_DISTANCE) { collision = true; break; } }
+                for (const existingPlanet of planets) { const existingRadius = existingPlanet.plugin?.Zapsliggers?.radius || PLANET_MIN_RADIUS; if (calculateDistance(candidatePos, existingPlanet.position) < radius + existingRadius + MIN_PLANET_PLANET_DISTANCE) { collision = true; break; } }
                 if (collision) { normalAttempts++; continue; }
 
                 // Spot is valid
@@ -246,7 +246,7 @@ export const generateInitialPositions = (settings: GameSettingsProfile): Initial
                 label: 'orange-planet',
                 friction: 0.5,
                 restitution: 0.5,
-                plugin: { klunkstr: { radius: radius, coreRadius: coreRadius } }
+                plugin: { Zapsliggers: { radius: radius, coreRadius: coreRadius } }
             });
             orangePlanetsPlaced++;
             console.log(`Placed Orange Planet ${orangePlanetsPlaced}/${NUM_ORANGE_PLANETS} at (${x.toFixed(0)}, ${y.toFixed(0)})`);
@@ -260,7 +260,7 @@ export const generateInitialPositions = (settings: GameSettingsProfile): Initial
                 friction: 0.5,
                 restitution: 0.5,
                 render: { fillStyle: grayColor },
-                plugin: { klunkstr: { radius: radius } } // Store radius for normal planets too
+                plugin: { Zapsliggers: { radius: radius } } // Store radius for normal planets too
             });
             normalPlanetsPlaced++;
         }

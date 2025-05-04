@@ -62,11 +62,21 @@ const GameScreen: React.FC<GameScreenProps> = ({
 
   return (
     <div className="relative w-full h-screen flex flex-col bg-black text-white overflow-hidden">
-      <button
+      {/* REMOVED Absolute Back Button */}
+      {/* <button
         onClick={onBackToMenu}
         className="absolute top-2 left-2 z-20 px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs font-semibold"
       >
         Back to Menu
+      </button> */}
+
+      {/* Minimalist Top-Right Close Button */}
+      <button
+          onClick={onBackToMenu}
+          className="absolute top-2 right-2 z-20 px-2 py-0.5 rounded text-sm font-semibold text-white"
+          aria-label="Back to Menu"
+      >
+          X
       </button>
 
       <div className="absolute top-0 left-0 w-1/3 z-10 p-2">
@@ -90,9 +100,9 @@ const GameScreen: React.FC<GameScreenProps> = ({
 
       <div className={`absolute bottom-0 left-0 right-0 z-10 flex justify-center p-4 ${isMyTurn ? '' : 'opacity-50 pointer-events-none'}`}>
         {(showPlayer0Controls || showPlayer1Controls) && (
-          <ActionButtons
-            onFire={handleFire}
-            selectedAbility={selectedAbility}
+            <ActionButtons
+              onFire={handleFire}
+              selectedAbility={selectedAbility}
             onAbilitySelect={handleSelectAbility}
             usedAbilities={playerStates[currentPlayerIndex].usedAbilities}
             currentHp={playerStates[currentPlayerIndex].hp}
@@ -108,10 +118,10 @@ const GameScreen: React.FC<GameScreenProps> = ({
             Waiting for opponent...
           </div>
         )}
-      </div>
+             </div>
 
       <div className="absolute inset-0 z-0">
-        <GameRenderer
+        <GameRenderer 
           physicsHandles={physicsHandles}
           shotTracerHandlers={shotTracerHandlers}
           settings={settings}

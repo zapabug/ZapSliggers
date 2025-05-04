@@ -8,7 +8,7 @@ import { SimpleSigner } from "./simple-signer";
 import { Deferred, createDefer, isHexKey, unixNow, isNIP04 } from "./helpers";
 
 // Setup logger using debug
-const logger = debug("klunkstr:applesauce-nip46"); // Changed namespace
+const logger = debug("Zapsliggers:applesauce-nip46"); // Changed namespace
 
 // --- Start of copied code from packages/signers/src/signers/nostr-connect-signer.ts ---
 // (Removed original imports for local files/applesauce-core, adjusted SimpleSigner usage)
@@ -70,7 +70,7 @@ export type NostrConnectErrorResponse = {
 };
 
 async function defaultHandleAuth(url: string) {
-  // Consider if window.open is appropriate in Klunkstr's context
+  // Consider if window.open is appropriate in Zapsliggers's context
   // Maybe pass this in via options?
   if (typeof window !== 'undefined' && window.open) {
     window.open(url, "auth", "width=400,height=600,resizable=no,status=no,location=no,toolbar=no,menubar=no");

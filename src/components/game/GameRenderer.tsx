@@ -128,7 +128,7 @@ const drawBorder = (ctx: CanvasRenderingContext2D, scale: number) => {
  }; // Removed unused vars
 const drawPlanet = (ctx: CanvasRenderingContext2D, body: Matter.Body) => {
     const { x, y } = body.position;
-    const radius = body.plugin?.klunkstr?.radius || PLANET_MIN_RADIUS_DRAW;
+    const radius = body.plugin?.Zapsliggers?.radius || PLANET_MIN_RADIUS_DRAW;
 
     let gradient: CanvasGradient;
 

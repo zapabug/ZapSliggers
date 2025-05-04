@@ -1,5 +1,5 @@
 /**
- * Centralized configuration settings for the Klunkstr game.
+ * Centralized configuration settings for the Zapsliggers game.
  * Defines different profiles for various game modes.
  */
 

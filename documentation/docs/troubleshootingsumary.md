@@ -1,4 +1,4 @@
-# NIP-46 Login Troubleshooting Summary (Klunkstr)
+# NIP-46 Login Troubleshooting Summary (Zapsliggers)
 
 ## Initial Problem (Using NDKNip46Signer)
 

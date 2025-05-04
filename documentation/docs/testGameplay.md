@@ -9,12 +9,12 @@ This document describes how to test the current, simplified multiplayer function
 
 *   Two separate devices or browser profiles/windows.
 *   Two distinct Nostr accounts, accessible via NIP-07 extension or a NIP-46 compatible mobile signer (e.g., Amber) or bunker.
-*   Access to the running Klunkstr application on both instances.
+*   Access to the running Zapsliggers application on both instances.
 *   Know the `npub` or hex `pubkey` of the other player.
 
 **Test Procedure:**
 
-1.  **Login:** Both users log in to Klunkstr using the provided options (NIP-07 button, or NIP-46 button which triggers QR/deeplink). Authentication is managed by the `useAuth` hook.
+1.  **Login:** Both users log in to Zapsliggers using the provided options (NIP-07 button, or NIP-46 button which triggers QR/deeplink). Authentication is managed by the `useAuth` hook.
 2.  **Navigate to Lobby:** Both users navigate from the Main Menu (shown after successful login) to the Multiplayer Lobby.
 3.  **Initiate Challenge (User 1):**
     *   User 1 enters User 2's `npub` or hex `pubkey` into the input field in the "Challenge Players" section.
@@ -51,7 +51,7 @@ If challenges or acceptances sent *from* a mobile device (especially using NIP-4
 
 2.  **Mobile Signer Status (NIP-46):**
     *   Is the mobile signer app (e.g., Amber, Nostr Wallet Connect) still running in the foreground or background? Mobile OS can aggressively close apps.
-    *   Did the connection between Klunkstr and the signer app time out or get closed by the OS? Check the console for NIP-46 related errors (`NostrConnectSignerWrapper` logs, connection closed messages).
+    *   Did the connection between Zapsliggers and the signer app time out or get closed by the OS? Check the console for NIP-46 related errors (`NostrConnectSignerWrapper` logs, connection closed messages).
     *   Try keeping the signer app active in the foreground when sending the DM.
 
 3.  **Detailed Mobile Console Logs:**
@@ -60,7 +60,7 @@ If challenges or acceptances sent *from* a mobile device (especially using NIP-4
 
 4.  **Verify Event on Relays:**
     *   After the mobile app logs that the challenge/acceptance was sent, copy the logged `nevent` ID.
-    *   Use an external Nostr client or block explorer (like `astral.ninja`, `nostree.me`, `nos.social`) to search for that specific `nevent` ID on the relays you have configured in Klunkstr.
+    *   Use an external Nostr client or block explorer (like `astral.ninja`, `nostree.me`, `nos.social`) to search for that specific `nevent` ID on the relays you have configured in Zapsliggers.
     *   Does the event appear on *any* of the relays shortly after sending? If not, the publish definitely failed. If it appears on some but not others, it indicates relay propagation issues.
 
 5.  **Signer Comparison (If Possible):**
