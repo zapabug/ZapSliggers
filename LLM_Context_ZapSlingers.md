@@ -60,4 +60,35 @@ To provide full context, ensure the system processes the following links along w
 5.  Use @<documentation/docs/Gameplay.md> and @<documentation/docs/Gamemodes.md> for foundational rules and mode descriptions.
 6.  Implement features according to the LLD, placing code within the structure outlined in @<documentation/docs/layout.md>. Modify hooks like `useMatterPhysics` (for **Sligger** attraction/repulsion) and `useGameInitialization` (for **Sligger** placement and labeling) as specified in the LLD and `solutions.md` plan.
 
+---
+
+**6. Recent Activity & Next Steps (YYYY-MM-DD HH:MM):**
+
+*   **QR Scanner:** Replaced `react-qr-reader@3.0.0-beta-1` with `html5-qrcode@2.3.8` in `src/components/lobby/LobbyScreen.tsx` to resolve persistent camera track errors (`DOMException`) and infinite error callback loops on mobile. Improved error handling within the scanner modal.
+*   **Dependencies & Config:**
+    *   Corrected `package.json` name to `zapsliggers` (lowercase).
+    *   Updated `vite.config.ts` to use port `4173` for dev and preview servers.
+*   **Multiplayer Challenge Flow (Phase 1):**
+    *   Identified issue: Game started prematurely for both players immediately upon acceptance DM exchange, without waiting for mutual readiness.
+    *   Modified `src/components/ChallengeHandler.tsx`:
+        *   Added `onWaitingForOpponent` prop.
+        *   When the local user *accepts* an incoming challenge, `handleAcceptChallenge` now calls `onWaitingForOpponent` instead of `onChallengeAccepted`. This is intended to signal the parent (`App.tsx`) to enter a waiting state.
+        *   Added handlers (`handleRejectChallenge`, `handleCancelSentChallenge`) and wired them to UI buttons.
+        *   Fixed associated linter errors.
+    *   **Current State:** The user who accepts a challenge now correctly signals the parent component to wait. However, the user who *sent* the original challenge still calls the original `onChallengeAccepted` immediately upon receiving the acceptance DM, leading to asymmetry.
+
+**Next Steps (TODOs):**
+
+1.  **Permissions Flow (`useAuth.ts` / NIP-46 logic):**
+    *   Modify authentication flow to request minimal permissions initially (e.g., `get_public_key`).
+    *   Implement logic to request necessary permissions (`nip04_encrypt`, `nip04_decrypt`, `sign_event:4`, `sign_event:30079`) *only when* the user explicitly enters the Multiplayer Lobby or initiates a multiplayer action (like sending a challenge).
+2.  **Challenge Flow - Waiting Logic (`App.tsx` / State Manager):**
+    *   Implement the `onWaitingForOpponent` function passed to `ChallengeHandler`. It should set a global state (e.g., `gameState = 'waiting'`, `matchDetails = { opponentPubkey, matchId }`).
+    *   Modify the handler for the *original* `onChallengeAccepted` prop (called when the *opponent's* accept DM is received in `handleDMEvent`). This should *also* transition the original challenger into the 'waiting' state, storing the `matchDetails`. **Crucially, neither player should navigate to the `GameScreen` yet.**
+    *   Create or modify UI elements to display this "Waiting for opponent..." state.
+3.  **Challenge Flow - Player Ready (`useGameLogic.ts`, `App.tsx`):**
+    *   In `useGameLogic.ts`, add a `useEffect` hook that runs when the component mounts in multiplayer mode. This effect should publish a `player_ready` event via Nostr (`kind: 30079`, `{"type": "player_ready", "matchId": matchId}`).
+    *   In `App.tsx` (or wherever the 'waiting' state is managed), add a Nostr subscription listening for `kind: 30079` events tagged with the current `matchId`.
+    *   When a `player_ready` event is received *from the opponent*, update the game state (e.g., `gameState = 'starting'`) and navigate both players (or at least the local player) to the `GameScreen`. (Ensure this only happens once the *opponent's* ready event is received).
+
 --- 

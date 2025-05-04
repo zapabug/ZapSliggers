@@ -9,7 +9,8 @@ interface LobbyScreenProps {
     ndk: NDK;
     currentUser: NDKUser;
     onChallengeAccepted: (opponentPubkey: string, matchId: string) => void;
-    onBackToMenu: () => void;
+    onWaitingForOpponent: (opponentPubkey: string, matchId: string) => void;
+    onBack: () => void;
 }
 
 const qrcodeRegionId = "qr-reader-container";
@@ -18,7 +19,8 @@ const LobbyScreen: React.FC<LobbyScreenProps> = ({
     ndk, 
     currentUser, 
     onChallengeAccepted, 
-    onBackToMenu
+    onWaitingForOpponent,
+    onBack
 }) => {
     const userNpub = currentUser.npub;
     const nostrUri = userNpub ? `nostr:${userNpub}` : '';
@@ -147,7 +149,7 @@ const LobbyScreen: React.FC<LobbyScreenProps> = ({
 
             <div className="w-full flex justify-start mb-4">
                 <button 
-                    onClick={onBackToMenu}
+                    onClick={onBack}
                     className="px-4 py-2 rounded font-semibold text-white bg-gray-600 hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50 shadow-md"
                 >
                     &larr; Back to Menu
@@ -193,6 +195,7 @@ const LobbyScreen: React.FC<LobbyScreenProps> = ({
                     ndk={ndk} 
                     loggedInPubkey={currentUser.pubkey} 
                     onChallengeAccepted={onChallengeAccepted} 
+                    onWaitingForOpponent={onWaitingForOpponent}
                     recipientNpubOrHex={recipientNpubOrHex}
                     setRecipientNpubOrHex={setRecipientNpubOrHex}
                 />

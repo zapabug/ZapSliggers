@@ -169,16 +169,16 @@ export function useGameLogic({
                         setPlayerStates(prev => {
                             const newStates = [...prev] as [PlayerState, PlayerState];
                             const opponentState = { ...newStates[turnIndex] };
-                            const cost = ABILITY_COST_HP;
+                            const abilityCost = ABILITY_COST_HP;
                             
-                            if (opponentState.hp >= cost) {
-                                opponentState.hp -= cost;
+                            if (opponentState.hp >= abilityCost) {
+                                opponentState.hp -= abilityCost;
                                 opponentState.usedAbilities = new Set(opponentState.usedAbilities).add(ability);
                                 newStates[turnIndex] = opponentState;
                                 playerStatesRef.current = newStates; // Update ref
                                 return newStates;
                             } else {
-                                console.warn(`[useGameLogic] Opponent invalid ability use: ${ability} (HP: ${opponentState.hp}, Cost: ${cost})`);
+                                console.warn(`[useGameLogic] Opponent invalid ability use: ${ability} (HP: ${opponentState.hp}, Cost: ${abilityCost})`);
                                 return prev;
                             }
                         });
@@ -203,6 +203,42 @@ export function useGameLogic({
         return () => { subscription.stop(); };
 
     }, [mode, ndk, matchId, opponentPubkey, myPlayerIndex, currentPlayerIndex, physicsHandles, ABILITY_COST_HP, settings]);
+
+    // --- ADD EFFECT FOR PLAYER READY SIGNAL ---
+    useEffect(() => {
+        // Only run in multiplayer mode when NDK and matchId are ready
+        if (mode === 'multiplayer' && ndk && matchId) {
+            console.log(`[useGameLogic] Multiplayer mode active. Sending player_ready for match: ${matchId}`);
+
+            const sendReadyEvent = async () => {
+                try {
+                    const readyEvent = new NDKEvent(ndk);
+                    readyEvent.kind = 30079 as NDKKind; // Use specific kind number
+                    readyEvent.content = JSON.stringify({ type: 'player_ready' });
+                    readyEvent.tags = [['j', matchId]]; // Tag with the match identifier
+
+                    // No need to encrypt this signal
+                    await readyEvent.publish();
+                    console.log(`[useGameLogic] Published player_ready event: ${readyEvent.encode()}`);
+                } catch (error) {
+                    console.error("[useGameLogic] Failed to publish player_ready event:", error);
+                    // Optionally notify the user or trigger an error state
+                }
+            };
+
+            // Send the event shortly after mount to ensure NDK connection is likely established
+            // and other initial setup might be complete.
+            const timerId = setTimeout(sendReadyEvent, 500); // Small delay
+
+            return () => clearTimeout(timerId); // Cleanup timer on unmount
+
+        } else {
+            console.log("[useGameLogic] Not in multiplayer or NDK/matchId not ready, skipping player_ready send.");
+        }
+    // Run only once when NDK, matchId, and mode stabilize for multiplayer
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [mode, ndk, matchId]); // Add dependencies
+    // --- END PLAYER READY EFFECT ---
 
     // --- Define full Round Completion Logic ---
     // This function is called by the hit handler below
@@ -319,74 +355,108 @@ export function useGameLogic({
     }, [myPlayerIndex, mode, currentPlayerIndex]);
 
     const handleFire = useCallback(() => {
-        if (mode === 'multiplayer' && currentPlayerIndex !== myPlayerIndex) {
-            console.warn("[useGameLogic] Cannot fire - not my turn.");
+        if (!levelData || !physicsHandles) return;
+        if (currentPlayerIndex !== myPlayerIndex && mode === 'multiplayer') {
+            console.warn("[useGameLogic] Not player's turn to fire locally.");
             return;
         }
 
-        const currentAim = aimStates[myPlayerIndex];
-        const currentPState = playerStates[myPlayerIndex];
-        let abilityToUse: AbilityType | null = selectedAbility;
+        const aim = aimStates[currentPlayerIndex];
+        const abilityToUse = selectedAbility;
 
-        // Validate Ability Use
+        // --- Ability Validation & Cost (Local Player) ---
         if (abilityToUse) {
-            // Use the single cost value from settings
-            const cost = ABILITY_COST_HP;
+            const currentPState = playerStatesRef.current[currentPlayerIndex]; // Use ref for latest state
             const totalUsedCount = currentPState.usedAbilities.size;
             const typeUsedCount = Array.from(currentPState.usedAbilities).filter(a => a === abilityToUse).length;
 
-            if (
-                currentPState.hp < cost ||
-                totalUsedCount >= MAX_ABILITIES_TOTAL ||
-                typeUsedCount >= MAX_ABILITIES_PER_TYPE
-            ) {
-                console.warn(`[useGameLogic] Cannot use ability ${abilityToUse}: HP=${currentPState.hp}/${cost}, TotalUsed=${totalUsedCount}/${MAX_ABILITIES_TOTAL}, TypeUsed=${typeUsedCount}/${MAX_ABILITIES_PER_TYPE}`);
-                abilityToUse = null;
-                setSelectedAbility(null);
+            // Use the single cost value from settings
+            const abilityCost = ABILITY_COST_HP; // RENAME 'cost' to 'abilityCost'
+
+            // Validation checks
+            const canUse =
+                currentPState.hp >= abilityCost && // USE abilityCost
+                totalUsedCount < MAX_ABILITIES_TOTAL &&
+                typeUsedCount < MAX_ABILITIES_PER_TYPE;
+
+            if (!canUse) {
+                console.warn(`[useGameLogic] Cannot use ability ${abilityToUse}: HP=${currentPState.hp}/${abilityCost}, TotalUsed=${totalUsedCount}/${MAX_ABILITIES_TOTAL}, TypeUsed=${typeUsedCount}/${MAX_ABILITIES_PER_TYPE}`); // USE abilityCost
+                setSelectedAbility(null); // Deselect invalid ability
+                return; // Prevent firing
             }
-        }
 
-        // Apply ability cost locally (if used)
-        if (abilityToUse) {
-             // Ensure cost is a valid number before subtracting
-            if (cost !== Infinity) {
+            // Apply ability cost locally (if used)
+            // Ensure cost is a valid number before subtracting
+            if (abilityCost !== Infinity) { // USE abilityCost
                 setPlayerStates(prev => {
-                    const newStates = [...prev] as [PlayerState, PlayerState];
-                    const newState = { ...newStates[myPlayerIndex] };
-                    newState.hp -= cost;
-                    newState.usedAbilities = new Set(newState.usedAbilities).add(abilityToUse!);
-                    newStates[myPlayerIndex] = newState;
-                    playerStatesRef.current = newStates;
-                    return newStates;
+                    const newState = [...prev] as [PlayerState, PlayerState];
+                    // Double check index validity
+                    if (newState[currentPlayerIndex]) {
+                         newState[currentPlayerIndex].hp -= abilityCost; // USE abilityCost
+                         newState[currentPlayerIndex].usedAbilities = new Set(newState[currentPlayerIndex].usedAbilities).add(abilityToUse);
+                         playerStatesRef.current = newState; // Update ref immediately for physics check
+                    }
+                    return newState;
                 });
-             } // else: cost is infinity, do nothing
+            } // else: cost is infinity, do nothing
+
+            // Don't reset selectedAbility here, pass it to fireProjectile
         }
 
-        // --- Publish Fire Event (Multiplayer) ---
+        physicsHandles.fireProjectile(currentPlayerIndex, aim.power, abilityToUse);
+
+        // Reset selected ability *after* firing
+        setSelectedAbility(null);
+
+        // --- Send Nostr Event (Multiplayer) ---
         if (mode === 'multiplayer' && ndk && matchId) {
-            const fireAction: GameActionEvent['action'] = { type: 'fire', aim: currentAim, ability: abilityToUse };
-            const eventPayload: GameActionEvent = { type: 'game_action', matchId, senderPubkey: localPlayerPubkey, turnIndex: myPlayerIndex, action: fireAction };
-            const nostrEvent = new NDKEvent(ndk); nostrEvent.kind = 30079 as NDKKind; nostrEvent.content = JSON.stringify(eventPayload); nostrEvent.tags = [['j', matchId]];
-            
-            console.log('[useGameLogic] Publishing game action:', eventPayload);
-            nostrEvent.publish().catch(err => console.error('[useGameLogic] Failed to publish fire event:', err));
+            // Define the specific action payload
+            const fireActionPayload: { type: 'fire', aim: { angle: number, power: number }, ability: AbilityType | null } = {
+                type: 'fire',
+                aim: aim,
+                ability: abilityToUse,
+            };
 
-             // Switch turn locally immediately AFTER sending the event in multiplayer
-             setCurrentPlayerIndex(myPlayerIndex === 0 ? 1 : 0);
-             setSelectedAbility(null);
-             console.log(`[useGameLogic] Turn switched to P${myPlayerIndex === 0 ? 1 : 0} after publishing fire event.`);
+            // Define the full Nostr event content using GameActionEvent type
+            const nostrEventContent: GameActionEvent = { // Use GameActionEvent directly
+                type: 'game_action', // Keep this as the discriminator
+                matchId: matchId, // ADD missing property
+                senderPubkey: localPlayerPubkey, // ADD missing property
+                turnIndex: currentPlayerIndex,
+                action: fireActionPayload, // Assign the specific action
+            };
+
+            const nostrEvent = new NDKEvent(ndk);
+            nostrEvent.kind = 30079 as NDKKind;
+            nostrEvent.content = JSON.stringify(nostrEventContent); // Stringify the correct object
+            nostrEvent.tags = [['j', matchId]];
+            nostrEvent.publish().catch(err => console.error("[useGameLogic] Failed to publish fire event:", err));
+            console.log(`[useGameLogic] Published fire event for turn ${currentPlayerIndex}`);
         }
 
-        // Trigger local physics simulation
-        if (physicsHandles) {
-            // Correct arguments: playerIndex, power, abilityType
-            physicsHandles.fireProjectile(myPlayerIndex, currentAim.power, abilityToUse);
+        // Switch turn ONLY if it's not multiplayer or if it IS the local player's turn
+        if (mode !== 'multiplayer' || currentPlayerIndex === myPlayerIndex) {
+             const nextPlayerIndex = currentPlayerIndex === 0 ? 1 : 0;
+             setCurrentPlayerIndex(nextPlayerIndex);
+             console.log(`[useGameLogic] Turn switched locally to P${nextPlayerIndex}`);
+        } else {
+            console.log("[useGameLogic] Waiting for opponent's move, not switching turn locally.");
         }
 
     }, [
-        mode, ndk, matchId, localPlayerPubkey, currentPlayerIndex, myPlayerIndex, 
-        aimStates, playerStates, selectedAbility, physicsHandles, 
-        ABILITY_COST_HP, MAX_ABILITIES_TOTAL, MAX_ABILITIES_PER_TYPE, settings, playerStatesRef
+        ndk,
+        matchId,
+        mode,
+        currentPlayerIndex,
+        myPlayerIndex,
+        aimStates,
+        selectedAbility,
+        physicsHandles,
+        levelData,
+        ABILITY_COST_HP,
+        MAX_ABILITIES_TOTAL,
+        MAX_ABILITIES_PER_TYPE,
+        localPlayerPubkey,
     ]);
 
     // --- Return Values ---

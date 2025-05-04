@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 // Use the standard hooks from the library
 // import { useNDK, useNDKInit } from '@nostr-dev-kit/ndk-hooks'
 // Import NDKNip46Signer
@@ -28,7 +28,7 @@ import LobbyScreen from './components/lobby/LobbyScreen';
 import PracticeScreen from './components/screens/PracticeScreen'; // Corrected import path
 import { isMobileDevice } from './utils/mobileDetection'; // <-- Import the utility
 import DeveloperSandboxScreen from './components/screens/DeveloperSandboxScreen'; // Import the new screen
-import { NDKUser } from '@nostr-dev-kit/ndk'; // Import NDKUser for type checking
+import { NDKUser, NDKEvent, NDKKind, NDKFilter, NDKSubscription } from '@nostr-dev-kit/ndk'; // Import NDKUser for type checking
 
 // Remove local relay definition
 // const explicitRelayUrls = [...] 
@@ -104,6 +104,10 @@ function App() {
   const [opponentPubkey, setOpponentPubkey] = useState<string | null>(null);
   // State for the unique identifier of the match (derived from the challenge event)
   const [matchId, setMatchId] = useState<string | null>(null);
+  // Add new state for waiting status
+  const [isWaitingForOpponent, setIsWaitingForOpponent] = useState<boolean>(false);
+  // Add ref for subscription
+  const readySubscriptionRef = useRef<NDKSubscription | null>(null);
 
   // --- Fullscreen Request Handler (Moved here) ---
   const handleRequestFullscreen = () => {
@@ -189,19 +193,31 @@ function App() {
       setCurrentView('menu');
       setOpponentPubkey(null); // Clear opponent on back
       setMatchId(null);      // Clear match ID on back
+      setIsWaitingForOpponent(false); // Add this reset
   };
 
-  const handleChallengeAccepted = (opponent: string, confirmedMatchId: string) => {
-      console.log(`[App] Starting multiplayer game against: ${opponent}, Match ID: ${confirmedMatchId}`);
+  // Define the new handler for when the user *accepts* a challenge
+  const handleWaitingForOpponent = (opponent: string, confirmedMatchId: string) => {
+      console.log(`[App] Waiting for opponent: ${opponent}, Match ID: ${confirmedMatchId}`);
       setOpponentPubkey(opponent);
       setMatchId(confirmedMatchId); // Store the match ID
-      setCurrentView('game');
+      setIsWaitingForOpponent(true);
+      setCurrentView('lobby'); // Ensure we are showing the lobby (which will display the waiting message)
+  };
+
+  // Modify the existing handler for when the *challenger* receives the acceptance DM
+  const handleChallengeAccepted = (opponent: string, confirmedMatchId: string) => {
+      console.log(`[App] Challenge accepted by: ${opponent}, Match ID: ${confirmedMatchId}. Entering waiting state.`);
+      // Instead of navigating directly to game, trigger the waiting state
+      handleWaitingForOpponent(opponent, confirmedMatchId);
+      // setCurrentView('game'); // REMOVED - Navigation happens later
   };
 
   const handleGameEnd = () => {
       console.log("[App] Multiplayer game ended, returning to menu."); // Go back to menu after game
       setOpponentPubkey(null);
       setMatchId(null); // Clear match ID on game end
+      setIsWaitingForOpponent(false); // Add this reset
       setCurrentView('menu');
   };
 
@@ -215,9 +231,72 @@ function App() {
     }
   };
 
+  // --- ADD EFFECT FOR OPPONENT READY SUBSCRIPTION --- 
+  useEffect(() => {
+    // Ensure we are in the waiting state and have necessary info
+    if (isWaitingForOpponent && ndk && matchId && opponentPubkey) {
+      console.log(`[App] Entered waiting state. Subscribing to ready signals for match ${matchId} from opponent ${opponentPubkey}`);
+      
+      // Prevent duplicate subscriptions
+      if (readySubscriptionRef.current) {
+          console.log("[App] Cleaning up existing ready subscription before creating new one.");
+          readySubscriptionRef.current.stop();
+          readySubscriptionRef.current = null;
+      }
+
+      const subscriptionFilter: NDKFilter = {
+        kinds: [30079 as NDKKind],
+        '#j': [matchId],
+        authors: [opponentPubkey], // Only listen for the opponent
+        since: Math.floor(Date.now() / 1000) - 5, // Look back a few seconds
+      };
+
+      const subscription = ndk.subscribe(subscriptionFilter, { closeOnEose: false });
+      readySubscriptionRef.current = subscription;
+
+      const handleOpponentReady = (event: NDKEvent) => {
+        try {
+          const content = JSON.parse(event.content);
+          if (content.type === 'player_ready') {
+            console.log(`[App] Received player_ready signal from opponent ${event.pubkey}! Starting game.`);
+            // Stop listening, we got what we needed
+            subscription.stop(); 
+            readySubscriptionRef.current = null;
+
+            // Update state to start the game
+            setIsWaitingForOpponent(false); // Exit waiting state
+            setCurrentView('game');       // Navigate to game screen
+          }
+        } catch (error) {
+          console.error("[App] Failed to parse ready signal event content:", error, event.content);
+        }
+      };
+
+      subscription.on('event', handleOpponentReady);
+      subscription.start();
+      console.log("[App] Ready subscription started.");
+
+      // Cleanup function
+      return () => {
+        console.log("[App] Cleaning up ready subscription.");
+        if (readySubscriptionRef.current) {
+             readySubscriptionRef.current.stop();
+             readySubscriptionRef.current = null;
+        }
+      };
+    } else if (!isWaitingForOpponent && readySubscriptionRef.current) {
+         // If we exit the waiting state for any reason (e.g., cancel), ensure subscription is stopped
+         console.log("[App] Exited waiting state. Stopping ready subscription.");
+         readySubscriptionRef.current.stop();
+         readySubscriptionRef.current = null;
+    }
+    // Dependencies: Run when waiting state changes or necessary info becomes available
+  }, [isWaitingForOpponent, ndk, matchId, opponentPubkey]); 
+  // --- END OPPONENT READY SUBSCRIPTION --- 
+
   // --- Render Logic --- 
   const renderContent = () => {
-    console.log(`[App Render] View: ${currentView}, NDK Ready: ${isNdkReady}, Logged In: ${isLoggedIn}, NIP46 Status: ${nip46Status}, IsDev: ${currentUser?.pubkey === DEV_PUBKEY}`);
+    console.log(`[App Render] View: ${currentView}, NDK Ready: ${isNdkReady}, Logged In: ${isLoggedIn}, NIP46 Status: ${nip46Status}, IsDev: ${currentUser?.pubkey === DEV_PUBKEY}, Waiting: ${isWaitingForOpponent}`); // Added waiting state log
 
     // 1. NDK Connecting
     if (currentView === 'connecting_ndk') {
@@ -347,60 +426,126 @@ function App() {
         }
     }
 
-    // --- Logged In Views --- 
-    if (isLoggedIn && currentUser && ndk) {
-      switch (currentView) {
-        case 'menu':
+    // --- Add early return check/type guard AFTER login view --- 
+    if (!isLoggedIn || !currentUser || !ndk) {
+      // Should ideally not be reached if view logic is correct, but acts as a type guard
+      console.error("[App Render] Critical state error: Not logged in or NDK/User missing despite view being beyond 'login'. Returning to login.");
+      setCurrentView('login'); // Force back to login
+      return (
+        <div className="flex items-center justify-center h-full w-full">
+          Invalid state. Redirecting to login...
+        </div>
+      );
+    }
+    // --- End early return check --- 
+
+    // 3. Menu View (if NDK ready and logged in)
+    if (currentView === 'menu') {
+      // Determine if current user is the developer
+      const isDeveloper = currentUser?.pubkey === DEV_PUBKEY;
+
+      return (
+        <div className="w-full h-full flex flex-col items-center justify-center p-4 space-y-4">
+          <h1 className="text-3xl font-bold mb-6">ZapSlingers</h1>
+          {/* Add Fullscreen Button */}
+          <button
+            onClick={handleRequestFullscreen}
+            className="mb-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition duration-150 ease-in-out"
+          >
+            Go Fullscreen
+          </button>
+          <button onClick={handleSelectPractice} className="w-48 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded transition duration-150 ease-in-out">Practice Mode</button>
+          <button onClick={handleSelectMultiplayer} className="w-48 px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded transition duration-150 ease-in-out">Multiplayer Lobby</button>
+          {/* Conditionally render Dev Sandbox button */}
+          {isDeveloper && (
+              <button onClick={handleSelectDevSandbox} className="w-48 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded transition duration-150 ease-in-out">Developer Sandbox</button>
+          )}
+          {/* Add a logout button or other menu items */}
+        </div>
+      );
+    }
+
+    // 4. Lobby View
+    if (currentView === 'lobby') {
+      if (isWaitingForOpponent) {
+          // Render waiting state
           return (
-            <div className="w-full h-full flex flex-col items-center justify-center space-y-4 p-4">
-              <h1 className="text-3xl font-bold mb-6 text-purple-300">Zapsliggers Menu</h1>
-              <p className="text-gray-400">Logged in as: {currentUser.profile?.displayName || currentUser.profile?.name || currentUser.pubkey.slice(0,10)}...</p>
-              <button onClick={handleSelectPractice} className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded text-white font-semibold">Practice Mode</button>
-              <button onClick={handleSelectMultiplayer} className="px-6 py-3 bg-green-600 hover:bg-green-700 rounded text-white font-semibold">Multiplayer Lobby</button>
-              {currentUser.pubkey === DEV_PUBKEY && (
-                  <button onClick={handleSelectDevSandbox} className="px-6 py-3 bg-yellow-600 hover:bg-yellow-700 rounded text-black font-semibold">Developer Sandbox</button>
-              )}
-              {/* --- Add Fullscreen Button Here --- */}
-              <button 
-                  onClick={handleRequestFullscreen} 
-                  className="px-6 py-3 bg-purple-600 hover:bg-purple-700 rounded text-white font-semibold"
-              >
-                  Enter Fullscreen
-              </button>
-              {/* --- End Fullscreen Button --- */}
-            </div>
+              <div className="flex flex-col items-center justify-center h-full w-full p-4 text-center">
+                  <h2 className="text-2xl font-bold mb-4">Match Found!</h2>
+                  {/* Ensure opponentPubkey and matchId are strings before slicing */}
+                  <p className="mb-2">Opponent: {opponentPubkey ? `${opponentPubkey.substring(0, 8)}...${opponentPubkey.substring(opponentPubkey.length - 4)}` : 'Unknown'}</p>
+                  <p className="mb-6">Match ID: {matchId ? `${matchId.substring(0, 8)}...` : 'Unknown'}</p>
+                  {/* Loading Spinner */}
+                  <svg className="animate-spin h-8 w-8 text-white mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <p className="text-xl">Waiting for opponent to be ready...</p>
+                  <button
+                      onClick={handleBackToMenu} // Reuse back handler for cancelling wait
+                      className="mt-6 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded transition duration-150 ease-in-out"
+                  >
+                      Cancel Match
+                  </button>
+              </div>
           );
-        case 'practice':
-          return <PracticeScreen ndk={ndk} currentUser={currentUser} onBackToMenu={handleBackToMenu} />;
-        case 'lobby':
-          return <LobbyScreen ndk={ndk} currentUser={currentUser} onChallengeAccepted={handleChallengeAccepted} onBackToMenu={handleBackToMenu} />;
-        case 'game':
-          if (opponentPubkey && matchId) {
-            return <GameScreen 
-                      ndk={ndk} 
-                      localPlayerPubkey={currentUser.pubkey} 
-                      opponentPubkey={opponentPubkey} 
-                      matchId={matchId} 
-                      onGameEnd={handleGameEnd} 
-                      onBackToMenu={handleBackToMenu}
-                    />;
-          } else {
-            console.warn("[App Render] Trying to render game but opponentPubkey or matchId is undefined");
-            return <div className="flex items-center justify-center h-full w-full">Redirecting to menu...</div>;
-          }
-        case 'dev_sandbox':
-          if (currentUser && ndk && currentUser.pubkey === DEV_PUBKEY) {
-            return <DeveloperSandboxScreen ndk={ndk} currentUser={currentUser} onBackToMenu={handleBackToMenu} />;
-          } else {
-            console.warn("Render attempt for dev_sandbox blocked for non-developer.");
-            setCurrentView('menu');
-            return null;
-          }
-        default:
-           console.error(`[App Render] Reached unexpected state: View=${currentView}, LoggedIn=${isLoggedIn}`);
-           return <div className="flex items-center justify-center h-full w-full">Unexpected application state.</div>;
+      } else {
+          // Render normal LobbyScreen
+          // Ensure ndk and currentUser are not null before rendering LobbyScreen
+          // if (!ndk || !currentUser) { // REMOVED this check - handled above
+              // This case should ideally not be reached due to the view logic, but handle defensively
+              // console.error("Attempted to render LobbyScreen without NDK or currentUser.");
+              // Optionally redirect or show an error message
+              // handleBackToMenu(); // Go back to menu if state is inconsistent // REMOVED
+              // return null; // Or render a fallback UI // REMOVED
+          // } // REMOVED
+          return (
+              <LobbyScreen
+                  ndk={ndk} // Pass non-null ndk
+                  currentUser={currentUser} // Pass non-null currentUser
+                  onChallengeAccepted={handleChallengeAccepted}
+                  onWaitingForOpponent={handleWaitingForOpponent} // Pass the new handler
+                  onBack={handleBackToMenu}
+              />
+          );
       }
-    } 
+    }
+
+    // 5. Practice View
+    if (currentView === 'practice') {
+      // No need for !ndk || !currentUser check here due to early return above
+      return <PracticeScreen ndk={ndk} currentUser={currentUser} onBackToMenu={handleBackToMenu} />;
+    }
+
+    // 6. Game View
+    if (currentView === 'game') {
+      // No need for !ndk || !currentUser check here
+      if (opponentPubkey && matchId) {
+        return <GameScreen 
+                  ndk={ndk} 
+                  localPlayerPubkey={currentUser.pubkey} 
+                  opponentPubkey={opponentPubkey} 
+                  matchId={matchId} 
+                  onGameEnd={handleGameEnd} 
+                  onBackToMenu={handleBackToMenu}
+                />;
+      } else {
+        console.warn("[App Render] Trying to render game but opponentPubkey or matchId is undefined");
+        return <div className="flex items-center justify-center h-full w-full">Redirecting to menu...</div>;
+      }
+    }
+
+    // 7. Developer Sandbox View
+    if (currentView === 'dev_sandbox') {
+      // No need for !ndk || !currentUser check here
+      if (currentUser.pubkey === DEV_PUBKEY) { // Direct access to currentUser.pubkey is safe now
+        return <DeveloperSandboxScreen ndk={ndk} currentUser={currentUser} onBackToMenu={handleBackToMenu} />;
+      } else {
+        console.warn("Render attempt for dev_sandbox blocked for non-developer.");
+        setCurrentView('menu');
+        return null;
+      }
+    }
 
     // Fallback for unexpected states
     console.error(`[App Render] Reached unexpected state: View=${currentView}, LoggedIn=${isLoggedIn}`);
