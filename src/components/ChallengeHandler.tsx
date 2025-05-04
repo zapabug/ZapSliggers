@@ -57,6 +57,7 @@ interface ChallengeHandlerProps {
     loggedInPubkey: string | null;
     ndk: NDK;
     onChallengeAccepted: (opponentPubkey: string, matchId: string) => void;
+    onWaitingForOpponent: (opponentPubkey: string, matchId: string) => void;
     recipientNpubOrHex: string;
     setRecipientNpubOrHex: (value: string) => void;
 }
@@ -76,24 +77,23 @@ export function ChallengeHandler({
     loggedInPubkey,
     ndk,
     onChallengeAccepted,
+    onWaitingForOpponent,
     recipientNpubOrHex,
     setRecipientNpubOrHex
 }: ChallengeHandlerProps) {
     const [error, setError] = useState<string | null>(null);
-    const [activeSentChallenge, setActiveSentChallenge] = useState<StoredChallenge | null>(null); // Use StoredChallenge type
+    const [activeSentChallenge, setActiveSentChallenge] = useState<StoredChallenge | null>(null);
     const [activeReceivedChallenge, setActiveReceivedChallenge] = useState<{ challengerPubkey: string, eventId: string } | null>(null);
     const sentChallengeTimeoutRef = React.useRef<number | null>(null);
     const receivedChallengeTimeoutRef = React.useRef<number | null>(null);
     const subscriptionRef = useRef<NDKSubscription | null>(null);
-    const activeSentChallengeRef = useRef(activeSentChallenge); // ADD: Ref for timeout check
-    const activeReceivedChallengeRef = useRef(activeReceivedChallenge); // <-- ADD Ref
+    const activeSentChallengeRef = useRef(activeSentChallenge);
+    const activeReceivedChallengeRef = useRef(activeReceivedChallenge);
 
-    // ADD: Effect to keep ref updated
     useEffect(() => {
         activeSentChallengeRef.current = activeSentChallenge;
     }, [activeSentChallenge]);
 
-    // <-- ADD Effect to keep received challenge ref updated
     useEffect(() => {
         activeReceivedChallengeRef.current = activeReceivedChallenge;
     }, [activeReceivedChallenge]);
@@ -120,14 +120,12 @@ export function ChallengeHandler({
     }, []);
 
     const clearTimeouts = useCallback(() => {
-        // Only clear refs, state/localStorage handled by specific clear functions
         if (sentChallengeTimeoutRef.current) clearTimeout(sentChallengeTimeoutRef.current);
         if (receivedChallengeTimeoutRef.current) clearTimeout(receivedChallengeTimeoutRef.current);
         sentChallengeTimeoutRef.current = null;
         receivedChallengeTimeoutRef.current = null;
     }, []);
 
-    // --- Effect to Load Pending Challenge on Mount ---
     useEffect(() => {
         console.log("[ChallengeHandler] Mount Effect: Checking for pending sent challenge...");
         let restoredChallenge: StoredChallenge | null = null;
@@ -269,8 +267,9 @@ export function ChallengeHandler({
 
                     receivedChallengeTimeoutRef.current = setTimeout(() => {
                         console.log(`[ChallengeHandler] Incoming challenge ${event.encode()} expired.`);
-                        // Only clear if it's still the active one
-                        setActiveReceivedChallenge(current => (current?.eventId === newReceivedChallenge.eventId ? null : current));
+                        setActiveReceivedChallenge((current: { challengerPubkey: string; eventId: string; } | null) => 
+                            (current?.eventId === newReceivedChallenge.eventId ? null : current)
+                        );
                         receivedChallengeTimeoutRef.current = null;
                     }, CHALLENGE_EXPIRY_MS);
                 } else {
@@ -498,18 +497,27 @@ export function ChallengeHandler({
             const acceptanceEventId = event.encode();
             console.log(`Acceptance sent to ${challengerPubkey} for challenge ${originalChallengeId}. Acceptance event ID: ${acceptanceEventId}`);
 
-            clearReceivedChallengeState(); // Clear received state AND timeout
-            const matchIdentifier = originalChallengeId;
-            const opponent = challengerPubkey;
-            onChallengeAccepted(opponent, matchIdentifier);
+            // !!! CHANGE HERE !!!
+            // Call the new prop instead of onChallengeAccepted
+            onWaitingForOpponent(challengerPubkey, originalChallengeId);
+
+            // Clear the received challenge state *after* triggering the waiting state
+            clearReceivedChallengeState(); 
 
         } catch (e) {
             console.error("Failed to send acceptance:", e);
             setError(`Failed to send acceptance: ${e instanceof Error ? e.message : String(e)}`);
         }
-    }, [ndk, loggedInPubkey, activeReceivedChallenge, onChallengeAccepted, clearReceivedChallengeState]);
+    }, [
+        ndk, 
+        loggedInPubkey, 
+        activeReceivedChallenge, 
+        onWaitingForOpponent, // <-- USE NEW PROP IN DEPS
+        clearReceivedChallengeState 
+        // Removed onChallengeAccepted from deps
+    ]);
 
-    // ADD: Function to send rejection DM
+    // --- Rejection Logic --- Moved inside component
     const sendRejection = useCallback(async () => {
         const currentSigner = ndk?.signer;
         if (!ndk || !loggedInPubkey || !activeReceivedChallenge || !currentSigner) {
@@ -520,50 +528,40 @@ export function ChallengeHandler({
         const { challengerPubkey, eventId: originalChallengeId } = activeReceivedChallenge;
 
         try {
-            const rejectPayload: RejectPayload = { type: 'reject' };
-            const event = new NDKEvent(ndk);
-            event.kind = NDKKind.EncryptedDirectMessage;
-            event.tags = [
-                ['p', challengerPubkey],
-                ['t', originalChallengeId] // Tag with original challenge ID
-            ];
-
-            const payloadStringReject = JSON.stringify(rejectPayload);
-            let encryptedContentReject: string;
-
-            console.log(`[ChallengeHandler] Attempting manual NIP-04 encrypt (reject challenge) for recipient ${challengerPubkey}`);
-            if (currentSigner && hasNip04Wrapper(currentSigner)) {
-                console.log("[ChallengeHandler] Using Wrapper NIP-04 encrypt...");
-                encryptedContentReject = await currentSigner.nip04.encrypt(challengerPubkey, payloadStringReject);
-            } else if (hasNip04StandardGlobal()) {
-                console.log("[ChallengeHandler] Using Standard NIP-07 (window.nostr) encrypt...");
-                if (!window.nostr?.nip04?.encrypt) throw new Error("window.nostr.nip04.encrypt not available");
-                encryptedContentReject = await window.nostr.nip04.encrypt(challengerPubkey, payloadStringReject);
-            } else {
-                throw new Error("Current signer or environment does not support NIP-04 encryption.");
-            }
-            event.content = encryptedContentReject;
-            console.log("[ChallengeHandler] Manual NIP-04 encryption (reject challenge) successful.");
-
-            await event.publish();
-            console.log(`Rejection sent to ${challengerPubkey} for challenge ${originalChallengeId}.`);
-
+            await sendRejectMessageHelper(ndk, challengerPubkey, originalChallengeId);
         } catch (e) {
             console.error("Failed to send rejection:", e);
             // Don't set component error, just log. Failure isn't critical.
         }
-    }, [ndk, loggedInPubkey, activeReceivedChallenge]); // Dependencies
+    }, [ndk, loggedInPubkey, activeReceivedChallenge]);
 
-    const handleDismissChallenge = useCallback(async () => {
+    const handleRejectChallenge = useCallback(async () => { // Renamed from handleDismissChallenge for clarity
         if (!activeReceivedChallenge) return; 
-        console.log(`[ChallengeHandler] Dismissing incoming challenge: ${activeReceivedChallenge?.eventId}`);
+        console.log(`[ChallengeHandler] Rejecting incoming challenge: ${activeReceivedChallenge?.eventId}`);
         
-        // Send rejection first
-        await sendRejection();
-
-        // Then clear local state
-        clearReceivedChallengeState();
-    }, [activeReceivedChallenge, clearReceivedChallengeState, sendRejection]); // Add sendRejection dependency
+        setError(null); // Clear local error
+        try {
+             // Send rejection first
+             await sendRejection();
+             // Then clear local state
+             clearReceivedChallengeState();
+        } catch (e) {
+             // Error during sendRejection is logged internally, 
+             // but we might want to indicate failure here?
+             console.error("Error during rejection process:", e);
+             setError(`Failed to send rejection: ${e instanceof Error ? e.message : String(e)}`);
+             // Decide if we should still clear state even if send fails
+             // clearReceivedChallengeState(); 
+        }
+       
+    }, [activeReceivedChallenge, clearReceivedChallengeState, sendRejection, setError]);
+    
+    // --- Cancel Sent Challenge Logic --- Moved inside component
+    const handleCancelSentChallenge = useCallback(() => {
+        console.warn("[ChallengeHandler] Cancelling sent challenge...");
+        // TODO: Implement sending a "cancel" DM if desired
+        clearSentChallengeState(); // Clear local state and storage
+    }, [clearSentChallengeState]);
 
     const canInteract = loggedInPubkey && !activeSentChallenge && !activeReceivedChallenge;
     const isWaitingForAcceptance = !!activeSentChallenge;
@@ -626,11 +624,11 @@ export function ChallengeHandler({
                              Accept
                          </button>
                          <button
-                             onClick={handleDismissChallenge}
+                             onClick={handleRejectChallenge} // <-- ATTACH HANDLER (renamed)
                              className="px-3 py-1 bg-red-600 rounded hover:bg-red-700 text-sm disabled:opacity-50"
                              disabled={!activeReceivedChallenge}
                          >
-                             Dismiss
+                             Reject
                          </button>
                      </div>
                  </div>
@@ -639,6 +637,74 @@ export function ChallengeHandler({
             {!loggedInPubkey && (
                  <p className="text-gray-400 mt-2">Log in to send or receive challenges.</p>
             )}
+
+            {/* Active Sent Challenge Info */}
+            {activeSentChallenge && (
+                 <div className="mb-4 p-3 bg-yellow-900 bg-opacity-50 border border-yellow-700 rounded text-yellow-200 text-sm">
+                    {/* ... challenge info ... */}
+                     <button 
+                         onClick={handleCancelSentChallenge} // <-- ATTACH HANDLER
+                         className="mt-2 px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs focus:outline-none focus:ring-1 focus:ring-red-400"
+                     >
+                         Cancel Challenge
+                     </button>
+                 </div>
+            )}
+
+            {/* Active Received Challenge Info & Actions */}
+            {activeReceivedChallenge && (
+                 <div className="mb-4 p-3 bg-green-900 bg-opacity-50 border border-green-700 rounded text-green-200 text-sm">
+                     {/* ... challenge info ... */}
+                     <div className="mt-2 flex gap-2">
+                         <button
+                             onClick={handleAcceptChallenge}
+                             className="flex-1 px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 focus:outline-none focus:ring-1 focus:ring-green-400"
+                         >
+                             Accept
+                         </button>
+                         <button
+                             onClick={handleRejectChallenge} // <-- ATTACH HANDLER (renamed)
+                             className="flex-1 px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 focus:outline-none focus:ring-1 focus:ring-red-400"
+                         >
+                             Reject
+                         </button>
+                     </div>
+                 </div>
+            )}
         </div>
     );
+}
+
+// Keep helper function outside the component as it doesn't depend on component state/props directly
+async function sendRejectMessageHelper(
+    ndk: NDK,
+    challengerPubkey: string,
+    originalChallengeId: string
+): Promise<void> {
+    const rejectPayload: RejectPayload = { type: 'reject' };
+    const event = new NDKEvent(ndk);
+    event.kind = NDKKind.EncryptedDirectMessage;
+    event.tags = [
+        ['p', challengerPubkey],
+        ['t', originalChallengeId]
+    ];
+
+    const payloadStringReject = JSON.stringify(rejectPayload);
+    let encryptedContentReject: string;
+    const currentSigner = ndk.signer;
+
+    console.log(`[ChallengeHandler] Attempting manual NIP-04 encrypt (reject challenge) for recipient ${challengerPubkey}`);
+    if (currentSigner && hasNip04Wrapper(currentSigner)) {
+        encryptedContentReject = await currentSigner.nip04.encrypt(challengerPubkey, payloadStringReject);
+    } else if (hasNip04StandardGlobal()) {
+        if (!window.nostr?.nip04?.encrypt) throw new Error("window.nostr.nip04.encrypt not available for reject");
+        encryptedContentReject = await window.nostr.nip04.encrypt(challengerPubkey, payloadStringReject);
+    } else {
+        throw new Error("Current signer or environment does not support NIP-04 encryption for reject.");
+    }
+    event.content = encryptedContentReject;
+    console.log("[ChallengeHandler] Manual NIP-04 encryption (reject challenge) successful.");
+
+    await event.publish();
+    console.log(`Rejection sent to ${challengerPubkey} for challenge ${originalChallengeId}.`);
 }
