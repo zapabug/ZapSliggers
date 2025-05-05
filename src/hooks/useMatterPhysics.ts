@@ -346,6 +346,12 @@ export const useMatterPhysics = ({
           bodiesToRemove.push(projectileBody);
         }
       }
+      // ***** LOG SHIP FORCES/VELOCITY *****
+      else if (body.label.startsWith('ship-')) {
+          // Log ship's state at the *end* of the update loop (after forces might have been applied)
+          // Reduce frequency if too noisy, e.g., using a counter: if (Math.random() < 0.05) ...
+          console.log(`[Physics Update] Ship ${body.label} - Vel: (${body.velocity.x.toFixed(2)}, ${body.velocity.y.toFixed(2)}), Force: (${body.force.x.toFixed(4)}, ${body.force.y.toFixed(4)})`);
+      }
     });
 
     if (bodiesToAdd.length > 0) {
@@ -361,15 +367,28 @@ export const useMatterPhysics = ({
 
   // --- Initial Setup Effect --- 
   useEffect(() => {
-    if (!currentSettingsRef.current || !currentLevelDataRef.current) {
+    if (!settings || !initialLevelData) { 
         console.log("[useMatterPhysics] Initial Setup: Waiting for settings or level data...");
+        engineRef.current = null;
+        runnerRef.current = null;
+        shipBodiesRef.current = [null, null];
         return;
     }
     console.log("[useMatterPhysics] Initial Setup: Settings and Level Data ready. Initializing...");
-    const localSettings = currentSettingsRef.current;
-    const localLevelData = currentLevelDataRef.current;
+    currentSettingsRef.current = settings;
+    currentLevelDataRef.current = initialLevelData;
+    
+    const localSettings = settings; 
+    const localLevelData = initialLevelData;
 
     const engine = Engine.create();
+    console.log(`[Physics Setup] Initializing engine. Default Gravity: x=${engine.gravity.x}, y=${engine.gravity.y}, scale=${engine.gravity.scale}`);
+    
+    // ***** EXPLICITLY DISABLE ENGINE GRAVITY *****
+    engine.gravity.scale = 0;
+    console.log(`[Physics Setup] Engine gravity scale explicitly set to 0.`);
+    // ***** ------------------------------------ *****
+    
     engineRef.current = engine;
 
     const runner = Runner.create();
@@ -389,16 +408,17 @@ export const useMatterPhysics = ({
       console.log("[useMatterPhysics] Cleanup: Stopping runner, clearing engine, removing listeners.");
       if (runnerRef.current && engineRef.current) {
         Runner.stop(runnerRef.current);
-        Events.off(engineRef.current, 'collisionStart');
-        Events.off(engineRef.current, 'beforeUpdate');
-        World.clear(engineRef.current.world, false);
-        Engine.clear(engineRef.current);
+        const currentEngine = engineRef.current; 
+        Events.off(currentEngine, 'collisionStart', handleCollisions); 
+        Events.off(currentEngine, 'beforeUpdate', updateProjectilesAndApplyGravity);
+        World.clear(currentEngine.world, false);
+        Engine.clear(currentEngine);
       }
       engineRef.current = null;
       runnerRef.current = null;
       shipBodiesRef.current = [null, null];
     };
-  }, [handleCollisions, updateProjectilesAndApplyGravity]);
+  }, [settings, initialLevelData, handleCollisions, updateProjectilesAndApplyGravity]);
 
   // --- resetPhysics Function ---
   const resetPhysics = useCallback((newLevelData: InitialGamePositions) => {
@@ -504,7 +524,7 @@ export const useMatterPhysics = ({
       return allBodies;
   }, []);
 
-  // Return the necessary values and functions
+  // --- Return Handles ---
   return {
     engine: engineRef.current,
     shipBodies: shipBodiesRef,
@@ -515,4 +535,4 @@ export const useMatterPhysics = ({
     getShipAngle,
     resetPhysics,
   };
-}; 
+};
