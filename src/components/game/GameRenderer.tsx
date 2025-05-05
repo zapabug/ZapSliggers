@@ -91,28 +91,45 @@ const drawHistoricalTrace = (ctx: CanvasRenderingContext2D, trace: Matter.Vector
     ctx.setLineDash([]);
 };
 
-const drawBackground = (ctx: CanvasRenderingContext2D, settings: GameSettingsProfile, assets: GameAssetsStructure | null) => {
+// Helper to draw physics boundary outlines
+const drawBoundaryBody = (ctx: CanvasRenderingContext2D, body: Matter.Body) => {
+    if (!body.vertices || body.vertices.length < 2) return;
+
+    ctx.beginPath();
+    ctx.moveTo(body.vertices[0].x, body.vertices[0].y);
+    for (let i = 1; i < body.vertices.length; i++) {
+        ctx.lineTo(body.vertices[i].x, body.vertices[i].y);
+    }
+    ctx.closePath(); // Close the shape
+
+    // Style the boundary - make it visible but perhaps subtle
+    ctx.strokeStyle = '#FFFF00'; // Yellow, as per GameplayTroubles notes
+    ctx.lineWidth = 2 / ctx.getTransform().a; // Adjust based on scale
+    ctx.setLineDash([5, 5]); // Dashed line
+    ctx.stroke();
+    ctx.setLineDash([]); // Reset dash pattern
+};
+
+// Simplified drawBackground to use actual canvas dimensions and fix linter errors
+const drawBackground = (
+    ctx: CanvasRenderingContext2D,
+    canvasWidth: number,
+    canvasHeight: number,
+    assets: GameAssetsStructure | null
+    // settings: GameSettingsProfile // Removed as BACKGROUND_COLOR wasn't present
+) => {
     const backgroundImage = assets?.backdrop;
-    const worldWidth = settings.VIRTUAL_WIDTH;
-    const worldHeight = settings.VIRTUAL_HEIGHT;
-    const drawX = -worldWidth / 2;
-    const drawY = -worldHeight / 2;
+
+    // Clear the entire canvas first
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
     if (backgroundImage && backgroundImage.naturalWidth > 0 && backgroundImage.naturalHeight > 0) {
-        const worldRatio = worldWidth / worldHeight;
-        const imageRatio = backgroundImage.naturalWidth / backgroundImage.naturalHeight;
-        let sourceX = 0, sourceY = 0, sourceWidth = backgroundImage.naturalWidth, sourceHeight = backgroundImage.naturalHeight;
-        if (imageRatio > worldRatio) {
-            sourceWidth = backgroundImage.naturalHeight * worldRatio;
-            sourceX = (backgroundImage.naturalWidth - sourceWidth) / 2;
-        } else if (imageRatio < worldRatio) {
-            sourceHeight = backgroundImage.naturalWidth / worldRatio;
-            sourceY = (backgroundImage.naturalHeight - sourceHeight) / 2;
-        }
-        ctx.drawImage(backgroundImage, sourceX, sourceY, sourceWidth, sourceHeight, drawX, drawY, worldWidth, worldHeight);
+        // Simplest approach: draw image stretched/squashed to fill the canvas
+        ctx.drawImage(backgroundImage, 0, 0, canvasWidth, canvasHeight);
     } else {
-        ctx.fillStyle = '#000020';
-        ctx.fillRect(drawX, drawY, worldWidth, worldHeight);
+        // Fallback: Fill with a default background color
+        ctx.fillStyle = '#000020'; // Hardcoded fallback color
+        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
     }
 };
 
@@ -130,13 +147,22 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
 
     // --- Resize Handling ---
     useEffect(() => {
+        if (!canvasRef.current) return;
         const canvas = canvasRef.current;
-        if (!canvas) return;
+
         const resizeObserver = new ResizeObserver(entries => {
             for (const entry of entries) {
-                const { width, height } = entry.contentRect;
+                // Use integer values for canvas dimensions to avoid potential floating point issues
+                const width = Math.floor(entry.contentRect.width);
+                const height = Math.floor(entry.contentRect.height);
+
+                // Update React state
                 setCanvasSize({ width, height });
-                console.log(`[GameRenderer] Canvas resized: ${width}x${height}`);
+
+                // Crucially, update the canvas element's actual width and height attributes
+                // This ensures the drawing buffer matches the display size, preventing distortion.
+                canvas.width = width;
+                canvas.height = height;
             }
         });
         resizeObserver.observe(canvas);
@@ -177,15 +203,20 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
 
             // ***** LOG DRAW PARAMETERS *****
             // Reduce log frequency if needed: if (Math.random() < 0.02) ...
-            console.log(`[Draw] Canvas: ${canvasSize.width}x${canvasSize.height}, Scale: ${scale.toFixed(3)}, Offset: (${offsetX.toFixed(1)}, ${offsetY.toFixed(1)})`);
+            // console.log(`[Draw] Canvas: ${canvasSize.width}x${canvasSize.height}, Scale: ${scale.toFixed(3)}, Offset: (${offsetX.toFixed(1)}, ${offsetY.toFixed(1)})`);
 
-            ctx.clearRect(0, 0, canvasSize.width, canvasSize.height);
+            // ClearRect is now handled within drawBackground to ensure full clear
+            // ctx.clearRect(0, 0, canvasSize.width, canvasSize.height);
+
+            // 1. Draw Background FIRST (before transforms) using actual canvas dimensions
+            drawBackground(ctx, canvasSize.width, canvasSize.height, gameAssets);
+
+            // Now apply transformations for the game world view
             ctx.save();
             ctx.translate(offsetX, offsetY);
             ctx.scale(scale, scale);
 
-            // 1. Draw Background
-            drawBackground(ctx, settings, gameAssets);
+            // --- Game World Drawing --- 
 
             // 2. Draw Historical Traces
             const traces = latestTracesRef.current;
@@ -214,11 +245,14 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
                  } else if (body.label.startsWith('projectile-')) {
                      drawProjectile(ctx, body as ProjectileBody);
                  } else if (body.label.startsWith('boundary')) {
-                     // Boundaries invisible
+                     // Draw the physics boundaries
+                     drawBoundaryBody(ctx, body);
                  }
             });
 
-            ctx.restore();
+            // --- End Game World Drawing --- 
+
+            ctx.restore(); // Restore from world transforms
 
             // Request next frame
             animationFrameId.current = requestAnimationFrame(draw);

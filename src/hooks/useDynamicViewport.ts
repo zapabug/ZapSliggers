@@ -4,14 +4,15 @@ import { GameSettingsProfile } from '../config/gameSettings';
 
 // --- Constants ---
 // const ZOOM_LERP_FACTOR = 0.16; // REMOVED Unused
-const MAX_ZOOM_FACTOR = 1.5;   
+const MAX_ZOOM_FACTOR = 1.2;   
 const MAX_VIEW_FACTOR = 1.5;   
-const VIEWPORT_PADDING = 100;  
+const VIEWPORT_PADDING = 200;  
 
 // --- Interfaces ---
 interface UseDynamicViewportProps {
     engine: Matter.Engine | null;
-    getDynamicBodies: () => Matter.Body[]; 
+    getDynamicBodies: () => Matter.Body[];
+    getStaticBodies: () => Matter.Body[];
     settings: GameSettingsProfile;
     canvasSize: { width: number; height: number };
 }
@@ -24,6 +25,7 @@ interface DynamicViewportResult {
 export const useDynamicViewport = ({
     engine,
     getDynamicBodies, // Use getDynamicBodies
+    getStaticBodies, // Added
     settings, // <-- Destructure settings
     canvasSize,
 }: UseDynamicViewportProps): DynamicViewportResult => {
@@ -45,17 +47,20 @@ export const useDynamicViewport = ({
         if (!engine) return;
         
         const designAspectRatio = settings.VIRTUAL_WIDTH / settings.VIRTUAL_HEIGHT;
-        const dynamicBodies = getDynamicBodies(); 
-        const hasDynamicBodies = dynamicBodies.length > 0;
+        const dynamicBodies = getDynamicBodies();
+        const staticBodies = getStaticBodies(); // Get static bodies (ships)
+        const allBodies = [...staticBodies, ...dynamicBodies]; // Combine for bounds calculation
 
         // Explicitly type the variables
         let minX: number, maxX: number, minY: number, maxY: number;
 
-        if (hasDynamicBodies) {
-            // Calculate bounds based on dynamic bodies
+        // Always calculate bounds based on ALL relevant bodies (static + dynamic)
+        if (allBodies.length > 0) {
             minX = Infinity; maxX = -Infinity;
             minY = Infinity; maxY = -Infinity;
-            dynamicBodies.forEach(body => {
+            allBodies.forEach(body => {
+                // Use body center for points, or bounds for broader coverage?
+                // Let's stick to bounds for now as before.
                 const bounds = body.bounds;
                 minX = Math.min(minX, bounds.min.x);
                 maxX = Math.max(maxX, bounds.max.x);
@@ -63,12 +68,15 @@ export const useDynamicViewport = ({
                 maxY = Math.max(maxY, bounds.max.y);
             });
         } else {
+            // Fallback ONLY if NO bodies exist at all (shouldn't happen with ships)
             // Default view centers on the initial setup
+            console.warn("[useDynamicViewport] No bodies found for viewport calculation. Centering.");
             minX = settings.VIRTUAL_WIDTH * 0.2;
             maxX = settings.VIRTUAL_WIDTH * 0.8;
             minY = settings.VIRTUAL_HEIGHT * 0.2;
             maxY = settings.VIRTUAL_HEIGHT * 0.8;
-        } 
+            // Alternative: Use the initial ship positions if staticBodies was somehow empty but shouldnt be?
+        }
         
         let requiredWidth = (maxX - minX) + 2 * VIEWPORT_PADDING;
         let requiredHeight = (maxY - minY) + 2 * VIEWPORT_PADDING;
@@ -95,7 +103,7 @@ export const useDynamicViewport = ({
         // Return the calculated values so the other effect can use them immediately
         return { requiredWidth, requiredHeight, centerX, centerY };
 
-    }, [engine, getDynamicBodies, settings]); 
+    }, [engine, getDynamicBodies, getStaticBodies, settings]); 
 
     // Effect to calculate and set the final viewport state when targets or canvasSize change
     useEffect(() => {
