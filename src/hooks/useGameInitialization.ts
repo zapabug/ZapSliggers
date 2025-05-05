@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import Matter from 'matter-js';
+// import Matter from 'matter-js'; // Removed unused import
 import { GameSettingsProfile } from '../config/gameSettings'; // Import the settings profile type
 
 // Destructure Matter.js modules for convenience
-const { Bodies } = Matter;
+// const { Bodies } = Matter; // Removed unused import
 
 // Constants removed - now passed via settings object
 
@@ -12,10 +12,19 @@ const calculateDistance = (p1: { x: number; y: number }, p2: { x: number; y: num
   return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
 };
 
-// --- Interface for the returned data ---
+// --- Interface for the Planet Data Object ---
+export interface PlanetData {
+  x: number;
+  y: number;
+  radius: number;
+  isSligger: boolean;
+  coreRadius?: number; // Optional for standard planets
+}
+
+// --- Interface for the returned initial positions ---
 export interface InitialGamePositions {
   ships: [{ x: number; y: number }, { x: number; y: number }];
-  planets: Matter.Body[];
+  planets: PlanetData[]; // Use the specific PlanetData type
 }
 
 // --- Interface for the hook's return value ---
@@ -129,7 +138,7 @@ export const generateInitialPositions = (settings: GameSettingsProfile): Initial
     const planetSpawnMaxY = planetSpawnMinY + planetSpawnAreaHeight;
 
     // --- Generate Planets (Normal + Orange) ---
-    const planets: Matter.Body[] = [];
+    const planets: PlanetData[] = [];
     let attemptsPlanets = 0;
     const maxAttemptsPlanets = 750;
     let normalPlanetsPlaced = 0;
@@ -198,8 +207,13 @@ export const generateInitialPositions = (settings: GameSettingsProfile): Initial
                 // Ensure not too close to ships (only check ships, not planets initially for edge placement)
                 for (const ship of ships) { if (calculateDistance(candidatePos, ship) < radius + SHIP_RADIUS + MIN_PLANET_SHIP_DISTANCE) { collision = true; break; } }
                 if (collision) { sliggerAttempts++; continue; }
-                // Check collision with other planets AFTER checking ships
-                for (const existingPlanet of planets) { const existingRadius = existingPlanet.plugin?.Zapsliggers?.radius || PLANET_MIN_RADIUS; if (calculateDistance(candidatePos, existingPlanet.position) < radius + existingRadius + MIN_PLANET_PLANET_DISTANCE) { collision = true; break; } }
+                // Check collision with other planets AND Sliggers
+                for (const existingPlanet of planets) {
+                  if (calculateDistance(candidatePos, existingPlanet) < radius + existingPlanet.radius + MIN_PLANET_PLANET_DISTANCE) {
+                      collision = true;
+                      break;
+                  }
+                }
                 if (collision) { sliggerAttempts++; continue; }
                 
                 // Spot is valid, assign and mark success
@@ -227,7 +241,12 @@ export const generateInitialPositions = (settings: GameSettingsProfile): Initial
                 let collision = false;
                 for (const ship of ships) { if (calculateDistance(candidatePos, ship) < radius + SHIP_RADIUS + MIN_PLANET_SHIP_DISTANCE) { collision = true; break; } }
                 if (collision) { normalAttempts++; continue; }
-                for (const existingPlanet of planets) { const existingRadius = existingPlanet.plugin?.Zapsliggers?.radius || PLANET_MIN_RADIUS; if (calculateDistance(candidatePos, existingPlanet.position) < radius + existingRadius + MIN_PLANET_PLANET_DISTANCE) { collision = true; break; } }
+                for (const existingPlanet of planets) {
+                  if (calculateDistance(candidatePos, existingPlanet) < radius + existingPlanet.radius + MIN_PLANET_PLANET_DISTANCE) {
+                      collision = true;
+                      break;
+                  }
+                }
                 if (collision) { normalAttempts++; continue; }
 
                 // Spot is valid
@@ -242,42 +261,35 @@ export const generateInitialPositions = (settings: GameSettingsProfile): Initial
         // If no spot found in either attempt, continue
         if (!placedSuccessfully) continue;
 
-        // Create planet body based on type (isSligger flag is now reliable)
-        let planetBody: Matter.Body;
-        if (isSligger) { // Use Sligger flag
-            // Use SLIGGER settings for core radius
-            const coreRadius = radius * SLIGGER_CORE_RADIUS_FACTOR;
-            planetBody = Bodies.circle(x, y, radius, {
-                isStatic: true,
-                label: 'sligger',
-                friction: 0.5,
-                restitution: 0.5,
-                plugin: { Zapsliggers: { radius: radius, coreRadius: coreRadius } }
-            });
-            sliggersPlaced++; // Increment correct counter
-            console.log(`Placed Sligger ${sliggersPlaced}/${NUM_SLIGGERS} at (${x.toFixed(0)}, ${y.toFixed(0)})`);
+        // Create planet data object
+        const newPlanetData: PlanetData = {
+            x: x,
+            y: y,
+            radius: radius,
+            isSligger: isSligger,
+            coreRadius: isSligger ? radius * SLIGGER_CORE_RADIUS_FACTOR : undefined,
+        };
+        planets.push(newPlanetData);
+
+        // Increment respective counter
+        if (isSligger) {
+            sliggersPlaced++; // Increment Sligger count
         } else {
-            const grayValue = Math.floor(Math.random() * (160 - 80 + 1)) + 80;
-            const grayHex = grayValue.toString(16).padStart(2, '0');
-            const grayColor = `#${grayHex}${grayHex}${grayHex}`;
-            planetBody = Bodies.circle(x, y, radius, {
-                isStatic: true,
-                label: 'planet',
-                friction: 0.5,
-                restitution: 0.5,
-                render: { fillStyle: grayColor },
-                plugin: { Zapsliggers: { radius: radius } } // Store radius for normal planets too
-            });
-            normalPlanetsPlaced++;
+            normalPlanetsPlaced++; // Increment normal planet count
         }
-        planets.push(planetBody);
     }
 
-    if (planets.length < totalPlanetsToPlace) {
-        console.warn(`[generateInitialPositions] Could only place ${planets.length}/${totalPlanetsToPlace} total planets after ${maxAttemptsPlanets} attempts.`);
+    if (attemptsPlanets >= maxAttemptsPlanets) {
+        console.warn(`[generateInitialPositions] Could not place all requested planets after ${maxAttemptsPlanets} attempts.`);
     }
+    
+    // --- Diagnostic Log ---
+    console.log(`[generateInitialPositions Pre-Log Check] Counts - Normal: ${normalPlanetsPlaced}, Sliggers: ${sliggersPlaced}`);
 
-    console.log("[generateInitialPositions] Level generation complete.");
+    // --- Final Log ---
+    // Log counts based on actual placement attempts/successes
+    console.log(`[generateInitialPositions] Level generated. Ships: ${ships.length}, Normal Planets: ${normalPlanetsPlaced}, Sliggers: ${sliggersPlaced}`);
+
     return { ships, planets };
 };
 

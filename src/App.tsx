@@ -12,7 +12,7 @@ import './App.css'
 // import { ChallengeHandler } from './components/ChallengeHandler'
 // Remove unused PlayerHUD import
 // import { PlayerHUD } from './components/ui_overlays/PlayerHUD'
-import GameScreen from './components/game/GameScreen'
+import GameScreen from './components/screens/GameScreen'
 // import { NostrLogin } from 'nostr-login';
 // Import QRCode component
 import { QRCodeCanvas } from 'qrcode.react';

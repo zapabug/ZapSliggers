@@ -49,6 +49,17 @@ export interface UseGameLogicReturn {
     settings: GameSettingsProfile;
 }
 
+// --- Define Callback Types Locally ---
+type OnPlayerHitCallback = (
+    hitPlayerIndex: 0 | 1,
+    firingPlayerIndex: 0 | 1,
+    projectileType: AbilityType | 'standard'
+) => void;
+type OnProjectileResolvedCallback = (
+    path: ProjectilePathData,
+    firedByPlayerIndex: 0 | 1
+) => void;
+
 export function useGameLogic({
     settings,
     mode,
@@ -115,19 +126,45 @@ export function useGameLogic({
     const shotTracerHandlers = useShotTracers(); // Tracer hook
     const { levelData, regenerateLevel } = useGameInitialization(settings); // Initialization hook (pass settings)
 
-    // --- Physics Initialization Callbacks (Defined Before Hook) ---
+    // *** DIAGNOSTIC LOG: Check levelData after generation ***
+    console.log(`[useGameLogic] Received levelData from useGameInitialization:`, levelData ? `Ships: ${levelData.ships.length}, Planets: ${levelData.planets.length}` : 'null');
+
+    // --- Callbacks for Physics Engine Events ---
+    // Ref to store the callback to prevent it from becoming stale in physics hook
     // Initialize refs with correct parameter signatures (use underscores for unused)
-    const handlePlayerHitCallbackRef = useRef((_hitPlayerIndex: 0 | 1, _firingPlayerIndex: 0 | 1, _projectileType: AbilityType | 'standard') => {});
-    const handleProjectileResolvedCallbackRef = useRef((_path: ProjectilePathData, _firedByPlayerIndex: 0 | 1) => {});
+    const handlePlayerHitCallbackRef = useRef<(
+        hitPlayerIndex: 0 | 1,
+        firingPlayerIndex: 0 | 1,
+        projectileType: AbilityType | 'standard'
+    ) => void>(
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        (_hitPlayerIndex, _firingPlayerIndex, _projectileType) => { /* Initial dummy */ }
+    );
+    const handleProjectileResolvedCallbackRef = useRef<(path: ProjectilePathData, firedByPlayerIndex: 0 | 1) => void>(
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        (_path, _firedByPlayerIndex) => { /* Initial dummy */ }
+    );
+
+    // --- Stable callbacks to pass to useMatterPhysics ---
+    const stableOnPlayerHit = useCallback((...args: Parameters<OnPlayerHitCallback>) => {
+        handlePlayerHitCallbackRef.current(...args);
+    }, []); // No dependencies needed as it calls the .current of a ref
+
+    const stableOnProjectileResolved = useCallback((...args: Parameters<OnProjectileResolvedCallback>) => {
+        handleProjectileResolvedCallbackRef.current(...args);
+    }, []); // No dependencies needed as it calls the .current of a ref
 
     // --- Physics Initialization ---
     const physicsHandles = useMatterPhysics({
         settings,
         levelData,
         shotTracerHandlers,
-        onPlayerHit: (...args) => handlePlayerHitCallbackRef.current(...args),
-        onProjectileResolved: (...args) => handleProjectileResolvedCallbackRef.current(...args),
+        onPlayerHit: stableOnPlayerHit,             // <-- Use stable callback
+        onProjectileResolved: stableOnProjectileResolved, // <-- Use stable callback
     });
+
+    // *** DIAGNOSTIC LOG: Check physicsHandles after init and levelData passed ***
+    console.log(`[useGameLogic] Initialized useMatterPhysics. Handles valid: ${!!physicsHandles}. Passed levelData:`, levelData ? `Ships: ${levelData.ships.length}, Planets: ${levelData.planets.length}` : 'null');
 
     // --- Nostr Event Subscription (Multiplayer) ---
     useEffect(() => {
@@ -185,6 +222,8 @@ export function useGameLogic({
                     }
 
                     if (physicsHandles) {
+                        // *** DIAGNOSTIC LOG: Check physicsHandles before firing (Nostr event) ***
+                        console.log(`[useGameLogic Nostr] Firing opponent projectile. Handles valid: ${!!physicsHandles}`);
                         // Correct arguments: playerIndex, power, abilityType
                         physicsHandles.fireProjectile(turnIndex, aim.power, ability);
                     }
@@ -304,7 +343,7 @@ export function useGameLogic({
     // causing the physics engine hook itself to re-run unnecessarily.
     useEffect(() => {
         handlePlayerHitCallbackRef.current = (hitPlayerIndex: 0 | 1, firingPlayerIndex: 0 | 1, projectileType: AbilityType | 'standard') => {
-            console.log(`[useGameLogic] handlePlayerHit: P${firingPlayerIndex} (Type: ${projectileType}) hit P${hitPlayerIndex}`);
+            console.log(`[useGameLogic] Player Hit! Hit: P${hitPlayerIndex}, Fired By: P${firingPlayerIndex}, Type: ${projectileType}, Current: P${currentPlayerIndex}`);
             let winningPlayer: 0 | 1 | null = null;
 
             if (hitPlayerIndex === firingPlayerIndex) winningPlayer = firingPlayerIndex === 0 ? 1 : 0; // Self-hit
@@ -323,8 +362,10 @@ export function useGameLogic({
     }, [handleRoundCompletion, playerStatesRef]); // Dependency: handleRoundCompletion
 
     useEffect(() => {
-        handleProjectileResolvedCallbackRef.current = (path: ProjectilePathData, firedByPlayerIndex: 0 | 1) => {
-            console.log(`[useGameLogic] handleProjectileResolved: Fired by P${firedByPlayerIndex}`);
+        handleProjectileResolvedCallbackRef.current = (_path: ProjectilePathData, firedByPlayerIndex: 0 | 1) => {
+            console.log(`[useGameLogic] Projectile resolved callback. Fired by P${firedByPlayerIndex}. Current P${currentPlayerIndex}. Mode: ${mode}`);
+            // TODO: Process the path data if needed (e.g., for tracing, effects)
+
             // Switch turn ONLY in practice/custom mode AFTER the shot resolves.
             if ((mode === 'practice' || mode === 'custom') && firedByPlayerIndex === currentPlayerIndex) {
                 console.log(`[useGameLogic] Practice/Custom turn switch on projectile resolve.`);
@@ -340,21 +381,21 @@ export function useGameLogic({
         if (mode === 'multiplayer' && currentPlayerIndex !== myPlayerIndex) return;
         setAimStates(prev => {
             const newAimStates = [...prev] as typeof prev;
-            newAimStates[myPlayerIndex] = aim;
+            newAimStates[currentPlayerIndex] = aim;
             return newAimStates;
         });
         // Update physics engine aim (only angle matters to physics)
         if(physicsHandles) {
-            physicsHandles.setShipAim(myPlayerIndex, aim.angle);
+            physicsHandles.setShipAim(currentPlayerIndex, aim.angle);
         }
-    }, [myPlayerIndex, mode, currentPlayerIndex, physicsHandles]); // Added physicsHandles dep
+    }, [currentPlayerIndex, mode, myPlayerIndex, physicsHandles]); // Added physicsHandles dep
 
     const handleSelectAbility = useCallback((abilityType: AbilityType | null) => {
         if (mode === 'multiplayer' && currentPlayerIndex !== myPlayerIndex) return;
         setSelectedAbility(abilityType);
     }, [myPlayerIndex, mode, currentPlayerIndex]);
 
-    const handleFire = useCallback(() => {
+    const handleFire = useCallback(async () => {
         if (!levelData || !physicsHandles) return;
         if (currentPlayerIndex !== myPlayerIndex && mode === 'multiplayer') {
             console.warn("[useGameLogic] Not player's turn to fire locally.");
@@ -403,7 +444,14 @@ export function useGameLogic({
             // Don't reset selectedAbility here, pass it to fireProjectile
         }
 
-        physicsHandles.fireProjectile(currentPlayerIndex, aim.power, abilityToUse);
+        // *** DIAGNOSTIC LOG: Check physicsHandles before firing (Local action) ***
+        console.log(`[useGameLogic Local] Firing local projectile. Handles valid: ${!!physicsHandles}`);
+
+        if (physicsHandles) {
+            physicsHandles.fireProjectile(currentPlayerIndex, aim.power, abilityToUse);
+        } else {
+            console.error("[useGameLogic] Cannot fire, physicsHandles are null!");
+        }
 
         // Reset selected ability *after* firing
         setSelectedAbility(null);

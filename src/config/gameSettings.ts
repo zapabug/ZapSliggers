@@ -65,8 +65,8 @@ const basePhysicsAndCore = {
     VIRTUAL_HEIGHT: 1800,
     // Object Sizes
     SHIP_RADIUS: 63,
-    STANDARD_PROJECTILE_RADIUS: 10,
-    SPLITTER_FRAGMENT_RADIUS: 5,
+    STANDARD_PROJECTILE_RADIUS: 9,
+    SPLITTER_FRAGMENT_RADIUS: 3,
     // Physics Parameters (Core)
     GRAVITY_CONSTANT: 0.5,
     GRAVITY_AOE_BONUS_FACTOR: 0.3,
@@ -101,7 +101,7 @@ const standardLevelGeneration = {
     MIN_PLANET_SHIP_DISTANCE: 150,
     MIN_PLANET_PLANET_DISTANCE: 75,
     // Sligger Settings
-    NUM_SLIGGERS: 2,                      // How many Sliggers to spawn
+    NUM_SLIGGERS: 0,                      // How many Sliggers to spawn
     SLIGGER_MAX_RADIUS: 160,              // Max size for Sliggers
     SLIGGER_CORE_RADIUS_FACTOR: 0.3,      // Core is 30% of the Sligger's radius
     SLIGGER_REPULSION_CONSTANT: 1.6,      // Deprecated?
