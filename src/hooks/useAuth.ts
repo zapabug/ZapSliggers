@@ -140,7 +140,8 @@ export const useAuth = (): UseAuthReturn => {
             await new Promise(resolve => setTimeout(resolve, 150));
             const user = await nip07signer.user();
             console.log(`[useAuth] NIP-07 logged in as: ${user.npub}`);
-            setCurrentUser(user);
+            // Only update state if pubkey is different
+            setCurrentUser(prevUser => prevUser?.pubkey === user.pubkey ? prevUser : user);
             setLoginMethod('nip07');
             setIsLoggedInState(true); // Set logged in state
         } catch (error) {
@@ -210,7 +211,8 @@ export const useAuth = (): UseAuthReturn => {
                     console.warn("Failed to persist NIP-46 bunker URI:", e);
                 }
 
-                setCurrentUser(user);
+                // Only update state if pubkey is different
+                setCurrentUser(prevUser => prevUser?.pubkey === user.pubkey ? prevUser : user);
                 setIsLoggedInState(true); // Use useState setter
                 setLoginMethod('nip46');
                 setNip46Status('connected');

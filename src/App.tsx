@@ -12,7 +12,7 @@ import './App.css'
 // import { ChallengeHandler } from './components/ChallengeHandler'
 // Remove unused PlayerHUD import
 // import { PlayerHUD } from './components/ui_overlays/PlayerHUD'
-import GameScreen from './components/screens/GameScreen'
+import GameScreen from './components/game/GameScreen'
 // import { NostrLogin } from 'nostr-login';
 // Import QRCode component
 import { QRCodeCanvas } from 'qrcode.react';
@@ -29,6 +29,8 @@ import PracticeScreen from './components/screens/PracticeScreen'; // Corrected i
 import { isMobileDevice } from './utils/mobileDetection'; // <-- Import the utility
 import DeveloperSandboxScreen from './components/screens/DeveloperSandboxScreen'; // Import the new screen
 import { NDKUser, NDKEvent, NDKKind, NDKFilter, NDKSubscription } from '@nostr-dev-kit/ndk'; // Import NDKUser for type checking
+// Import game settings
+import { /* gameSettings, */ practiceSettings, sandboxSettings } from './config/gameSettings'; // Removed unused gameSettings import
 
 // Remove local relay definition
 // const explicitRelayUrls = [...] 
@@ -161,7 +163,7 @@ function App() {
            console.log(`[View Effect] Logged in and NDK ready, staying in current view: ${currentView}`);
        }
     }
-  }, [isNdkReady, isLoggedIn, currentView, currentUser?.pubkey]); // Added currentUser?.pubkey dependency
+  }, [isNdkReady, isLoggedIn, currentView]); 
 
   // --- Event Handlers for Navigation/Login --- 
   // REMOVED handleNip46Login as the button now directly calls initiateNip46Login
@@ -246,318 +248,256 @@ function App() {
 
       const subscriptionFilter: NDKFilter = {
         kinds: [30079 as NDKKind],
-        '#j': [matchId],
-        authors: [opponentPubkey], // Only listen for the opponent
-        since: Math.floor(Date.now() / 1000) - 5, // Look back a few seconds
+        authors: [opponentPubkey], // Only listen for the opponent's event
+        '#t': [matchId], // Tagged with the specific match ID
+        // Limit 1, since we only care about the first ready signal
+        // We might receive duplicates if the opponent sends multiple, but we handle that below
+        // limit: 1 
       };
 
-      const subscription = ndk.subscribe(subscriptionFilter, { closeOnEose: false });
-      readySubscriptionRef.current = subscription;
-
       const handleOpponentReady = (event: NDKEvent) => {
+        console.log(`[App] Received potential ready event from ${event.pubkey}:`, event.rawEvent());
         try {
-          const content = JSON.parse(event.content);
-          if (content.type === 'player_ready') {
-            console.log(`[App] Received player_ready signal from opponent ${event.pubkey}! Starting game.`);
-            // Stop listening, we got what we needed
-            subscription.stop(); 
-            readySubscriptionRef.current = null;
+          const payload = JSON.parse(event.content);
+          // Check if it's the correct type and for the correct match (redundant check via filter, but safe)
+          if (payload.type === 'player_ready' && event.tags.some(tag => tag[0] === 't' && tag[1] === matchId)) {
+            console.log(`[App] Opponent ${opponentPubkey} is READY for match ${matchId}! Starting game.`);
+            
+            // Stop listening *before* changing state/view
+            readySubscriptionRef.current?.stop(); 
+            readySubscriptionRef.current = null; 
 
-            // Update state to start the game
             setIsWaitingForOpponent(false); // Exit waiting state
-            setCurrentView('game');       // Navigate to game screen
+            setCurrentView('game');       // Navigate to GameScreen
+          } else {
+            console.log(`[App] Received event ${event.id} is not the expected player_ready type or matchId.`);
           }
-        } catch (error) {
-          console.error("[App] Failed to parse ready signal event content:", error, event.content);
+        } catch (e) {
+          console.warn(`[App] Failed to parse content of ready event ${event.id}:`, e);
         }
       };
 
-      subscription.on('event', handleOpponentReady);
-      subscription.start();
-      console.log("[App] Ready subscription started.");
+      console.log("[App] Creating ready subscription with filter:", JSON.stringify(subscriptionFilter));
+      const sub = ndk.subscribe(subscriptionFilter, { closeOnEose: false }); // Keep open until explicitly stopped
+      readySubscriptionRef.current = sub; // Store subscription reference
 
+      sub.on('event', handleOpponentReady);
+
+      sub.on('eose', () => {
+        console.log(`[App] Ready subscription EOSE received for match ${matchId}. Still waiting...`);
+        // Don't close here, wait for the event or explicit stop
+      });
+
+      sub.on('closed', () => {
+        console.log(`[App] Ready subscription explicitly closed for match ${matchId}.`);
+        // Ensure ref is cleared if closed externally, though we primarily control it
+        if (readySubscriptionRef.current === sub) {
+             readySubscriptionRef.current = null;
+        }
+      });
+      
       // Cleanup function
       return () => {
-        console.log("[App] Cleaning up ready subscription.");
-        if (readySubscriptionRef.current) {
-             readySubscriptionRef.current.stop();
+        console.log(`[App] Cleaning up ready subscription for match ${matchId} (Effect dependencies changed or component unmounted).`);
+        if (readySubscriptionRef.current === sub) { // Check if it's the same subscription we created
+             sub.stop();
              readySubscriptionRef.current = null;
         }
       };
     } else if (!isWaitingForOpponent && readySubscriptionRef.current) {
-         // If we exit the waiting state for any reason (e.g., cancel), ensure subscription is stopped
-         console.log("[App] Exited waiting state. Stopping ready subscription.");
+         // If we exit the waiting state for any reason (e.g., back button), stop the subscription
+         console.log("[App] Exited waiting state, stopping ready subscription.");
          readySubscriptionRef.current.stop();
          readySubscriptionRef.current = null;
     }
-    // Dependencies: Run when waiting state changes or necessary info becomes available
+  // Dependencies: Only run when these specific values change
   }, [isWaitingForOpponent, ndk, matchId, opponentPubkey]); 
-  // --- END OPPONENT READY SUBSCRIPTION --- 
+  // --- END EFFECT ---
 
   // --- Render Logic --- 
-  const renderContent = () => {
-    console.log(`[App Render] View: ${currentView}, NDK Ready: ${isNdkReady}, Logged In: ${isLoggedIn}, NIP46 Status: ${nip46Status}, IsDev: ${currentUser?.pubkey === DEV_PUBKEY}, Waiting: ${isWaitingForOpponent}`); // Added waiting state log
+  // No longer using a function that returns different types
+  // const renderContent = () => { ... };
 
-    // 1. NDK Connecting
-    if (currentView === 'connecting_ndk') {
-      return (
-        <div className="flex items-center justify-center h-full w-full">
-          {ndkConnectionError 
-            ? `Error connecting to Nostr relays: ${ndkConnectionError.message}` 
-            : 'Connecting to Nostr relays...'}
-        </div>
-      );
-    }
-
-    // 2. Login View (Handles NIP-07 button, NIP-46 input/QR/Connecting)
-    if (currentView === 'login') {
-        // --- NIP-46 Flow States ---
-
-        // NIP-46 QR Code Display (Desktop Only)
-        if (nip46Status === 'waiting_for_scan' && nip46AuthUrl && !isMobileDevice()) {
-             return (
-                // Center content, add padding for mobile
-                <div className="w-full h-full flex flex-col items-center justify-center p-4 sm:p-6 text-center">
-                    <p className="mb-4 text-lg">Scan with your Nostr mobile app (like Amber, Nostore, etc.):</p>
-                    {/* QR Code display with white background */}
-                    <div className="bg-white p-3 sm:p-4 rounded-lg mb-4 inline-block">
-                        <QRCodeCanvas value={nip46AuthUrl} size={200} className="sm:w-64 sm:h-64 w-48 h-48" /> { /* Responsive size */}
-                    </div>
-                     {/* Input to show/copy the URL - make it smaller on mobile */}
-                    <input 
-                        type="text" 
-                        readOnly 
-                        value={nip46AuthUrl} 
-                        className="w-full max-w-xs sm:max-w-md p-2 border border-gray-600 rounded bg-gray-800 text-white text-[10px] sm:text-xs mb-2 break-all" 
-                        onClick={(e) => (e.target as HTMLInputElement).select()} 
-                        title="Click to select URI"
-                    />
-                    {/* Copy Button */} 
-                    <button 
-                        onClick={() => navigator.clipboard.writeText(nip46AuthUrl!)} 
-                        className="px-4 py-2 rounded font-semibold text-white transition-colors bg-blue-600 hover:bg-blue-700 mb-4 text-sm sm:text-base"
-                    >
-                        Copy URI
-                    </button>
-                    <p className="text-gray-400 text-sm">Waiting for connection...</p>
-                    {authError && <p className="text-red-500 text-xs mt-2">{authError.message}</p>}
-                </div>
-            );
-        }
-
-        // NIP-46 Waiting for Mobile App Approval
-        if (nip46Status === 'waiting_for_mobile_approval') {
-             return (
-                 <div className="w-full h-full flex flex-col items-center justify-center p-4 sm:p-6 text-center">
-                     <p className="text-lg mb-4">Check your Nostr mobile app</p>
-                     <p className="text-gray-400 mb-4">Approve the connection request from Zapsliggers in your signer (e.g., Amber, Damus).</p>
-                     {/* Add a Cancel button */} 
-                     <button 
-                         onClick={cancelNip46LoginAttempt} 
-                         className="px-4 py-2 rounded font-semibold text-white transition-colors bg-red-600 hover:bg-red-700 text-sm sm:text-base"
-                     >
-                         Cancel
-                     </button>
-                     {authError && <p className="text-red-500 text-xs mt-4">{authError.message}</p>}
-                 </div>
-             );
-        }
-
-        // --- Default Login Options Screen ---
-        else {
-            return (
-                // Center the login box, responsive padding and width. Use flex-col on small screens.
-                <div className="w-full min-h-screen flex flex-col sm:flex-row items-center justify-center p-4"> {/* Changed to min-h-screen, flex-col default */}
-                    <div className="flex flex-col items-center justify-center p-6 sm:p-8 bg-gray-800 rounded-lg shadow-xl space-y-4 sm:space-y-6 w-full max-w-md"> {/* Adjusted max-w, consistent padding */}
-                        <h1 className="text-2xl sm:text-3xl font-bold text-purple-400 mb-4 text-center">Zapsliggers Login</h1>
-                        
-                        {/* NIP-07 Section - Explain if unavailable */} 
-                        {window.nostr ? (
-                            <button 
-                                onClick={loginWithNip07} 
-                                className="w-full px-6 py-3 rounded font-semibold text-white transition-colors bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
-                            >
-                                Login with Browser Extension (NIP-07)
-                            </button>
-                        ) : (
-                            <div className="text-center w-full p-3 bg-gray-700 rounded">
-                                 <p className="text-sm text-gray-400">
-                                    Nostr Browser Extension (NIP-07) not detected.
-                                 </p>
-                                 <p className="text-xs text-gray-500 mt-1">
-                                    (Mobile browsers usually don't support extensions. Use NIP-46 below.)
-                                 </p>
-                             </div>
-                        )}
-                        
-                        {/* Separator */} 
-                        <div className="w-full border-t border-gray-600 my-2"></div>
-                        
-                        {/* NIP-46 Section - Button now calls handleNip46Connect */} 
-                        <p className="text-center text-gray-300 text-sm sm:text-base">
-                            Connect using a mobile signing app:
-                        </p>
-                        <button 
-                            // Call the new handler function
-                            onClick={handleNip46Connect} 
-                            // Disable button if waiting for QR (desktop) or mobile approval
-                            // @ts-expect-error TS thinks this comparison is impossible, but it's valid logic
-                            disabled={nip46Status === 'waiting_for_scan' || nip46Status === 'waiting_for_mobile_approval'} 
-                            className="w-full px-4 sm:px-6 py-2 sm:py-3 rounded font-semibold text-white transition-colors bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 text-sm sm:text-base" /* Adjusted padding/text */
-                        >
-                            Connect with Mobile App (NIP-46)
-                        </button>
-                        
-                        {/* Separator */} 
-                        {/* 
-                        <div className="w-full border-t border-gray-600 my-2"></div>
-                        <button
-                            onClick={handleRequestFullscreen}
-                            className="w-full px-4 sm:px-6 py-2 sm:py-3 rounded font-semibold text-white transition-colors bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50 text-sm sm:text-base"
-                        >
-                            Enter Fullscreen
-                        </button>
-                        */}
-
-                        {authError && <p className="text-red-500 text-xs sm:text-sm mt-4 text-center">Login Failed: {authError.message}</p>} {/* Adjusted text size */}
-                    </div>
-                </div>
-            );
-        }
-    }
-
-    // --- Add early return check/type guard AFTER login view --- 
-    if (!isLoggedIn || !currentUser || !ndk) {
-      // Should ideally not be reached if view logic is correct, but acts as a type guard
-      console.error("[App Render] Critical state error: Not logged in or NDK/User missing despite view being beyond 'login'. Returning to login.");
-      setCurrentView('login'); // Force back to login
-      return (
-        <div className="flex items-center justify-center h-full w-full">
-          Invalid state. Redirecting to login...
-        </div>
-      );
-    }
-    // --- End early return check --- 
-
-    // 3. Menu View (if NDK ready and logged in)
-    if (currentView === 'menu') {
-      // Determine if current user is the developer
-      const isDeveloper = currentUser?.pubkey === DEV_PUBKEY;
-
-      return (
-        <div className="w-full h-full flex flex-col items-center justify-center p-4 space-y-4">
-          <h1 className="text-3xl font-bold mb-6">ZapSlingers</h1>
-          {/* Add Fullscreen Button */}
-          <button
-            onClick={handleRequestFullscreen}
-            className="mb-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition duration-150 ease-in-out"
-          >
-            Go Fullscreen
-          </button>
-          <button onClick={handleSelectPractice} className="w-48 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded transition duration-150 ease-in-out">Practice Mode</button>
-          <button onClick={handleSelectMultiplayer} className="w-48 px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded transition duration-150 ease-in-out">Multiplayer Lobby</button>
-          {/* Conditionally render Dev Sandbox button */}
-          {isDeveloper && (
-              <button onClick={handleSelectDevSandbox} className="w-48 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded transition duration-150 ease-in-out">Developer Sandbox</button>
-          )}
-          {/* Add a logout button or other menu items */}
-        </div>
-      );
-    }
-
-    // 4. Lobby View
-    if (currentView === 'lobby') {
-      if (isWaitingForOpponent) {
-          // Render waiting state
-          return (
-              <div className="flex flex-col items-center justify-center h-full w-full p-4 text-center">
-                  <h2 className="text-2xl font-bold mb-4">Match Found!</h2>
-                  {/* Ensure opponentPubkey and matchId are strings before slicing */}
-                  <p className="mb-2">Opponent: {opponentPubkey ? `${opponentPubkey.substring(0, 8)}...${opponentPubkey.substring(opponentPubkey.length - 4)}` : 'Unknown'}</p>
-                  <p className="mb-6">Match ID: {matchId ? `${matchId.substring(0, 8)}...` : 'Unknown'}</p>
-                  {/* Loading Spinner */}
-                  <svg className="animate-spin h-8 w-8 text-white mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  <p className="text-xl">Waiting for opponent to be ready...</p>
-                  <button
-                      onClick={handleBackToMenu} // Reuse back handler for cancelling wait
-                      className="mt-6 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded transition duration-150 ease-in-out"
-                  >
-                      Cancel Match
-                  </button>
-              </div>
-          );
-      } else {
-          // Render normal LobbyScreen
-          // Ensure ndk and currentUser are not null before rendering LobbyScreen
-          // if (!ndk || !currentUser) { // REMOVED this check - handled above
-              // This case should ideally not be reached due to the view logic, but handle defensively
-              // console.error("Attempted to render LobbyScreen without NDK or currentUser.");
-              // Optionally redirect or show an error message
-              // handleBackToMenu(); // Go back to menu if state is inconsistent // REMOVED
-              // return null; // Or render a fallback UI // REMOVED
-          // } // REMOVED
-          return (
-              <LobbyScreen
-                  ndk={ndk} // Pass non-null ndk
-                  currentUser={currentUser} // Pass non-null currentUser
-                  onChallengeAccepted={handleChallengeAccepted}
-                  onWaitingForOpponent={handleWaitingForOpponent} // Pass the new handler
-                  onBack={handleBackToMenu}
-              />
-          );
-      }
-    }
-
-    // 5. Practice View
-    if (currentView === 'practice') {
-      // No need for !ndk || !currentUser check here due to early return above
-      return <PracticeScreen ndk={ndk} currentUser={currentUser} onBackToMenu={handleBackToMenu} />;
-    }
-
-    // 6. Game View
-    if (currentView === 'game') {
-      // No need for !ndk || !currentUser check here
-      if (opponentPubkey && matchId) {
-        return <GameScreen 
-                  ndk={ndk} 
-                  localPlayerPubkey={currentUser.pubkey} 
-                  opponentPubkey={opponentPubkey} 
-                  matchId={matchId} 
-                  onGameEnd={handleGameEnd} 
-                  onBackToMenu={handleBackToMenu}
-                />;
-      } else {
-        console.warn("[App Render] Trying to render game but opponentPubkey or matchId is undefined");
-        return <div className="flex items-center justify-center h-full w-full">Redirecting to menu...</div>;
-      }
-    }
-
-    // 7. Developer Sandbox View
-    if (currentView === 'dev_sandbox') {
-      // No need for !ndk || !currentUser check here
-      if (currentUser.pubkey === DEV_PUBKEY) { // Direct access to currentUser.pubkey is safe now
-        return <DeveloperSandboxScreen ndk={ndk} currentUser={currentUser} onBackToMenu={handleBackToMenu} />;
-      } else {
-        console.warn("Render attempt for dev_sandbox blocked for non-developer.");
-        setCurrentView('menu');
-        return null;
-      }
-    }
-
-    // Fallback for unexpected states
-    console.error(`[App Render] Reached unexpected state: View=${currentView}, LoggedIn=${isLoggedIn}`);
-    return <div className="flex items-center justify-center h-full w-full">Unexpected application state.</div>;
-  };
-
-  // Apply the main layout wrapper around the rendered content
+  // --- Render Return --- 
   return (
-    <div className="flex flex-col min-h-screen bg-black text-white">
-      {renderContent()} 
-    </div>
+      // Main container for the app
+      <div className="w-full h-dvh overflow-hidden"> { /* Ensure full viewport height and hide overflow */ }
+          { /* 1. NDK Connecting Overlay (if applicable) */ }
+          {currentView === 'connecting_ndk' && (
+              <div className="absolute inset-0 flex items-center justify-center h-full w-full bg-black bg-opacity-80 z-50 text-white">
+                  {ndkConnectionError 
+                      ? `Error connecting to Nostr relays: ${ndkConnectionError.message}` 
+                      : 'Connecting to Nostr relays...'}
+              </div>
+          )}
+
+          { /* 2. Login View (if applicable) */ }
+          {currentView === 'login' && (
+              // Reuse the existing Login view structure here
+              // Center the login box, responsive padding and width. Use flex-col on small screens.
+              <div className="w-full min-h-screen flex flex-col sm:flex-row items-center justify-center p-4 bg-gray-900"> { /* Added background */}
+                  <div className="flex flex-col items-center justify-center p-6 sm:p-8 bg-gray-800 rounded-lg shadow-xl space-y-4 sm:space-y-6 w-full max-w-md"> {/* Adjusted max-w, consistent padding */}
+                      <h1 className="text-2xl sm:text-3xl font-bold text-purple-400 mb-4 text-center">Zapsliggers Login</h1>
+                      
+                      {/* NIP-46 QR Code Display (Desktop Only) */}
+                      {nip46Status === 'waiting_for_scan' && nip46AuthUrl && !isMobileDevice() && (
+                          <div className="w-full flex flex-col items-center justify-center p-4 sm:p-6 text-center">
+                              <p className="mb-4 text-lg">Scan with your Nostr mobile app:</p>
+                              <div className="bg-white p-3 sm:p-4 rounded-lg mb-4 inline-block">
+                                  <QRCodeCanvas value={nip46AuthUrl} size={200} className="sm:w-64 sm:h-64 w-48 h-48" />
+                              </div>
+                              <input 
+                                  type="text" 
+                                  readOnly 
+                                  value={nip46AuthUrl} 
+                                  className="w-full max-w-xs sm:max-w-md p-2 border border-gray-600 rounded bg-gray-800 text-white text-[10px] sm:text-xs mb-2 break-all" 
+                                  onClick={(e) => (e.target as HTMLInputElement).select()} 
+                                  title="Click to select URI"
+                              />
+                              <button 
+                                  onClick={() => navigator.clipboard.writeText(nip46AuthUrl!)} 
+                                  className="px-4 py-2 rounded font-semibold text-white transition-colors bg-blue-600 hover:bg-blue-700 mb-4 text-sm sm:text-base"
+                              >
+                                  Copy URI
+                              </button>
+                              <p className="text-gray-400 text-sm">Waiting for connection...</p>
+                              {authError && <p className="text-red-500 text-xs mt-2">{authError.message}</p>}
+                          </div>
+                      )}
+                      
+                      {/* NIP-46 Waiting for Mobile App Approval */}
+                      {nip46Status === 'waiting_for_mobile_approval' && (
+                          <div className="w-full flex flex-col items-center justify-center p-4 sm:p-6 text-center">
+                              <p className="text-lg mb-4">Check your Nostr mobile app</p>
+                              <p className="text-gray-400 mb-4">Approve the connection request.</p>
+                              <button 
+                                  onClick={cancelNip46LoginAttempt} 
+                                  className="px-4 py-2 rounded font-semibold text-white transition-colors bg-red-600 hover:bg-red-700 text-sm sm:text-base"
+                              >
+                                  Cancel
+                              </button>
+                              {authError && <p className="text-red-500 text-xs mt-4">{authError.message}</p>}
+                          </div>
+                      )}
+
+                      {/* Default Login Options (Only show if not waiting for NIP46) */}
+                      {nip46Status !== 'waiting_for_scan' && nip46Status !== 'waiting_for_mobile_approval' && (
+                          <>
+                              {window.nostr ? (
+                                  <button 
+                                      onClick={loginWithNip07} 
+                                      className="w-full px-6 py-3 rounded font-semibold text-white transition-colors bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
+                                  >
+                                      Login with Browser Extension (NIP-07)
+                                  </button>
+                              ) : (
+                                  <div className="text-center w-full p-3 bg-gray-700 rounded">
+                                      <p className="text-sm text-gray-400">Nostr Browser Extension (NIP-07) not detected.</p>
+                                      <p className="text-xs text-gray-500 mt-1">(Mobile browsers usually don't support extensions. Use NIP-46 below.)</p>
+                                  </div>
+                              )}
+                              <div className="w-full border-t border-gray-600 my-2"></div>
+                              <p className="text-center text-gray-300 text-sm sm:text-base">Connect using a mobile signing app:</p>
+                              <button 
+                                  onClick={handleNip46Connect} 
+                                  // @ts-expect-error - Assume these statuses are valid despite inferred type mismatch
+                                  disabled={nip46Status === 'waiting_for_scan' || nip46Status === 'waiting_for_mobile_approval'} 
+                                  className="w-full px-4 sm:px-6 py-2 sm:py-3 rounded font-semibold text-white transition-colors bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 text-sm sm:text-base"
+                              >
+                                  Connect with Mobile App (NIP-46)
+                              </button>
+                              {authError && <p className="text-red-500 text-xs sm:text-sm mt-4 text-center">Login Failed: {authError.message}</p>}
+                          </>
+                      )}
+                  </div>
+              </div>
+          )}
+
+          { /* 3. Main Menu (Only if logged in and view is menu) */ }
+          {isLoggedIn && currentUser && ndk && currentView === 'menu' && (
+              // Determine if current user is the developer
+              (() => { // IIFE to calculate isDeveloper locally
+                const isDeveloper = currentUser?.pubkey === DEV_PUBKEY;
+                return (
+                  <div className="w-full h-full flex flex-col items-center justify-center p-4 space-y-4 bg-gray-900"> { /* Added background */}
+                      <h1 className="text-3xl font-bold mb-6 text-purple-400">ZapSlingers</h1>
+                      <button
+                          onClick={handleRequestFullscreen}
+                          className="mb-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition duration-150 ease-in-out"
+                      >
+                          Go Fullscreen
+                      </button>
+                      <button onClick={handleSelectPractice} className="w-48 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded transition duration-150 ease-in-out">Practice Mode</button>
+                      <button onClick={handleSelectMultiplayer} className="w-48 px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded transition duration-150 ease-in-out">Multiplayer Lobby</button>
+                      {isDeveloper && (
+                          <button onClick={handleSelectDevSandbox} className="w-48 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded transition duration-150 ease-in-out">Developer Sandbox</button>
+                      )}
+                  </div>
+                );
+              })() // Immediately invoke the function
+          )}
+
+          { /* 4. Lobby Screen (Only if logged in and view is lobby) */ }
+          {isLoggedIn && currentUser && ndk && currentView === 'lobby' && (
+               <LobbyScreen 
+                  key="lobby"
+                  ndk={ndk} 
+                  currentUser={currentUser} 
+                  onChallengeAccepted={handleChallengeAccepted} 
+                  onWaitingForOpponent={handleWaitingForOpponent}
+                  onBack={handleBackToMenu}
+               />
+          )}
+
+          { /* 5. Practice Screen (Only if logged in and view is practice) */ }
+          {isLoggedIn && currentUser && ndk && currentView === 'practice' && (
+              <PracticeScreen 
+                  key="practice"
+                  ndk={ndk} 
+                  currentUser={currentUser} 
+                  onBackToMenu={handleBackToMenu} 
+                  settings={practiceSettings} // Pass specific settings
+              />
+          )}
+          
+          { /* 6. Developer Sandbox Screen (Only if logged in and view is dev_sandbox) */ }
+          {isLoggedIn && currentUser && ndk && currentView === 'dev_sandbox' && (
+               // Ensure user is actually the developer before rendering
+               currentUser.pubkey === DEV_PUBKEY ? (
+                  <DeveloperSandboxScreen 
+                      key="dev_sandbox"
+                      ndk={ndk} 
+                      currentUser={currentUser} 
+                      onBackToMenu={handleBackToMenu} 
+                      settings={sandboxSettings} // Pass specific settings
+                  />
+               ) : (
+                   // Fallback if somehow view state is wrong (should be handled by effect)
+                   <div className="flex items-center justify-center h-full w-full text-red-500">Access Denied</div>
+               )
+          )}
+
+          { /* 7. Game Screen (Only if logged in and view is game) */ }
+          {isLoggedIn && currentUser && ndk && currentView === 'game' && (
+              // Ensure opponent and matchId are set before rendering game
+              opponentPubkey && matchId ? (
+                  <GameScreen 
+                      key="game"
+                      ndk={ndk} 
+                      localPlayerPubkey={currentUser.pubkey}
+                      opponentPubkey={opponentPubkey} 
+                      matchId={matchId}
+                      onGameEnd={handleGameEnd}
+                      onBackToMenu={handleBackToMenu}
+                  />
+              ) : (
+                  // Fallback if state is wrong (shouldn't happen with correct logic)
+                  <div className="flex items-center justify-center h-full w-full text-red-500">Error starting game: Missing opponent or match ID.</div>
+              )
+          )}
+
+      </div>
   );
 }
 
-export default App
+export default App;

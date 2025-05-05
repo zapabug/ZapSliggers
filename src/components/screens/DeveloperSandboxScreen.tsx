@@ -5,23 +5,25 @@ import GameRenderer from '../game/GameRenderer';
 import AimingInterface from '../ui_overlays/AimingInterface';
 import ActionButtons from '../ui_overlays/ActionButtons';
 import { useGameLogic } from '../../hooks/useGameLogic';
-import { sandboxSettings } from '../../config/gameSettings';
+import { GameSettingsProfile } from '../../config/gameSettings';
 import { GameEndResult } from '../../types/game';
 import { useKeyboardControls } from '../../hooks/useKeyboardControls';
 import { NDKUser } from '@nostr-dev-kit/ndk';
+import { useGameAssets } from '../../hooks/useGameAssets';
 
 interface DeveloperSandboxScreenProps {
-    ndk?: NDK;
-    currentUser?: NDKUser;
-    localPlayerPubkey?: string;
+    ndk: NDK;
+    currentUser: NDKUser;
     onBackToMenu: () => void;
+    settings: GameSettingsProfile;
 }
 
-const DeveloperSandboxScreen: React.FC<DeveloperSandboxScreenProps> = ({ onBackToMenu, localPlayerPubkey = "sandbox-player" }) => {
-    const handleGameEnd = useCallback((result: GameEndResult) => {
-        console.log('[Sandbox] Game Over:', result);
-        alert(`[Sandbox] Game Over! Winner: ${result.winnerIndex === 0 ? 'Player 0' : result.winnerIndex === 1 ? 'Player 1' : 'Draw'}. Final Score: ${result.finalScore[0]}-${result.finalScore[1]}. Reason: ${result.reason}`);
+const DeveloperSandboxScreen: React.FC<DeveloperSandboxScreenProps> = ({ ndk, currentUser, onBackToMenu, settings }) => {
+    const handleSandboxGameEnd = useCallback((result: GameEndResult) => {
+        console.log("Developer Sandbox game ended (or round completed):", result);
     }, []);
+
+    const { assets: loadedAssets, loadingState: assetsLoadingState } = useGameAssets();
 
     const {
         playerStates,
@@ -35,18 +37,21 @@ const DeveloperSandboxScreen: React.FC<DeveloperSandboxScreenProps> = ({ onBackT
         handleSelectAbility,
         physicsHandles,
         shotTracerHandlers,
-        settings,
     } = useGameLogic({
-        settings: sandboxSettings,
-        mode: 'practice',
-        localPlayerPubkey: localPlayerPubkey,
-        onGameEnd: handleGameEnd,
+        settings: settings,
+        mode: 'custom',
+        localPlayerPubkey: currentUser.pubkey,
+        opponentPubkey: "sandbox-opponent-pubkey",
+        onGameEnd: handleSandboxGameEnd,
+        ndk: ndk,
     });
+
+    const localAimState = aimStates[0];
 
     useKeyboardControls({
         isActive: true,
-        currentAngle: aimStates[0].angle,
-        currentPower: aimStates[0].power,
+        currentAngle: localAimState.angle,
+        currentPower: localAimState.power,
         handleAimChange: handleAimChange,
         handleFire: handleFire,
         handleSelectAbility: handleSelectAbility,
@@ -54,33 +59,34 @@ const DeveloperSandboxScreen: React.FC<DeveloperSandboxScreenProps> = ({ onBackT
 
     return (
         <div className="relative w-full h-dvh bg-gray-900 text-white overflow-hidden flex flex-col">
-            <div className="flex-shrink-0 w-full flex justify-between items-center p-2 bg-gray-800 shadow-md z-20">
+            <div className="flex-shrink-0 w-full flex justify-between p-2 bg-gray-800 shadow-md z-20">
                 <button
                     onClick={onBackToMenu}
-                    className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-white font-semibold transition-colors duration-150"
+                    className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-white font-semibold transition-colors duration-150 mr-4"
                 >
                     &larr; Back to Menu
                 </button>
-                <h1 className="text-xl font-bold text-yellow-300">Developer Sandbox</h1>
-                <div className="text-lg font-semibold text-blue-300 flex items-center space-x-4 pr-4">
-                     <span>Round: {currentRound} / {settings.MAX_ROUNDS}</span>
-                     <span>Score: {score[0]} - {score[1]}</span>
-                     <span>P1 HP: {playerStates[0].hp}</span>
-                     <span>P2 HP: {playerStates[1].hp}</span>
+                <h1 className="text-xl font-bold text-purple-300 self-center">
+                    Developer Sandbox
+                </h1>
+                <div className="text-lg font-semibold text-yellow-300 flex items-center space-x-4 pr-4">
+                    <span>Round: {currentRound}</span>
+                    <span>Score: {score[0]} - {score[1]}</span>
                 </div>
             </div>
 
             <div className="relative flex-grow w-full h-full">
                 <div className="absolute inset-0 z-0 w-full h-full">
-                    {levelData && physicsHandles && shotTracerHandlers && aimStates && settings && (
+                    {assetsLoadingState === 'loaded' && levelData && physicsHandles && shotTracerHandlers && aimStates && settings && (
                         <GameRenderer
                             physicsHandles={physicsHandles}
                             shotTracerHandlers={shotTracerHandlers}
                             settings={settings}
                             aimStates={aimStates}
+                            gameAssets={loadedAssets}
                         />
                     )}
-                    {(!levelData || !physicsHandles) && (
+                    {(assetsLoadingState !== 'loaded' || !levelData || !physicsHandles) && (
                         <div className="absolute inset-0 flex items-center justify-center text-2xl font-bold text-gray-500">
                             Initializing Sandbox...
                         </div>
@@ -88,11 +94,11 @@ const DeveloperSandboxScreen: React.FC<DeveloperSandboxScreenProps> = ({ onBackT
                 </div>
 
                 <div className="absolute bottom-4 left-4 z-10 pointer-events-auto flex flex-col items-start max-w-xs">
-                     <AimingInterface
-                         currentAngle={aimStates[0].angle}
-                         currentPower={aimStates[0].power}
-                         onAimChange={handleAimChange}
-                     />
+                    <AimingInterface
+                        aimStates={aimStates}
+                        currentPlayerIndex={0}
+                        onAimChange={handleAimChange}
+                    />
                 </div>
 
                 <div className="absolute bottom-4 right-4 z-10 pointer-events-auto flex flex-col items-end">
@@ -100,8 +106,8 @@ const DeveloperSandboxScreen: React.FC<DeveloperSandboxScreenProps> = ({ onBackT
                         onFire={handleFire}
                         onAbilitySelect={handleSelectAbility}
                         selectedAbility={selectedAbility}
-                        usedAbilities={playerStates[0].usedAbilities}
-                        currentHp={playerStates[0].hp}
+                        playerStates={playerStates}
+                        currentPlayerIndex={0}
                         abilityCost={settings.ABILITY_COST_HP}
                         maxAbilityUsesTotal={settings.MAX_ABILITIES_TOTAL}
                         maxAbilityUsesPerType={settings.MAX_ABILITIES_PER_TYPE}

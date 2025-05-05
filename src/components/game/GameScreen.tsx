@@ -9,6 +9,7 @@ import { useGameLogic } from '../../hooks/useGameLogic';
 import { gameSettings } from '../../config/gameSettings';
 import { useKeyboardControls } from '../../hooks/useKeyboardControls';
 import { GameEndResult } from '../../types/game';
+import { useGameAssets } from '../../hooks/useGameAssets';
 
 interface GameScreenProps {
     ndk: NDK;
@@ -31,6 +32,8 @@ const GameScreen: React.FC<GameScreenProps> = ({
         onGameEnd(result);
     }, [onGameEnd]);
 
+    const { assets: loadedAssets, loadingState: assetsLoadingState } = useGameAssets();
+
     const {
         playerStates,
         myPlayerIndex,
@@ -45,6 +48,7 @@ const GameScreen: React.FC<GameScreenProps> = ({
         physicsHandles,
         shotTracerHandlers,
         settings,
+        currentPlayerIndex,
     } = useGameLogic({
         settings: gameSettings,
         mode: 'multiplayer',
@@ -60,10 +64,10 @@ const GameScreen: React.FC<GameScreenProps> = ({
     const opponentPlayerIndex = myPlayerIndex === 0 ? 1 : 0;
     const opponentPlayerState = playerStates[opponentPlayerIndex];
 
-    const isMyTurn = true;
+    const isMyTurn = currentPlayerIndex === myPlayerIndex;
 
     useKeyboardControls({
-        isActive: true,
+        isActive: isMyTurn,
         currentAngle: localAimState.angle,
         currentPower: localAimState.power,
         handleAimChange: handleAimChange,
@@ -84,7 +88,7 @@ const GameScreen: React.FC<GameScreenProps> = ({
                     Match vs {opponentPubkey.slice(0, 10)}...
                 </h1>
                 <div className="ml-auto text-lg font-semibold text-yellow-300 flex items-center space-x-4 pr-4">
-                    <span>Round: {currentRound} / {gameSettings.MAX_ROUNDS}</span>
+                    <span>Round: {currentRound} / {settings.MAX_ROUNDS}</span>
                     <span>Score: {score[myPlayerIndex]} - {score[opponentPlayerIndex]}</span>
                 </div>
             </div>
@@ -94,7 +98,7 @@ const GameScreen: React.FC<GameScreenProps> = ({
                     <PlayerHUD
                         pubkey={localPlayerPubkey}
                         currentHp={localPlayerState.hp}
-                        maxHp={gameSettings.MAX_HP}
+                        maxHp={settings.MAX_HP}
                         isPlayer1={myPlayerIndex === 0}
                         ndk={ndk}
                     />
@@ -103,22 +107,23 @@ const GameScreen: React.FC<GameScreenProps> = ({
                     <PlayerHUD
                         pubkey={opponentPubkey}
                         currentHp={opponentPlayerState.hp}
-                        maxHp={gameSettings.MAX_HP}
+                        maxHp={settings.MAX_HP}
                         isPlayer1={opponentPlayerIndex === 0}
                         ndk={ndk}
                     />
                 </div>
 
                 <div className="absolute inset-0 z-0 w-full h-full">
-                    {levelData && physicsHandles && shotTracerHandlers && aimStates && settings && (
+                    {assetsLoadingState === 'loaded' && levelData && physicsHandles && shotTracerHandlers && aimStates && settings && (
                         <GameRenderer
                             physicsHandles={physicsHandles}
                             shotTracerHandlers={shotTracerHandlers}
                             settings={settings}
                             aimStates={aimStates}
+                            gameAssets={loadedAssets}
                         />
                     )}
-                    {(!levelData || !physicsHandles) && (
+                    {(assetsLoadingState !== 'loaded' || !levelData || !physicsHandles) && (
                         <div className="absolute inset-0 flex items-center justify-center text-2xl font-bold text-gray-500">
                             Initializing Match...
                         </div>
@@ -127,8 +132,8 @@ const GameScreen: React.FC<GameScreenProps> = ({
 
                 <div className="absolute bottom-4 left-4 z-10 pointer-events-auto flex flex-col items-start max-w-xs">
                     <AimingInterface
-                        currentAngle={localAimState.angle}
-                        currentPower={localAimState.power}
+                        aimStates={aimStates}
+                        currentPlayerIndex={myPlayerIndex}
                         onAimChange={handleAimChange}
                     />
                 </div>
@@ -138,9 +143,9 @@ const GameScreen: React.FC<GameScreenProps> = ({
                         onFire={handleFire}
                         onAbilitySelect={handleSelectAbility}
                         selectedAbility={selectedAbility}
-                        usedAbilities={localPlayerState.usedAbilities}
-                        currentHp={localPlayerState.hp}
-                        abilityCost={gameSettings.ABILITY_COST_HP}
+                        playerStates={playerStates}
+                        currentPlayerIndex={myPlayerIndex}
+                        abilityCost={settings.ABILITY_COST_HP}
                         maxAbilityUsesTotal={settings.MAX_ABILITIES_TOTAL}
                         maxAbilityUsesPerType={settings.MAX_ABILITIES_PER_TYPE}
                         disabled={!isMyTurn}

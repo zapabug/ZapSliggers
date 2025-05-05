@@ -1,4 +1,5 @@
 import React from 'react';
+import { PlayerState } from '../../types/game'; // Import PlayerState
 
 // Define known ability types based on refined mechanics
 export type AbilityType = 'splitter' | 'gravity' | 'plastic' | 'splitter_fragment';
@@ -7,9 +8,12 @@ interface ActionButtonsProps {
   onFire: () => void;
   selectedAbility: AbilityType | null;
   onAbilitySelect: (abilityType: AbilityType) => void; // Changed signature to NOT accept null for selection
-  // --- ADDED Props ---
-  usedAbilities: Set<AbilityType>;
-  currentHp: number;
+  // --- Updated Props ---
+  // usedAbilities: Set<AbilityType>; // Removed
+  // currentHp: number; // Removed
+  playerStates: [PlayerState, PlayerState]; // Added
+  currentPlayerIndex: 0 | 1; // Added
+  // --- END Updated Props ---
   abilityCost: number;
   maxAbilityUsesTotal: number;
   maxAbilityUsesPerType: number;
@@ -27,14 +31,21 @@ const ActionButtons: React.FC<ActionButtonsProps> = (props) => {
     onFire,
     selectedAbility,
     onAbilitySelect,
-    usedAbilities,
-    currentHp,
+    // Removed old props
+    // usedAbilities,
+    // currentHp,
+    // Added new props
+    playerStates,
+    currentPlayerIndex,
     abilityCost,
     maxAbilityUsesTotal,
     maxAbilityUsesPerType,
     disabled,
     availableAbilities, // Destructure new prop
   } = props;
+
+  // Determine active state based on index
+  const activePlayerState = playerStates[currentPlayerIndex];
 
   const radius = 50; // Increased from 40 to give more space
 
@@ -74,12 +85,12 @@ const ActionButtons: React.FC<ActionButtonsProps> = (props) => {
       <div className="absolute bottom-8 right-16 z-10 w-0 h-0">
         {availableAbilities.map((ability, index) => {
           // Calculate if used max times for this specific type
-          const abilitiesOfTypeUsed = Array.from(usedAbilities).filter(used => used === ability).length;
+          const abilitiesOfTypeUsed = Array.from(activePlayerState.usedAbilities).filter(used => used === ability).length;
           const isUsedMaxPerType = abilitiesOfTypeUsed >= maxAbilityUsesPerType;
           // Calculate if max total abilities have been used
-          const isUsedMaxTotal = usedAbilities.size >= maxAbilityUsesTotal;
+          const isUsedMaxTotal = activePlayerState.usedAbilities.size >= maxAbilityUsesTotal;
           // Check HP
-          const hasEnoughHp = currentHp >= abilityCost;
+          const hasEnoughHp = activePlayerState.hp >= abilityCost;
           // Determine final disabled state
           const isButtonDisabled = disabled || isUsedMaxPerType || isUsedMaxTotal || !hasEnoughHp;
           const isSelected = selectedAbility === ability;
@@ -115,7 +126,7 @@ const ActionButtons: React.FC<ActionButtonsProps> = (props) => {
                 ability === 'gravity' ? 'Gravity 🧲: Projectile is attracted towards opponent ship.' :
                 ability === 'plastic' ? 'Plastic 🌬️: Less affected by planet gravity.' :
                 ability // Fallback
-              ) + ` (Cost: ${abilityCost} HP) - Used ${abilitiesOfTypeUsed}/${maxAbilityUsesPerType} (Total: ${usedAbilities.size}/${maxAbilityUsesTotal}) - ${isButtonDisabled ? 'Unavailable' : 'Available'}`}
+              ) + ` (Cost: ${abilityCost} HP) - Used ${abilitiesOfTypeUsed}/${maxAbilityUsesPerType} (Total: ${activePlayerState.usedAbilities.size}/${maxAbilityUsesTotal}) - ${isButtonDisabled ? 'Unavailable' : 'Available'}`}
             >
               {/* Emojis updated */}
               {

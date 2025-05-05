@@ -1,0 +1,73 @@
+# LLM Context Dump: ZapSlingers Project
+
+**Date:** YYYY-MM-DD HH:MM *(<-- Update this date)*
+
+**Objective:** Provide a comprehensive context package for the ZapSlingers project, suitable for onboarding an LLM or developer.
+
+**1. Project Goal & Core Concept:** *(No changes)*
+
+ZapSlingers is a 2-player, turn-based steampunk space artillery game. It features physics-based projectiles influenced by standard planets and unique **Sliggers** (special planets, typically placed at map edges, with distinct attraction/repulsion zones), rendered on an HTML Canvas. The game emphasizes a physics-grounded steampunk aesthetic, utilizes Nostr for matchmaking and basic gameplay communication, and is designed with a mobile-first approach.
+
+**2. Planning & Decision Summary (See @<documentation/docs/Planning.md> for full history):** *(No changes)*
+... *(Keep existing content)* ...
+
+**3. Final Low-Level Design (LLD):** *(No significant changes to LLD, but implementation status updated)*
+... *(Keep existing LLD link and Key Hooks)* ...
+
+**4. Essential Supporting Documentation Files (@<link> format):** *(No changes)*
+... *(Keep existing links)* ...
+
+**5. Instructions for LLM/Developer:** *(No changes)*
+... *(Keep existing instructions)* ...
+
+---
+
+**6. Recent Activity & Next Steps (YYYY-MM-DD HH:MM):** *(<-- Update this date)*
+
+*   **Previous:** QR Scanner replacement, dependency updates, initial multiplayer challenge flow modifications (leading to asymmetric wait state). *(Keep previous summary)*
+*   **Debugging Session (Current):**
+    *   **Settings Verification:** Confirmed `src/config/gameSettings.ts` is largely respected as the source of truth for core game parameters. Identified minor inconsistencies in how screen components (`GameScreen`, `PracticeScreen`, `DeveloperSandboxScreen`) access settings (sometimes via props/hooks, sometimes via direct import) - *Fixed inconsistency for PracticeScreen, GameScreen, DeveloperSandboxScreen*. Identified some hardcoded secondary physics values (friction, restitution, offsets) and UI constants in `useMatterPhysics`, `GameRenderer`, etc., which could be moved to settings if needed but are not critical bugs.
+    *   **Practice Mode Fixes:**
+        *   Identified root cause of broken Practice Mode: `PracticeScreen.tsx` hardcoded `isMyTurn = true`, ignoring `currentPlayerIndex` from `useGameLogic`.
+        *   Refactored `PracticeScreen.tsx`: Removed hardcoded `isMyTurn`, passed `isActive: true` to `useKeyboardControls` (correct for single user controlling both turns).
+        *   Refactored `PracticeScreen.tsx`, `AimingInterface.tsx`, `ActionButtons.tsx`: Updated prop passing to use `currentPlayerIndex` and full state arrays (`aimStates`, `playerStates`) to correctly reflect the active player's state in the UI controls.
+        *   Fixed inconsistent settings access in `PracticeScreen.tsx`.
+    *   **Multiplayer Turn Fix:**
+        *   Identified critical bug in `GameScreen.tsx`: `isMyTurn` was hardcoded to `true`, breaking turn logic.
+        *   Fixed `isMyTurn` calculation to use `currentPlayerIndex === myPlayerIndex`.
+        *   Updated `useKeyboardControls` to use correct `isActive` value.
+        *   Updated prop passing in `GameScreen.tsx` for `AimingInterface`/`ActionButtons` to use `myPlayerIndex` and full state arrays.
+        *   Fixed inconsistent settings access in `GameScreen.tsx`.
+    *   **Sandbox Fixes:**
+        *   Updated prop passing in `DeveloperSandboxScreen.tsx` for `AimingInterface`/`ActionButtons` to use index `0` and full state arrays.
+        *   Fixed inconsistent settings access in `DeveloperSandboxScreen.tsx`.
+    *   **Physics Hook Analysis:** Examined `useMatterPhysics.ts`. Identified significant code overlap and potential redundancy between the initial world setup logic and the `resetPhysics` function. Confirmed appropriate delegation of physics tasks from `useGameLogic`.
+
+**Next Steps (TODOs):**
+
+1.  **Permissions Flow (`useAuth.ts` / NIP-46 logic):** *(Keep existing)*
+    *   Modify authentication flow to request minimal permissions initially.
+    *   Implement logic to request necessary permissions only when entering Multiplayer Lobby or initiating actions.
+2.  **Challenge Flow - Waiting Logic (`App.tsx` / State Manager):** *(Keep existing)*
+    *   Implement `onWaitingForOpponent` state transition.
+    *   Modify `onChallengeAccepted` handler (for original challenger) to also transition to 'waiting' state. **Neither player should navigate to `GameScreen` yet.**
+    *   Create/modify UI for "Waiting for opponent..." state.
+3.  **Challenge Flow - Player Ready (`useGameLogic.ts`, `App.tsx`):** *(Keep existing)*
+    *   Add `useEffect` in `useGameLogic` (mounted in multiplayer) to publish `player_ready` event (`kind: 30079`).
+    *   Add Nostr subscription in `App.tsx`/state manager for opponent's `player_ready` event.
+    *   Implement logic to navigate to `GameScreen` only after *both* players are ready (opponent's event received).
+4.  **Physics Refactor (`useMatterPhysics.ts`):** *(NEW)*
+    *   Refactor the world setup logic by creating a common internal `setupWorld` function.
+    *   Modify the initial setup effect and the `resetPhysics` function to call this common helper function, reducing code duplication.
+5.  **Sligger Mechanics & Rendering:** *(Keep existing, re-prioritize after physics refactor if desired)*
+    *   Investigate Sligger generation (`useGameInitialization`), physics (`useMatterPhysics`), and rendering (`GameRenderer`). Tune factors.
+6.  **Multiplayer Sync Refinement:** *(Keep existing)*
+    *   Refine/Complete Turn/State synchronization (`kind:30079`) beyond just 'fire' events (aiming? hits? state snapshots?). Ensure robustness against desync.
+7.  **Zapsliggers Gameplay Completion:** *(Keep existing)*
+    *   Implement ability *effects* (Splitter, Gravity, Plastic). Implement full win conditions (HP/Vulnerability), Vulnerability state, enforce ability limits, implement turn timer/shot limits, Sudden Death.
+8.  **Wagering (Cashu):** *(Keep existing)*
+    *   Define/Implement Agent/Bot logic. Implement frontend flow for stake submission and payout display/redemption (DM/QR).
+9.  **Testing & Polish:** *(Keep existing)*
+    *   Thorough testing (Practice, Multiplayer, Mobile). Visual polish (sprites, effects), Sound, Error Handling.
+
+---

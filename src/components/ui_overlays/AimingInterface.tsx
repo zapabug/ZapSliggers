@@ -2,18 +2,20 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 
 interface AimingInterfaceProps {
   onAimChange: (aim: { angle: number; power: number }) => void;
-  currentAngle: number;
-  currentPower: number;
+  currentPlayerIndex: 0 | 1;
+  aimStates: [{ angle: number; power: number }, { angle: number; power: number }];
 }
 
 const AimingInterface: React.FC<AimingInterfaceProps> = ({ 
   onAimChange, 
-  currentAngle,
-  currentPower
+  currentPlayerIndex,
+  aimStates
 }) => {
   const joystickRef = useRef<HTMLDivElement>(null);
   const knobRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+
+  const activeAimState = aimStates[currentPlayerIndex];
 
   type DragEvent = globalThis.MouseEvent | globalThis.TouchEvent;
 
@@ -56,9 +58,9 @@ const AimingInterface: React.FC<AimingInterfaceProps> = ({
     const knobY = Math.sin(angleRad) * maxDist;
 
     knobRef.current.style.transform = `translate(${knobX}px, ${knobY}px)`;
-    onAimChange({ angle: angleDeg, power: currentPower });
+    onAimChange({ angle: angleDeg, power: activeAimState.power });
 
-  }, [isDragging, onAimChange, currentPower]);
+  }, [isDragging, onAimChange, activeAimState.power]);
 
   const handleWindowDragEnd = useCallback(() => {
     if (!isDragging) return;
@@ -85,9 +87,9 @@ const AimingInterface: React.FC<AimingInterfaceProps> = ({
     power = Math.max(0, Math.min(100, Math.round(power))); // Clamp and round
 
     console.log(`[AimingInterface] Power bar interaction. X: ${relativeX.toFixed(1)}, Width: ${rect.width.toFixed(1)}, Calculated Power: ${power}`);
-    onAimChange({ angle: currentAngle, power: power });
+    onAimChange({ angle: activeAimState.angle, power: power });
 
-  }, [currentAngle, onAimChange]);
+  }, [activeAimState.angle, onAimChange]);
 
   useEffect(() => {
     if (isDragging) {
@@ -135,11 +137,11 @@ const AimingInterface: React.FC<AimingInterfaceProps> = ({
         {/* Power Level Indicator - Horizontal with Stepped Color */}
         <div 
           className={`absolute top-0 left-0 h-full transition-all duration-100 ease-linear ${
-            currentPower < 34 ? 'bg-green-500' :
-            currentPower < 67 ? 'bg-yellow-500' :
+            activeAimState.power < 34 ? 'bg-green-500' :
+            activeAimState.power < 67 ? 'bg-yellow-500' :
             'bg-red-600'
           }`}
-          style={{ width: `${currentPower}%` }}
+          style={{ width: `${activeAimState.power}%` }}
         />
       </div>
       
