@@ -7,14 +7,10 @@ import { useNDKInit } from './useNDKInit'; // Import the custom NDK init hook
 // import { idb } from '../utils/idb';
 import { NostrConnectSignerWrapper } from '../lib/applesauce-nip46/wrapper.ts'; // Corrected path
 
-// Define constants (similar to App.tsx)
-// NSEC_APP_HEX_PUBKEY removed as it's no longer used as a default
-// const DEFAULT_NIP46_BUNKER_IDENTIFIER = 'nsec.app'; // Switch back to nsec.app for testing
-// const DEFAULT_NIP46_BUNKER_IDENTIFIER = 'nostr.mom'; // Try nostr.mom
-// const DEFAULT_NIP46_BUNKER_IDENTIFIER = 'npub1a5ve7g6q34lepmrns7c6jcrat93w4cd6lzayy89cvjsfzzwnyc4s6a66d8'; // Try bunker npub directly
-const DEFAULT_NIP46_BUNKER_IDENTIFIER = 'bunker://ed199f5e5ad67c6c907b0ac31fb28f3a3d199783d80886312b2984198f9aae8c?relay=wss%3A%2F%2Frelay.nsec.app'; // Default to a full bunker URI
-// const NIP46_CONNECT_TIMEOUT = 75000; // Removed unused variable
-const LOCALSTORAGE_NIP46_BUNKER_URI = 'nip46_bunker_uri'; // Store the full bunker URI
+// While NDK 2.14.9+ has improved NIP-46 support, we continue using our custom wrapper
+// for consistent behavior and tested functionality across all connection methods
+const DEFAULT_NIP46_BUNKER_IDENTIFIER = 'bunker://ed199f5e5ad67c6c907b0ac31fb28f3a3d199783d80886312b2984198f9aae8c?relay=wss%3A%2F%2Frelay.nsec.app';
+const LOCALSTORAGE_NIP46_BUNKER_URI = 'nip46_bunker_uri';
 
 export type LoginMethod = 'none' | 'nip07' | 'nip46';
 // Update Nip46Status type to include the new mobile state
