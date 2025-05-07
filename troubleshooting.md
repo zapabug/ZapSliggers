@@ -1,4 +1,4 @@
-# Zapsliggers Troubleshooting Log
+# Zapslingers Troubleshooting Log
 
 This file tracks known issues, errors, and potential problems encountered during development.
 

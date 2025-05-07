@@ -243,7 +243,7 @@ export const useMatterPhysics = ({
           const distanceSq = Vector.magnitudeSquared(distanceVector);
           if (distanceSq <= 10) return; // Avoid extreme forces at very close range (reduced threshold slightly)
 
-          const planetRadius = staticBody.plugin?.Zapsliggers?.radius || PLANET_MIN_RADIUS;
+          const planetRadius = staticBody.plugin?.Zapslingers?.radius || PLANET_MIN_RADIUS;
           let netForce = Vector.create(0, 0); // Start with zero net force from this planet
 
           // --- Calculate Base Attractive Force (Always applies unless overridden) ---
@@ -260,7 +260,7 @@ export const useMatterPhysics = ({
 
           // --- Add Repulsion if Orange Planet Core is Hit ---
           if (staticBody.label === 'orange-planet') {
-              const coreRadius = staticBody.plugin?.Zapsliggers?.coreRadius;
+              const coreRadius = staticBody.plugin?.Zapslingers?.coreRadius;
               const distance = Vector.magnitude(distanceVector); // Need actual distance now
               
               if (coreRadius && distance <= coreRadius) {

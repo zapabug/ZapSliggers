@@ -25,46 +25,46 @@ const LobbyScreen: React.FC<LobbyScreenProps> = ({ ndk, currentUser, onChallenge
     };
 
     const handleScanSuccess = (scannedText: string) => {
-        console.log('Scanned QR Code:', scannedText);
-        if (scannedText && scannedText.startsWith('nostr:npub1')) {
-            const potentialNpub = scannedText.substring(6);
-            try {
-                nip19.decode(potentialNpub);
-                setRecipientNpubOrHex(potentialNpub);
-                setIsScannerOpen(false);
-                console.log('Successfully parsed and set npub:', potentialNpub);
-            } catch (e) {
-                console.error('Scanned text is not a valid npub:', scannedText, e);
-                alert('Scanned QR code does not contain a valid Nostr npub URI (nostr:npub1...). Try again.');
+            console.log('Scanned QR Code:', scannedText);
+            if (scannedText && scannedText.startsWith('nostr:npub1')) {
+                const potentialNpub = scannedText.substring(6);
+                try {
+                    nip19.decode(potentialNpub);
+                    setRecipientNpubOrHex(potentialNpub);
+                    setIsScannerOpen(false);
+                    console.log('Successfully parsed and set npub:', potentialNpub);
+                } catch (e) {
+                     console.error('Scanned text is not a valid npub:', scannedText, e);
+                     alert('Scanned QR code does not contain a valid Nostr npub URI (nostr:npub1...). Try again.');
+                }
+            } else {
+                 console.warn('Scanned text is not in the expected format (nostr:npub1...):', scannedText);
+                 alert('Scanned QR code does not contain a valid Nostr npub URI (nostr:npub1...). Try again.');
             }
-        } else {
-            console.warn('Scanned text is not in the expected format (nostr:npub1...):', scannedText);
-            alert('Scanned QR code does not contain a valid Nostr npub URI (nostr:npub1...). Try again.');
-        }
     };
 
     const handleScanError = (error: string) => {
-        setIsScannerOpen(false);
-        console.error('QR Scanner Error:', error);
+            setIsScannerOpen(false);
+            console.error('QR Scanner Error:', error);
         let alertMessage = `QR Scan Error: ${error}`;
 
         if (error.includes('NotAllowedError')) {
-            alertMessage = "Camera access was denied. Please grant permission in your browser settings and try again.";
+                alertMessage = "Camera access was denied. Please grant permission in your browser settings and try again.";
         } else if (error.includes('NotFoundError')) {
-            alertMessage = "No camera found on this device.";
+                 alertMessage = "No camera found on this device.";
         } else if (error.includes('NotReadableError')) {
-            alertMessage = "Could not access the camera. Another app or browser tab might be using it.";
+                 alertMessage = "Could not access the camera. Another app or browser tab might be using it.";
         } else if (error.includes('secure context')) {
-            alertMessage = "Camera access requires a secure connection (HTTPS). Please ensure the app is served over HTTPS.";
-        }
-        
-        alert(alertMessage);
+                 alertMessage = "Camera access requires a secure connection (HTTPS). Please ensure the app is served over HTTPS.";
+            }
+            
+            alert(alertMessage);
     };
 
     const openScanner = () => {
         if (window.location.protocol !== 'https:') {
-            alert("Camera access requires a secure connection (HTTPS). Please ensure the app is served over HTTPS.");
-            return;
+             alert("Camera access requires a secure connection (HTTPS). Please ensure the app is served over HTTPS.");
+             return;
         }
         setShowPermissionHelper(true);
         setTimeout(() => {
@@ -76,15 +76,15 @@ const LobbyScreen: React.FC<LobbyScreenProps> = ({ ndk, currentUser, onChallenge
     return (
         <div className="relative w-full h-dvh bg-black text-white overflow-hidden flex flex-col">
             {isScannerOpen && (
-                <div 
+                 <div 
                     className="fixed inset-0 bg-black bg-opacity-75 flex flex-col items-center justify-center z-50 p-4"
                     onClick={() => setIsScannerOpen(false)}
-                >
+                 >
                     <div 
                         className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full relative"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <h3 className="text-xl font-semibold mb-4 text-gray-800 text-center">Scan Opponent's QR Code</h3>
+                         <h3 className="text-xl font-semibold mb-4 text-gray-800 text-center">Scan Opponent's QR Code</h3>
                         <QRCodeReader
                             onScanSuccess={handleScanSuccess}
                             onScanError={handleScanError}
@@ -96,7 +96,7 @@ const LobbyScreen: React.FC<LobbyScreenProps> = ({ ndk, currentUser, onChallenge
                             Cancel Scan
                         </button>
                     </div>
-                </div>
+                 </div>
             )}
 
             <div className="w-full flex justify-start mb-4">
@@ -111,41 +111,41 @@ const LobbyScreen: React.FC<LobbyScreenProps> = ({ ndk, currentUser, onChallenge
             <h1 className="text-3xl font-bold mb-6">Multiplayer Lobby</h1>
 
             <div className="mb-6 p-4 bg-gray-700 rounded-lg shadow-md w-full max-w-md text-center">
-                <p className="text-lg text-gray-300 mb-2">
+                 <p className="text-lg text-gray-300 mb-2">
                     Your Nostr ID (Share this!)
-                </p>
-                <p className="text-sm font-mono text-purple-300 break-all mb-4 select-all" title="Click to select">
+                 </p>
+                 <p className="text-sm font-mono text-purple-300 break-all mb-4 select-all" title="Click to select">
                     {userNpub || 'Could not get npub'}
-                </p>
-                <div className="flex justify-center">
+                 </p>
+                 <div className="flex justify-center">
                     <div className="bg-white p-2 rounded-md inline-block">
                         {nostrUri ? (
-                            <QRCodeCanvas value={nostrUri} size={128} />
+                             <QRCodeCanvas value={nostrUri} size={128} />
                         ) : (
                             <p className="text-red-500 text-xs">Could not generate QR code</p> 
                         )}
                     </div>
-                </div>
+                 </div>
             </div>
 
             <div className="w-full max-w-lg p-4 bg-gray-700 rounded-lg shadow-md">
                 <div className="flex justify-between items-center mb-2">
                     <h2 className="text-xl font-semibold">Challenge Players</h2>
-                    <button
-                        onClick={openScanner}
-                        className="px-3 py-1 bg-purple-600 rounded hover:bg-purple-700 text-sm disabled:opacity-50"
-                    >
-                        Scan QR
-                    </button>
-                </div>
-                {showPermissionHelper && (
+                     <button
+                         onClick={openScanner}
+                         className="px-3 py-1 bg-purple-600 rounded hover:bg-purple-700 text-sm disabled:opacity-50"
+                     >
+                         Scan QR
+                     </button>
+                 </div>
+                 {showPermissionHelper && (
                     <p className="text-xs text-yellow-300 mb-2 text-center">
                         Your browser will ask for camera permission to scan the code.
                     </p>
-                )}
-                <ChallengeHandler
-                    ndk={ndk}
-                    loggedInPubkey={currentUser.pubkey}
+                 )}
+                <ChallengeHandler 
+                    ndk={ndk} 
+                    loggedInPubkey={currentUser.pubkey} 
                     onChallengeAccepted={handleChallengeAccepted}
                     recipientNpubOrHex={recipientNpubOrHex}
                     setRecipientNpubOrHex={setRecipientNpubOrHex}

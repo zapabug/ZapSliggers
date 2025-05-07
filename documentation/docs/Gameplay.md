@@ -1,6 +1,6 @@
-# Zapsliggers: Gameplay Mechanics
+# Zapslingers: Gameplay Mechanics
 
-This document outlines the core gameplay loop and dynamics for Zapsliggers.
+This document outlines the core gameplay loop and dynamics for Zapslingers.
 
 **Current Status (Implementation):**
 *   Core game state management and logic handlers (aim, fire, abilities, hit detection, round structure, scoring) extracted to `useGameLogic` hook.
@@ -16,19 +16,19 @@ This document outlines the core gameplay loop and dynamics for Zapsliggers.
 *   Random level generation (`useGameInitialization` hook, called by `useGameLogic`) places ships and planets.
 *   Aiming controls (**Left/Right for angle, Up/Down for power** via UI/keyboard) and firing are functional (routed via `useGameLogic`).
 *   Active/Historical shot tracers (`useShotTracers` hook, state managed by `useGameLogic`) are displayed.
-*   Basic Zapsliggers rules are partially implemented within `useGameLogic`: HP system used as ability resource, ability selection UI/logic works, standard hits trigger win callback.
+*   Basic Zapslingers rules are partially implemented within `useGameLogic`: HP system used as ability resource, ability selection UI/logic works, standard hits trigger win callback.
 *   Nostr login (`useAuth`) is implemented.
 *   Lobby screen (`LobbyScreen`) displays user ID and hosts the challenge component.
 *   Nostr Challenge/Acceptance handshake (`ChallengeHandler`) via DMs (`kind:4`) successfully transitions both players to `GameScreen`.
 *   **Remaining Implementation Focus:**
     *   **Testing:** Verify `PracticeScreen` functionality post-refactor.
     *   Nostr Network Synchronization for `GameScreen`: Refine action sync (aiming?), implement turn structure, sync collision results/game state.
-    *   Full Zapsliggers Rules: Ability effects (Splitter, Gravity, Plastic implementation), round/match win conditions, Sudden Death mechanics.
+    *   Full Zapslingers Rules: Ability effects (Splitter, Gravity, Plastic implementation), round/match win conditions, Sudden Death mechanics.
     *   Wagering: Payment integration (NUT-18).
     *   Visuals: Rendering actual ship/planet sprites, particle effects.
     *   Testing: Especially network play, mobile login, and rule interactions.
 
-**1. Core Concept (Zapsliggers Target):**
+**1. Core Concept (Zapslingers Target):**
    - A 2-player, turn-based space artillery game with **2D physics-based projectiles** affected by planet gravity.
    - Built for mobile-first experience, suitable for meetups. Rendered on an **HTML Canvas**.
    - Mandatory pre-paid wagering using eCash (NUT-18).
@@ -41,7 +41,7 @@ This document outlines the core gameplay loop and dynamics for Zapsliggers.
    - **Pre-Game State:** Login -> `LobbyScreen` (Challenge/Practice).
    - **Planet Types & Gravity:**
      - Standard Planets: Solid, destroy projectiles.
-     - Sligger planets (Future): Pass-through outer layers, solid core.
+     - SLINGER planets (Future): Pass-through outer layers, solid core.
      - Gravity Strength: Proportional to effective planet size, randomized per level.
 
 **3. Turn Flow (Target: Simultaneous Turns - Approx. 60s):**
@@ -68,7 +68,7 @@ This document outlines the core gameplay loop and dynamics for Zapsliggers.
    - **C. Post-Resolution / Next Turn Prep (Practice Mode / Future Multiplayer):**
      - Last 10 shot traces rendered.
      - **Practice:** Next turn starts immediately.
-     - (Future: Check round/match win conditions based on Zapsliggers rules. Start next turn timer or proceed to Sudden Death/End Match).
+     - (Future: Check round/match win conditions based on Zapslingers rules. Start next turn timer or proceed to Sudden Death/End Match).
    - **D. Sudden Death Phase (Target - End of Round 5 if no winner):**
      - Projectiles bounce off boundaries and planets.
      - Ships exert gravity.
@@ -83,7 +83,7 @@ This document outlines the core gameplay loop and dynamics for Zapsliggers.
    - Randomized Gravity: Adds replayability.
    - Sudden Death (Target): Chaotic end-phase.
 
-**5. Power-ups & Special Mechanics (Zapsliggers Target):**
+**5. Power-ups & Special Mechanics (Zapslingers Target):**
    - **HP System:** Resource for abilities (start 100 HP).
    - **Ability Activation Cost:** 25 HP.
    - **Usage Limits:** Max 3 total abilities per player per *match*, max 1 of each *type* (`splitter`, `gravity`, `plastic`).
@@ -98,7 +98,7 @@ This document outlines the core gameplay loop and dynamics for Zapsliggers.
       - Self-Hit: Instant round loss.
 
 **6. Specific Interactions (Target):**
-   - Based on Zapsliggers win conditions (See 5).
+   - Based on Zapslingers win conditions (See 5).
 
 **7. Visual Presentation & Camera:**
    - **Rendering:** 2D physics/logic, rendered onto **HTML Canvas**.

@@ -1,6 +1,6 @@
-# Zapsliggers Project Layout
+# Zapslingers Project Layout
 
-This document provides an overview of the Zapsliggers project structure, key components, and custom hooks as currently implemented.
+This document provides an overview of the Zapslingers project structure, key components, and custom hooks as currently implemented.
 
 ## Directory Structure
 

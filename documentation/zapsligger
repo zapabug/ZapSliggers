@@ -1,12 +1,12 @@
-# LLM Context Dump: ZapSlingers Project
+# LLM Context Dump: Zapslingers Project
 
 **Date:** YYYY-MM-DD HH:MM
 
-**Objective:** Provide a comprehensive context package for the ZapSlingers project, suitable for onboarding an LLM or developer.
+**Objective:** Provide a comprehensive context package for the Zapslingers project, suitable for onboarding an LLM or developer.
 
 **1. Project Goal & Core Concept:**
 
-ZapSlingers is a 2-player, turn-based steampunk space artillery game. It features physics-based projectiles influenced by standard planets and unique Sligger planets, rendered on an HTML Canvas. The game emphasizes a physics-grounded steampunk aesthetic, utilizes Nostr for matchmaking and basic gameplay communication, and is designed with a mobile-first approach.
+Zapslingers is a 2-player, turn-based steampunk space artillery game. It features physics-based projectiles influenced by standard planets and unique SLINGER planets, rendered on an HTML Canvas. The game emphasizes a physics-grounded steampunk aesthetic, utilizes Nostr for matchmaking and basic gameplay communication, and is designed with a mobile-first approach.
 
 **2. Planning & Decision Summary (See @<documentation/docs/Planning.md> for full history):**
 
@@ -16,9 +16,9 @@ ZapSlingers is a 2-player, turn-based steampunk space artillery game. It feature
     *   Initial: Standard space artillery.
     *   Explored: Steampunk vs. Cyberpunk contrast.
     *   Explored: Steampunk Cosmic Pirates with whirlpools (Deemed too arcadey).
-    *   **Final Theme:** Steampunk Contraptions vs. Space Physics (Planets & Sligger planets).
+    *   **Final Theme:** Steampunk Contraptions vs. Space Physics (Planets & SLINGER planets).
 *   **Key Mechanic Decisions:**
-    *   **Sligger planets:** Implemented as two overlapping physics bodies (larger attractive outer, smaller limited-range repulsive inner) to simulate complex gravity/repulsion. **Spawn randomly across the entire map** (unlike centrally placed normal planets) and have a **limited maximum interaction range**.
+    *   **SLINGER planets:** Implemented as two overlapping physics bodies (larger attractive outer, smaller limited-range repulsive inner) to simulate complex gravity/repulsion. **Spawn randomly across the entire map** (unlike centrally placed normal planets) and have a **limited maximum interaction range**.
     *   **Boundaries:** Destructive by default, with a configurable setting (`gameSettings.ts`) to enable bouncing for sandbox/future modes.
     *   **Abilities:** Final names chosen: `ZapSplits` (Splitter), `Magnetar` (Gravity/Magnetic), `Gyro` (Plastic). HP (25) cost and usage limits (3 total/1 per type per match) remain.
     *   **UX:** No intro pop-up, no tooltips. Added explicit end-of-round score display (e.g., "1 - 0").
@@ -45,7 +45,7 @@ To provide full context, ensure the system processes the following links along w
 
 **5. Instructions for LLM/Developer:**
 
-1.  Start with this `LLM_Context_ZapSlingers.md` overview.
+1.  Start with this `LLM_Context_Zapslingers.md` overview.
 2.  Refer to @<documentation/docs/Build.md> for the detailed **target LLD**.
 3.  Consult @<documentation/docs/Planning.md> to understand the rationale behind decisions.
 4.  Use @<documentation/docs/layout.md> to understand the existing code structure and component responsibilities.

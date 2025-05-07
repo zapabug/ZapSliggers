@@ -65,7 +65,7 @@ interface AcceptPayload {
 
 // --- Constants ---
 const CHALLENGE_EXPIRY_MS = 3 * 60 * 1000;
-const LOCALSTORAGE_KEY = 'Zapsliggers_active_sent_challenge';
+const LOCALSTORAGE_KEY = 'Zapslingers_active_sent_challenge';
 
 export default function ChallengeHandler({
     ndk,

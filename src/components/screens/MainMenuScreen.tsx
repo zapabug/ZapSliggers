@@ -16,7 +16,7 @@ const MainMenuScreen: React.FC<MainMenuScreenProps> = ({
 
     return (
         <div className="w-full h-full flex flex-col items-center justify-center p-4 md:p-8 bg-gray-800 text-white">
-            <h1 className="text-3xl md:text-4xl font-bold mb-4">Zapsliggers</h1>
+            <h1 className="text-3xl md:text-4xl font-bold mb-4">Zapslingers</h1>
             <p className="text-lg md:text-xl text-gray-300 mb-8 md:mb-10">Welcome, {userName}!</p>
 
             <div className="space-y-5 md:space-y-6 w-full max-w-xs md:max-w-sm">

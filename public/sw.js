@@ -1,4 +1,4 @@
-const CACHE_NAME = 'zapsliggers-cache-v1';
+const CACHE_NAME = 'Zapslingers-cache-v1';
 const urlsToCache = [
   '/',
   '/index.html',

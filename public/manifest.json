@@ -1,6 +1,6 @@
 {
-  "name": "ZapSliggers",
-  "short_name": "ZapSliggers",
+  "name": "Zapslingers",
+  "short_name": "Zapslingers",
   "description": "A tactical multiplayer Nostr game.",
   "start_url": "/",
   "display": "standalone",

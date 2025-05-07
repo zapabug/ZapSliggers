@@ -1,6 +1,6 @@
-# Zapsliggers Game Modes
+# Zapslingers Game Modes
 
-This document outlines the different game modes available or planned in Zapsliggers. Each mode utilizes a specific configuration profile defined in `src/config/gameSettings.ts` to tailor the gameplay experience.
+This document outlines the different game modes available or planned in Zapslingers. Each mode utilizes a specific configuration profile defined in `src/config/gameSettings.ts` to tailor the gameplay experience.
 
 ## 1. Main (Multiplayer)
 

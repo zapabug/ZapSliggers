@@ -1,6 +1,6 @@
 # Applesauce NIP-46 Signer Integration Issues
 
-This document tracks issues encountered while integrating the copied Applesauce NIP-46 signer code into the Zapsliggers project.
+This document tracks issues encountered while integrating the copied Applesauce NIP-46 signer code into the Zapslingers project.
 
 ## `src/lib/applesauce-nip46/helpers.ts`
 

@@ -2,21 +2,21 @@
 
 ## LLD 1: YYYY-MM-DD HH:MM
 
-**Project:** ZapSlingers
+**Project:** Zapslingers
 
-**Goal:** A 2-player, turn-based steampunk space artillery game rendered on an HTML Canvas, featuring physics-based projectiles influenced by planets and unique Sligger planets. Built mobile-first with Nostr integration for challenges and core gameplay actions, focusing on a physics-grounded steampunk aesthetic.
+**Goal:** A 2-player, turn-based steampunk space artillery game rendered on an HTML Canvas, featuring physics-based projectiles influenced by planets and unique SLINGER planets. Built mobile-first with Nostr integration for challenges and core gameplay actions, focusing on a physics-grounded steampunk aesthetic.
 
 **Theme:** Steampunk Contraptions vs. Space Physics.
 
 **Core Gameplay Loop (Based on Gameplay.md & refinements):**
 1.  **Setup:** Players connect via Nostr (`useAuth`, `ChallengeHandler`). `LobbyScreen` transitions to `GameScreen`.
-2.  **Round Start:** `useGameInitialization` randomly places steampunk ships and celestial bodies (standard planets, Sligger planets) based on distance rules. `useGameLogic` manages round state (Best of 3), turn order (alternating start), scores, and HP (100 start).
+2.  **Round Start:** `useGameInitialization` randomly places steampunk ships and celestial bodies (standard planets, SLINGER planets) based on distance rules. `useGameLogic` manages round state (Best of 3), turn order (alternating start), scores, and HP (100 start).
 3.  **Aiming Phase (Simultaneous Local Input in `GameScreen`):** Players use controls (Keyboard Left/Right angle, Up/Down power; UI Joystick/Slider) via `AimingInterface` to set trajectory and power. Select abilities (`ZapSplits`, `Magnetar`, `Gyro` via `ActionButtons`, cost 25 HP, max 3 total/1 per type per match).
 4.  **Firing:** Players fire (Spacebar/Button). `useGameLogic` handles local fire action, sends Nostr `kind:30079` event (basic sync), and calls `useMatterPhysics` to add projectile.
 5.  **Resolution Phase:**
     *   `useMatterPhysics` simulates projectile path, applying forces:
         *   **Standard Planets:** Attractive gravity.
-        *   **Sligger planets (Implemented as 2 overlapping bodies):** Larger body applies standard attraction. Smaller (1/3 size, orange) inner body applies strong, limited-range repulsion.
+        *   **SLINGER planets (Implemented as 2 overlapping bodies):** Larger body applies standard attraction. Smaller (1/3 size, orange) inner body applies strong, limited-range repulsion.
         *   **Boundaries:** Destructive on impact (Default). Configurable toggle (`gameSettings.ts`) for bouncing boundaries (for sandbox/future modes).
     *   Collision Detection (`useMatterPhysics` events handled by `useGameLogic`):
         *   Hit Opponent (Standard Shot): Round win.
@@ -81,8 +81,8 @@
     *   `index.css`: Tailwind setup.
 
 **Setup Commands:**
-*   `npm create vite@latest zapslingers --template react-ts`
-*   `cd zapslingers`
+*   `npm create vite@latest Zapslingers --template react-ts`
+*   `cd Zapslingers`
 *   `npm install` (Installs React, TS, etc.)
 *   `npm install tailwindcss@^3.4.13 postcss autoprefixer`
 *   `npx tailwindcss init -p` (Configure `tailwind.config.js`, `index.css`)
@@ -95,7 +95,7 @@
 *   Intuitive mobile controls (Joystick/Slider).
 
 **Build Decisions & Implementation Notes:**
-*   Sligger planets implemented as two overlapping bodies (attractive outer, limited-range repulsive inner) in `useMatterPhysics` and `useGameInitialization`.
+*   SLINGER planets implemented as two overlapping bodies (attractive outer, limited-range repulsive inner) in `useMatterPhysics` and `useGameInitialization`.
 *   Boundaries are destructive by default; add toggle in `gameSettings.ts` and logic in `useMatterPhysics`.
 *   Abilities named: `ZapSplits`, `Magnetar`, `Gyro`.
 *   Core game state managed centrally by `useGameLogic`.

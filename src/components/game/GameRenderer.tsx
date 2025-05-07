@@ -114,7 +114,7 @@ const drawBorder = (ctx: CanvasRenderingContext2D, scale: number, settings: Game
  };
 const drawPlanet = (ctx: CanvasRenderingContext2D, body: Matter.Body, settings: GameSettingsProfile) => {
     const { x, y } = body.position;
-    const radius = body.plugin?.Zapsliggers?.radius || settings.PLANET_MIN_RADIUS;
+    const radius = body.plugin?.Zapslingers?.radius || settings.PLANET_MIN_RADIUS;
 
     let gradient: CanvasGradient;
 
@@ -252,13 +252,13 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
       const blueShip = new Image();
       blueShip.onload = () => setBlueShipImage(blueShip);
       blueShip.onerror = () => console.error("Failed to load blue ship image.");
-      blueShip.src = '/images/spaceship_small_blue.png';
+      blueShip.src = '/icons/spaceship_small_blue.png';
 
       // Load red ship
       const redShip = new Image();
       redShip.onload = () => setRedShipImage(redShip);
       redShip.onerror = () => console.error("Failed to load red ship image.");
-      redShip.src = '/images/spaceship_small_red.png'; // Assuming this is the name
+      redShip.src = '/icons/spaceship_small_red.png'; // Assuming this is the name
 
   }, []); // Run only once on mount
 
@@ -379,12 +379,13 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
     return () => cancelAnimationFrame(animationFrameId);
   }, [viewport, physicsHandles, backgroundImage, blueShipImage, redShipImage, settings, aimStates]); 
 
-  // Add logging to verify settings
-  console.log('[GameRenderer] Settings:', {
-      SHIP_RADIUS: settings.SHIP_RADIUS,
-      STANDARD_PROJECTILE_RADIUS: settings.STANDARD_PROJECTILE_RADIUS,
-      SPLITTER_FRAGMENT_RADIUS: settings.SPLITTER_FRAGMENT_RADIUS
-  });
+  // Log relevant settings for debugging
+  // console.log('[GameRenderer] Settings:', {
+  //     SHIP_RADIUS: settings.SHIP_RADIUS,
+  //     STANDARD_PROJECTILE_RADIUS: settings.STANDARD_PROJECTILE_RADIUS,
+  //     SPLITTER_FRAGMENT_RADIUS: settings.SPLITTER_FRAGMENT_RADIUS,
+  //     // Add other settings as needed for debugging
+  // });
 
   return (
       <canvas 

@@ -15,10 +15,16 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,json,woff,woff2}'], // Files to cache
         // runtimeCaching: [...] // Optional: Add runtime caching strategies if needed
       },
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png'], // Ensure icons are cached
+      includeAssets: [
+        'favicon.ico',
+        'apple-touch-icon.png',
+        'icons/spaceship_small_blue.png',
+        'icons/spaceship_small_red.png',
+        'icons/backdrop.png'
+      ],
       manifest: {
-        name: 'Zapsliggers',
-        short_name: 'Zapsliggers',
+        name: 'ZapSlingers',
+        short_name: 'ZapSlingers',
         description: 'A 2D Nostr space artillery game with eCash wagering.',
         theme_color: '#111827', // Approx bg-gray-900
         background_color: '#111827', // Approx bg-gray-900

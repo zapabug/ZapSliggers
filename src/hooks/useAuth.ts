@@ -292,7 +292,7 @@ export const useAuth = (): UseAuthReturn => {
             tempNip46SignerRef.current = tempSigner; // Store ref immediately
 
             // 2. Generate the nostrconnect URI
-            const metadata = { name: "Zapsliggers" }; // Basic metadata
+            const metadata = { name: "Zapslingers" }; // Basic metadata
             const authUrl = tempSigner.getNostrConnectURI(metadata);
             console.log(`[useAuth QR Flow] Generated authUrl: ${authUrl}, Type: ${typeof authUrl}`);
             setNip46AuthUrl(authUrl);
@@ -361,7 +361,7 @@ export const useAuth = (): UseAuthReturn => {
             tempNip46SignerRef.current = tempSigner;
 
             // 2. Generate the nostrconnect URI (same as QR flow)
-            const metadata = { name: "Zapsliggers" }; // Basic metadata
+            const metadata = { name: "Zapslingers" }; // Basic metadata
             const authUrl = tempSigner.getNostrConnectURI(metadata);
             console.log("[useAuth] Generated NIP-46 Auth URL for mobile deeplink:", authUrl);
 

@@ -1,4 +1,4 @@
-# NIP-46 Login Troubleshooting Summary (Zapsliggers)
+# NIP-46 Login Troubleshooting Summary (Zapslingers)
 
 ## Initial Problem (Using NDKNip46Signer)
 

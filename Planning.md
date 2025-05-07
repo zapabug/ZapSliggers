@@ -1,21 +1,21 @@
 # Vibe Coding Planning Log
 
 ## Interaction 1: YYYY-MM-DD HH:MM 
-User Input: "@Gameplay.md @Gamemodes.md ZapSlingers this is the new name, the new game play is for in the future have the game streamed and people can zap abilitis to the players or add extra hp fora true caos game"
+User Input: "@Gameplay.md @Gamemodes.md Zapslingers this is the new name, the new game play is for in the future have the game streamed and people can zap abilitis to the players or add extra hp fora true caos game"
 VibeStorm Questions: 
 1. How direct should zap impact be (direct HP/ability grant vs. random effects)? 
 2. Chaos vs. Balance: Pure madness or add limits/cooldowns? 
 3. Core feature now or future add-on? 
 4. Design for normie-friendly viewer interaction?
-VibeStorm Response: Acknowledged name change to "ZapSlingers". Discussed the "viewer zapping" concept using Nostr NIP-57. Outlined potential tech considerations (zap listeners, game state updates).
-Decisions: Renamed project concept to ZapSlingers. Initiated planning for viewer interaction feature.
+VibeStorm Response: Acknowledged name change to "Zapslingers". Discussed the "viewer zapping" concept using Nostr NIP-57. Outlined potential tech considerations (zap listeners, game state updates).
+Decisions: Renamed project concept to Zapslingers. Initiated planning for viewer interaction feature.
 Steps Explained: Introduced Nostr zaps (NIP-57) as the mechanism for viewer interaction. Highlighted the need to listen for zaps and integrate them into the game logic. 
 
 ## Interaction 2: YYYY-MM-DD HH:MM
 User Input: "i have no clue and possibly i dont have the skills myself to implement live streaming or w.e else is required but the idea is either have the ability become available/unavailable Total caos not essential what so ever but should be mentioned that i need help and whant help to make this reality"
-VibeStorm Questions: Ready to define the LLD for the core ZapSlingers game first (without streaming/zaps)?
+VibeStorm Questions: Ready to define the LLD for the core Zapslingers game first (without streaming/zaps)?
 VibeStorm Response: Acknowledged user's skill assessment and desire for help. Clarified zap impact (ability availability), vibe (total chaos), and priority (future goal). Explained complexity of live streaming/zap integration. Proposed focusing on core gameplay first while designing for future extensibility. Offered to guide learning towards future goals.
-Decisions: Confirmed viewer interaction feature (zaps toggling ability availability, aiming for chaos) is a **future goal**. Prioritized building the core 2-player ZapSlingers game first. Agreed to design core game with future streaming integration in mind.
+Decisions: Confirmed viewer interaction feature (zaps toggling ability availability, aiming for chaos) is a **future goal**. Prioritized building the core 2-player Zapslingers game first. Agreed to design core game with future streaming integration in mind.
 Steps Explained: Explained the technical complexity of live streaming (RTMP/WebRTC) and Nostr zap integration. Outlined a phased approach: build core game now, add streaming later. Emphasized designing for future extensibility. 
 
 ## Interaction 3: YYYY-MM-DD HH:MM
@@ -24,9 +24,9 @@ VibeStorm Questions:
 1. Incorporate thematic tweaks (Conductive Spheres, Neon Trails, Electric Ship Accents)? 
 2. Rename abilities (Splitter->Chain Lightning, Gravity->Magnetic Pulse, Plastic->Insulated Shot)? 
 3. Include normie-friendly UX (tooltips, intro pop-up)?
-VibeStorm Response: Acknowledged using existing docs as foundation. Proposed thematic ideas (visuals, ability names, soundscape) to align with "ZapSlingers" name and future streaming concept. Asked for confirmation on ideas and normie-friendly UX elements before generating LLD.
-Decisions: Preparing to generate LLD for core ZapSlingers based on existing docs, pending feedback on thematic tweaks.
-Steps Explained: Outlined specific thematic suggestions (renaming planets/abilities, visual style) to enhance the ZapSlingers concept. Explained the value of noting sound design early. Re-emphasized normie-friendly UX considerations. 
+VibeStorm Response: Acknowledged using existing docs as foundation. Proposed thematic ideas (visuals, ability names, soundscape) to align with "Zapslingers" name and future streaming concept. Asked for confirmation on ideas and normie-friendly UX elements before generating LLD.
+Decisions: Preparing to generate LLD for core Zapslingers based on existing docs, pending feedback on thematic tweaks.
+Steps Explained: Outlined specific thematic suggestions (renaming planets/abilities, visual style) to enhance the Zapslingers concept. Explained the value of noting sound design early. Re-emphasized normie-friendly UX considerations. 
 
 ## Interaction 4: YYYY-MM-DD HH:MM
 User Input: "the davicni trbouvhet idea was to descibe steampunk because NOSTR is syberpunk as fuck!"
@@ -35,7 +35,7 @@ VibeStorm Questions:
 2. Choose preferred ability names (Set 1: Chain Shot/Magnetic Harpoon/Aetheric Shell OR Set 2: Voltaic Cluster/Polarity Inverter/Inertial Dampener)?
 3. Still want normie-friendly UX?
 VibeStorm Response: Acknowledged user clarification on Steampunk vs. Cyberpunk theme. Proposed refined visual concepts (mechanical ships w/ energy elements, energized projectiles, cyberspace environment) and new ability names reflecting the blended theme. Asked for confirmation before finalizing LLD theme.
-Decisions: Refined ZapSlingers theme to Steampunk vs. Cyberpunk contrast. Revising visual/naming conventions accordingly.
+Decisions: Refined Zapslingers theme to Steampunk vs. Cyberpunk contrast. Revising visual/naming conventions accordingly.
 Steps Explained: Explained how the Steampunk (player tech) vs. Cyberpunk (Nostr space) contrast could be visually represented in ships, projectiles, and environment. Offered two sets of thematic ability names for user selection. 
 
 ## Interaction 5: YYYY-MM-DD HH:MM
@@ -123,12 +123,12 @@ VibeStorm Questions:
 3. Boundaries still destructive?
 4. Choose Ability Name Set (Electric/Steampunk 1, Electric/Steampunk 2, or Space/Steampunk 3)?
 5. Confirm normie-friendly UX?
-VibeStorm Response: Acknowledged user's preference shift back to planets/Sligger planets for a less arcadey, more physics-grounded steampunk feel. Proposed replacing whirlpools with standard planets and orange whirlpools with Sligger planets (Orange/Jupiter-like). Asked for clarification on Gas Giant mechanics (pass-through outer/solid core vs. dual-force vs. simple strong gravity), placement (outer region only vs. mixed), boundary behavior, ability names (suggesting non-pirate options), and UX.
-Decisions: Pivoted theme back from Cosmic Pirates to Steampunk Space Combat with Planets/Sligger planets. Re-opened discussion on specific environmental mechanics and placement. Paused LLD generation again pending clarification.
-Steps Explained: Validated the user's reasoning for the theme shift. Clearly outlined the different mechanical options for Sligger planets based on previous discussions and documentation. Highlighted the need to redefine placement logic. Offered thematic ability name sets suitable for the revised theme. 
+VibeStorm Response: Acknowledged user's preference shift back to planets/SLINGER planets for a less arcadey, more physics-grounded steampunk feel. Proposed replacing whirlpools with standard planets and orange whirlpools with SLINGER planets (Orange/Jupiter-like). Asked for clarification on Gas Giant mechanics (pass-through outer/solid core vs. dual-force vs. simple strong gravity), placement (outer region only vs. mixed), boundary behavior, ability names (suggesting non-pirate options), and UX.
+Decisions: Pivoted theme back from Cosmic Pirates to Steampunk Space Combat with Planets/SLINGER planets. Re-opened discussion on specific environmental mechanics and placement. Paused LLD generation again pending clarification.
+Steps Explained: Validated the user's reasoning for the theme shift. Clearly outlined the different mechanical options for SLINGER planets based on previous discussions and documentation. Highlighted the need to redefine placement logic. Offered thematic ability name sets suitable for the revised theme. 
 
 ## Interaction 14: YYYY-MM-DD HH:MM
-User Input: "Sligger planets (Orange/Jupiter-like): Replace the orange whirlpools. Now, we need to define their mechanics. You mentioned them before (Gameplay.md notes) as potentially having "pass-through outer layers, solid core". Does that sound right? Or did you prefer the "attractive outer field, repulsive inner core" mechanic we just discussed, but applied to a Gas Giant visual instead of a whirlpool? Or perhaps just strong standard gravity? bombine both and thats exacly what it is repeleet closre range ring atracktive outter ring pass trough lets add moons here for extra danger factor(dont implement as this is supper complex but i great idea speccially for zap arcade) random no rules to spawn expt already present rules (ship distance plannet distance) boundrie already exist but add setting to toggle blounce"
+User Input: "SLINGER planets (Orange/Jupiter-like): Replace the orange whirlpools. Now, we need to define their mechanics. You mentioned them before (Gameplay.md notes) as potentially having "pass-through outer layers, solid core". Does that sound right? Or did you prefer the "attractive outer field, repulsive inner core" mechanic we just discussed, but applied to a Gas Giant visual instead of a whirlpool? Or perhaps just strong standard gravity? bombine both and thats exacly what it is repeleet closre range ring atracktive outter ring pass trough lets add moons here for extra danger factor(dont implement as this is supper complex but i great idea speccially for zap arcade) random no rules to spawn expt already present rules (ship distance plannet distance) boundrie already exist but add setting to toggle blounce"
 VibeStorm Questions: 
 1. Confirm Gas Giant Zone Mechanics: Zone 1 (Pass-through) -> Zone 2 (Attractive Ring) -> Zone 3 (Repulsive Core)?
 2. Choose Ability Name Set (Set 1, 2, or 3)?
@@ -158,6 +158,6 @@ Steps Explained: Explained the two-body Gas Giant implementation plan and how it
 ## Interaction 17: YYYY-MM-DD HH:MM
 User Input: "no intro but definitly a end of round lets pretend its 20 love (tenis) no tool tips"
 VibeStorm Questions: None. LLD Generation.
-VibeStorm Response: Confirmed final UX decisions: no intro, no tooltips, but add end-of-round score display. Stated LLD generation would commence. Generated LLD for ZapSlingers (Steampunk Space theme) incorporating all decisions (Gas Giant implementation, ability names, boundary toggle, score display, etc.) and added it to `Build.md`.
+VibeStorm Response: Confirmed final UX decisions: no intro, no tooltips, but add end-of-round score display. Stated LLD generation would commence. Generated LLD for Zapslingers (Steampunk Space theme) incorporating all decisions (Gas Giant implementation, ability names, boundary toggle, score display, etc.) and added it to `Build.md`.
 Decisions: Finalized UX: No intro, no tooltips, add end-of-round score display. Generated LLD 1.
 Steps Explained: Summarized the final UX choices. Confirmed LLD generation based on all accumulated decisions throughout the planning process. Logged LLD to `Build.md`. 
