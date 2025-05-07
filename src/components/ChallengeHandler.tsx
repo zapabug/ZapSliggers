@@ -1,9 +1,24 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { nip19 } from 'nostr-tools';
 import NDK, { NDKEvent, NDKKind, NDKFilter, NDKSubscription, NDKSigner } from '@nostr-dev-kit/ndk';
 
 // Define interface for expected wrapper structure
 type Nip04CapableWrapper = { nip04: { decrypt: (pubkey: string, ciphertext: string) => Promise<string>; encrypt: (pubkey: string, plaintext: string) => Promise<string>; } };
+
+interface StoredChallenge {
+    recipientPubkey: string;
+    eventId: string;
+    timestamp: number;
+}
+
+interface ChallengeHandlerProps {
+    ndk: NDK;
+    loggedInPubkey: string;
+    onChallengeAccepted: (opponentPubkey: string, matchId: string) => void;
+    recipientNpubOrHex: string;
+    setRecipientNpubOrHex: (value: string) => void;
+}
+
 // NIP-07 doesn't expose methods on the signer object itself, but globally via window.nostr
 // type Nip04CapableStandard = { decrypt: (pubkey: string, ciphertext: string) => Promise<string>; encrypt: (pubkey: string, plaintext: string) => Promise<string>; };
 
@@ -48,28 +63,13 @@ interface AcceptPayload {
     type: 'accept';
 }
 
-interface ChallengeHandlerProps {
-    loggedInPubkey: string | null;
-    ndk: NDK;
-    onChallengeAccepted: (opponentPubkey: string, matchId: string) => void;
-    recipientNpubOrHex: string;
-    setRecipientNpubOrHex: (value: string) => void;
-}
-
 // --- Constants ---
 const CHALLENGE_EXPIRY_MS = 3 * 60 * 1000;
 const LOCALSTORAGE_KEY = 'Zapsliggers_active_sent_challenge';
 
-// --- Type for stored challenge data ---
-interface StoredChallenge {
-    opponentPubkey: string;
-    eventId: string;
-    timestamp: number; // Timestamp when challenge was sent
-}
-
-export function ChallengeHandler({
-    loggedInPubkey,
+export default function ChallengeHandler({
     ndk,
+    loggedInPubkey,
     onChallengeAccepted,
     recipientNpubOrHex,
     setRecipientNpubOrHex
@@ -77,8 +77,8 @@ export function ChallengeHandler({
     const [error, setError] = useState<string | null>(null);
     const [activeSentChallenge, setActiveSentChallenge] = useState<StoredChallenge | null>(null); // Use StoredChallenge type
     const [activeReceivedChallenge, setActiveReceivedChallenge] = useState<{ challengerPubkey: string, eventId: string } | null>(null);
-    const sentChallengeTimeoutRef = React.useRef<number | null>(null);
-    const receivedChallengeTimeoutRef = React.useRef<number | null>(null);
+    const sentChallengeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const receivedChallengeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const subscriptionRef = useRef<NDKSubscription | null>(null);
     const activeSentChallengeRef = useRef(activeSentChallenge); // ADD: Ref for timeout check
     const activeReceivedChallengeRef = useRef(activeReceivedChallenge); // <-- ADD Ref
@@ -133,7 +133,7 @@ export function ChallengeHandler({
                 const challenge: StoredChallenge = JSON.parse(storedData);
                 console.log("[ChallengeHandler] Parsed challenge data:", challenge);
                 // Basic validation
-                if (challenge && challenge.opponentPubkey && challenge.eventId && challenge.timestamp) {
+                if (challenge && challenge.recipientPubkey && challenge.eventId && challenge.timestamp) {
                     const timeElapsed = Date.now() - challenge.timestamp;
                      console.log(`[ChallengeHandler] Time elapsed since challenge sent: ${timeElapsed}ms`);
                     if (timeElapsed < CHALLENGE_EXPIRY_MS) {
@@ -232,11 +232,11 @@ export function ChallengeHandler({
             const currentActiveSentChallenge = activeSentChallengeRef.current;
             const currentActiveReceivedChallenge = activeReceivedChallengeRef.current;
 
-            if (currentActiveSentChallenge && event.pubkey === currentActiveSentChallenge.opponentPubkey && challengeTag && challengeTag[1] === currentActiveSentChallenge.eventId) {
+            if (currentActiveSentChallenge && event.pubkey === currentActiveSentChallenge.recipientPubkey && challengeTag && challengeTag[1] === currentActiveSentChallenge.eventId) {
                 const isAcceptMessage = (payload && payload.type === 'accept') || content.toLowerCase() === 'accept';
                 if (isAcceptMessage) {
                     console.log(`[ChallengeHandler] Received ACCEPTANCE ${event.encode()} for our challenge ${currentActiveSentChallenge.eventId} from ${event.pubkey}`);
-                    const opponentPubkey = currentActiveSentChallenge.opponentPubkey;
+                    const opponentPubkey = currentActiveSentChallenge.recipientPubkey;
                     const matchIdentifier = currentActiveSentChallenge.eventId;
                     clearSentChallengeState(); // Clear state AND localStorage
                     onChallengeAccepted(opponentPubkey, matchIdentifier);
@@ -393,7 +393,7 @@ export function ChallengeHandler({
 
             console.log(`Challenge sent to ${recipientHexPubkey}, event ID: ${sentEventId}`);
             const newChallenge: StoredChallenge = { // Use StoredChallenge type
-                 opponentPubkey: recipientHexPubkey,
+                 recipientPubkey: recipientHexPubkey,
                  eventId: sentEventId,
                  timestamp: sentTimestamp
             };
@@ -546,7 +546,7 @@ export function ChallengeHandler({
 
             {isWaitingForAcceptance && (
                 <p className="text-yellow-400 mt-2">
-                    Challenge sent to {activeSentChallenge?.opponentPubkey ? nip19.npubEncode(activeSentChallenge.opponentPubkey).substring(0, 12) + '...' : '...'}. Waiting for acceptance.
+                    Challenge sent to {activeSentChallenge?.recipientPubkey ? nip19.npubEncode(activeSentChallenge.recipientPubkey).substring(0, 12) + '...' : '...'}. Waiting for acceptance.
                 </p>
             )}
 

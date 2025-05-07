@@ -107,8 +107,7 @@ export const useDynamicViewport = ({
             currentCenterYRef.current += (targetCenterYRef.current - currentCenterYRef.current) * ZOOM_LERP_FACTOR;
             if (canvasSize.width > 0 && canvasSize.height > 0) {
                 const scaleX = canvasSize.width / currentVirtualWidthRef.current; 
-                const scaleY = canvasSize.height / currentVirtualHeightRef.current;
-                const finalScale = Math.min(scaleX, scaleY);
+                const finalScale = scaleX; // Always fit width, force landscape
                 const viewWidth = currentVirtualWidthRef.current * finalScale; 
                 const viewHeight = currentVirtualHeightRef.current * finalScale;
                 const finalOffsetX = (canvasSize.width - viewWidth) / 2 - (currentCenterXRef.current - currentVirtualWidthRef.current / 2) * finalScale;

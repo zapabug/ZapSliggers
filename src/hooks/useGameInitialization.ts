@@ -37,13 +37,13 @@ export const generateInitialPositions = (settings: GameSettingsProfile): Initial
         PLANET_MAX_RADIUS,
         NUM_PLANETS,
         // --- Orange Planet Settings ---
-        NUM_ORANGE_PLANETS,
-        ORANGE_PLANET_MAX_RADIUS,
-        ORANGE_PLANET_CORE_RADIUS_FACTOR,
-        // ORANGE_PLANET_MIN_SPAWN_DIST_FACTOR, // REMOVED - Not used in edge placement
+        NUM_SLINGGER_PLANETS,
+        SLINGGER_PLANET_MAX_RADIUS,
+        SLINGGER_PLANET_CORE_RADIUS_FACTOR,
+        // SLINGGER_PLANET_MIN_SPAWN_DIST_FACTOR, // REMOVED - Not used in edge placement
         // ---------------------------
-        INITIAL_VIEW_WIDTH_FACTOR,
-        INITIAL_VIEW_HEIGHT_FACTOR,
+        GAME_VIEW_WIDTH_FACTOR,
+        GAME_VIEW_HEIGHT_FACTOR,
         SHIP_ZONE_WIDTH_FACTOR,
         PLANET_SPAWN_AREA_FACTOR,
         MIN_SHIP_SEPARATION_FACTOR,
@@ -52,8 +52,8 @@ export const generateInitialPositions = (settings: GameSettingsProfile): Initial
     } = settings;
 
     // --- Calculate Initial View Bounds and Center ---
-    const initialViewWidth = VIRTUAL_WIDTH * INITIAL_VIEW_WIDTH_FACTOR;
-    const initialViewHeight = VIRTUAL_HEIGHT * INITIAL_VIEW_HEIGHT_FACTOR;
+    const initialViewWidth = VIRTUAL_WIDTH * GAME_VIEW_WIDTH_FACTOR;
+    const initialViewHeight = VIRTUAL_HEIGHT * GAME_VIEW_HEIGHT_FACTOR;
     const initialViewMinX = (VIRTUAL_WIDTH - initialViewWidth) / 2;
     const initialViewMaxX = initialViewMinX + initialViewWidth;
     const initialViewMinY = (VIRTUAL_HEIGHT - initialViewHeight) / 2;
@@ -128,18 +128,18 @@ export const generateInitialPositions = (settings: GameSettingsProfile): Initial
     const maxAttemptsPlanets = 750;
     let normalPlanetsPlaced = 0;
     let orangePlanetsPlaced = 0;
-    const totalPlanetsToPlace = NUM_PLANETS + NUM_ORANGE_PLANETS;
+    const totalPlanetsToPlace = NUM_PLANETS + NUM_SLINGGER_PLANETS;
 
     while (planets.length < totalPlanetsToPlace && attemptsPlanets < maxAttemptsPlanets) {
         attemptsPlanets++;
         
         // Determine if trying to place orange this attempt
-        const isOrangeCandidate = orangePlanetsPlaced < NUM_ORANGE_PLANETS;
+        const isOrangeCandidate = orangePlanetsPlaced < NUM_SLINGGER_PLANETS;
         const isNormalCandidate = normalPlanetsPlaced < NUM_PLANETS;
         const attemptIsOrange = isOrangeCandidate && (!isNormalCandidate || Math.random() < 0.5);
         
         // Determine radius based on type
-        const maxRadius = attemptIsOrange ? ORANGE_PLANET_MAX_RADIUS : PLANET_MAX_RADIUS;
+        const maxRadius = attemptIsOrange ? SLINGGER_PLANET_MAX_RADIUS : PLANET_MAX_RADIUS;
         const minRadiusForAttempt = Math.min(PLANET_MIN_RADIUS, maxRadius);
         const radius = Math.random() * (maxRadius - minRadiusForAttempt) + minRadiusForAttempt;
         
@@ -240,7 +240,7 @@ export const generateInitialPositions = (settings: GameSettingsProfile): Initial
         // Create planet body based on type (isOrange flag is now reliable)
         let planetBody: Matter.Body;
         if (isOrange) {
-            const coreRadius = radius * ORANGE_PLANET_CORE_RADIUS_FACTOR;
+            const coreRadius = radius * SLINGGER_PLANET_CORE_RADIUS_FACTOR;
             planetBody = Bodies.circle(x, y, radius, {
                 isStatic: true,
                 label: 'orange-planet',
@@ -249,7 +249,7 @@ export const generateInitialPositions = (settings: GameSettingsProfile): Initial
                 plugin: { Zapsliggers: { radius: radius, coreRadius: coreRadius } }
             });
             orangePlanetsPlaced++;
-            console.log(`Placed Orange Planet ${orangePlanetsPlaced}/${NUM_ORANGE_PLANETS} at (${x.toFixed(0)}, ${y.toFixed(0)})`);
+            console.log(`Placed Orange Planet ${orangePlanetsPlaced}/${NUM_SLINGGER_PLANETS} at (${x.toFixed(0)}, ${y.toFixed(0)})`);
         } else {
             const grayValue = Math.floor(Math.random() * (160 - 80 + 1)) + 80;
             const grayHex = grayValue.toString(16).padStart(2, '0');
@@ -276,45 +276,35 @@ export const generateInitialPositions = (settings: GameSettingsProfile): Initial
 };
 
 // --- The Hook (Now returns level data and a regeneration function) ---
-export const useGameInitialization = (settings: GameSettingsProfile | null): UseGameInitializationReturn => {
-  const [levelData, setLevelData] = useState<InitialGamePositions | null>(null);
-  const currentSettingsRef = useRef(settings); // Store settings in a ref
+export const useGameInitialization = (settings: GameSettingsProfile): UseGameInitializationReturn => {
+    const [levelData, setLevelData] = useState<InitialGamePositions | null>(null);
+    const settingsRef = useRef(settings);
 
-  // Update ref when settings prop changes
-  useEffect(() => {
-    currentSettingsRef.current = settings;
-  }, [settings]);
+    // Update settings ref when settings change
+    useEffect(() => {
+        settingsRef.current = settings;
+    }, [settings]);
 
-  // Function to generate and set level data
-  const generateAndSetLevel = useCallback(() => {
-    const currentSettings = currentSettingsRef.current;
-    if (currentSettings) {
-      console.log("[useGameInitialization] Generating level data...");
-      const initialData = generateInitialPositions(currentSettings);
-      setLevelData(initialData);
-    } else {
-      console.log("[useGameInitialization] Cannot generate level, no settings provided.");
-      setLevelData(null);
-    }
-  }, []); // No dependencies, uses ref
+    const regenerateLevel = useCallback(() => {
+        if (!settingsRef.current) {
+            console.error("[useGameInitialization] Settings are required for level generation");
+            return;
+        }
+        const newLevelData = generateInitialPositions(settingsRef.current);
+        setLevelData(newLevelData);
+    }, []);
 
-  // Generate level initially when settings are first provided
-  useEffect(() => {
-    // Only generate initially if levelData is null and settings are available
-    if (!levelData && settings) {
-        generateAndSetLevel();
-    }
-    // If settings become null later, clear the level data
-    else if (!settings && levelData) {
-        setLevelData(null);
-    }
-  }, [settings, levelData, generateAndSetLevel]); // Re-run if settings change or level needs initial generation
+    // Initial level generation
+    useEffect(() => {
+        if (!settingsRef.current) {
+            console.error("[useGameInitialization] Settings are required for initial level generation");
+            return;
+        }
+        regenerateLevel();
+    }, [regenerateLevel]);
 
-  // Expose the regeneration function
-  const regenerateLevel = useCallback(() => {
-    console.log("[useGameInitialization] regenerateLevel called.");
-    generateAndSetLevel(); // Call the internal generation function
-  }, [generateAndSetLevel]);
-
-  return { levelData, regenerateLevel };
+    return {
+        levelData,
+        regenerateLevel,
+    };
 }; 

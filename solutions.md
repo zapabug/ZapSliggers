@@ -60,13 +60,13 @@ Replacing the infinite `staticBody.mass` with the finite `radius * radius` proxy
         *   **Tuning:** The `GRAVITY_CONSTANT` (currently `0.35`) was likely chosen arbitrarily or based on the old, broken calculation. It's almost certainly not tuned correctly for a gravity force proportional to `radius^2`. This likely makes gravity feel too weak, too strong, or just *different* than intended, causing projectiles to seem too fast or slow.
         *   **Scaling:** Gravity now scales quadratically with the planet's radius. A planet twice as wide has four times the pull. This might differ from the intended "feel".
 
-## Plan for Proper Gravity/Repulsion Calculation (Single Body Gas Giants)
+## Plan for Proper Gravity/Repulsion Calculation (Single Body Sligger planets)
 
-Here's a step-by-step plan to implement the desired mechanics, building on the current stable state (single-body Gas Giants, radius-based gravity fix):
+Here's a step-by-step plan to implement the desired mechanics, building on the current stable state (single-body Sligger planets, radius-based gravity fix):
 
 **Goal:**
 *   Standard planets have tunable, radius-based attraction.
-*   Gas Giants (`planet_gas_outer`) have radius-based attraction *outside* their core and strong, limited-range repulsion *inside* their core.
+*   Sligger planets (`planet_gas_outer`) have radius-based attraction *outside* their core and strong, limited-range repulsion *inside* their core.
 
 **Steps:**
 
@@ -94,11 +94,11 @@ Here's a step-by-step plan to implement the desired mechanics, building on the c
         *   Apply the calculated `netForce` using `Body.applyForce`.
 
 3.  **Refine and Tune Gas Giant Forces:**
-    *   **Test:** Use Practice/Sandbox mode with Gas Giants enabled.
+    *   **Test:** Use Practice/Sandbox mode with Sligger planets enabled.
     *   **Tune Repulsion Strength:** Adjust the multiplier (e.g., the `3` in `3 * baseGravityMagnitude`) until the repulsion feels appropriately strong. Consider making this multiplier a constant in `gameSettings.ts` (e.g., `GAS_GIANT_REPULSION_FACTOR`).
     *   **Tune Repulsion Range:** If a maximum absolute range for repulsion is desired beyond just being inside the `coreRadius`, define it in settings and add the check to the logic in Step 2.
     *   **Verify "No AoE Damage":** Confirm that projectiles hitting the `planet_gas_outer` body are simply removed (as implemented in the updated `handleCollisions`) and don't trigger damage or scoring unless that's desired later.
 
-4.  **Final Testing:** Test interactions with both standard planets and Gas Giants together. Ensure projectiles behave predictably and the desired slingshot/repulsion effects occur with Gas Giants.
+4.  **Final Testing:** Test interactions with both standard planets and Sligger planets together. Ensure projectiles behave predictably and the desired slingshot/repulsion effects occur with Sligger planets.
 
 **Note on AoE:** The term "AoE" usually refers to area-of-effect *damage*. Gravity and repulsion are inherently area-of-effect *forces*. The plan assumes you meant no damage on collision, which the current collision handler ensures.

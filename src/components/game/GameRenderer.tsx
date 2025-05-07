@@ -1,34 +1,20 @@
 import React, { useRef, useEffect, useState } from 'react';
 import Matter from 'matter-js';
 import { ProjectileBody } from '../../hooks/useShotTracers';
-// import { InitialGamePositions } from '../../hooks/useGameInitialization'; // Removed unused import
 import { MatterPhysicsHandles } from '../../hooks/useMatterPhysics';
 import { useDynamicViewport } from '../../hooks/useDynamicViewport';
 import { UseGameLogicReturn } from '../../hooks/useGameLogic';
-import { GameSettingsProfile } from '../../config/gameSettings'; // <-- Import settings type
-
-// Constants for rendering/layout
-const VIRTUAL_WIDTH = 2400;
-const VIRTUAL_HEIGHT = 1200;
-const DESIGN_ASPECT_RATIO = VIRTUAL_WIDTH / VIRTUAL_HEIGHT;
-// const SHIP_RADIUS = 63; // Keep if needed by drawing helpers below
-// const PLANET_MIN_RADIUS = 40; // Keep if needed by drawing helpers below
-const PROJECTILE_RADIUS = 5; 
+import type { GameSettingsProfile } from '../../config/gameSettings';
 
 // Define props for the GameRenderer component
 interface GameRendererProps {
   physicsHandles: MatterPhysicsHandles | null;
   shotTracerHandlers: UseGameLogicReturn['shotTracerHandlers'];
-  settings: GameSettingsProfile; // <-- Add settings prop
-  aimStates: [{ angle: number; power: number }, { angle: number; power: number }]; // <-- Add aimStates prop
+  settings: GameSettingsProfile;
+  aimStates: [{ angle: number; power: number }, { angle: number; power: number }];
 }
 
-// Ref interface removed
-
 // Drawing Helpers
-// Ensure SHIP_RADIUS and PLANET_MIN_RADIUS are available if needed by helpers
-// const SHIP_RADIUS_DRAW = 50; // Decreased for visual scale
-const PLANET_MIN_RADIUS_DRAW = 100; // Increased to match settings minimum
 const drawBackground = (ctx: CanvasRenderingContext2D, img: HTMLImageElement | null) => {
     const canvas = ctx.canvas;
     const canvasWidth = canvas.width;
@@ -117,18 +103,18 @@ const drawBackground = (ctx: CanvasRenderingContext2D, img: HTMLImageElement | n
         ctx.fillRect(pt00.x, pt00.y, ptWH.x - pt00.x, ptWH.y - pt00.y);
     }
 };
-const drawBorder = (ctx: CanvasRenderingContext2D, scale: number) => {
+const drawBorder = (ctx: CanvasRenderingContext2D, scale: number, settings: GameSettingsProfile) => {
     ctx.strokeStyle = 'rgba(207, 145, 30, 0.76)';
     ctx.lineWidth = 2 / scale;
-    const borderX = -VIRTUAL_WIDTH / 2;
-    const borderY = -VIRTUAL_HEIGHT;
-    const borderWidth = VIRTUAL_WIDTH * 2;
-    const borderHeight = VIRTUAL_HEIGHT * 3;
+    const borderX = -settings.VIRTUAL_WIDTH / 2;
+    const borderY = -settings.VIRTUAL_HEIGHT;
+    const borderWidth = settings.VIRTUAL_WIDTH * 2;
+    const borderHeight = settings.VIRTUAL_HEIGHT * 3;
     ctx.strokeRect(borderX, borderY, borderWidth, borderHeight);
- }; // Removed unused vars
-const drawPlanet = (ctx: CanvasRenderingContext2D, body: Matter.Body) => {
+ };
+const drawPlanet = (ctx: CanvasRenderingContext2D, body: Matter.Body, settings: GameSettingsProfile) => {
     const { x, y } = body.position;
-    const radius = body.plugin?.Zapsliggers?.radius || PLANET_MIN_RADIUS_DRAW;
+    const radius = body.plugin?.Zapsliggers?.radius || settings.PLANET_MIN_RADIUS;
 
     let gradient: CanvasGradient;
 
@@ -175,7 +161,7 @@ const drawShip = (
     body: Matter.Body, 
     blueShipImg: HTMLImageElement | null, 
     redShipImg: HTMLImageElement | null,
-    settings: GameSettingsProfile // <-- Accept settings
+    settings: GameSettingsProfile
 ) => {
     const playerIndex = parseInt(body.label.split('-')[1], 10);
     const shipImage = playerIndex === 0 ? blueShipImg : redShipImg;
@@ -206,9 +192,9 @@ const drawShip = (
     
     ctx.restore();
  };
-const drawProjectile = (ctx: CanvasRenderingContext2D, body: ProjectileBody) => {
+const drawProjectile = (ctx: CanvasRenderingContext2D, body: Matter.Body & ProjectileBody, settings: GameSettingsProfile) => {
     ctx.beginPath();
-    ctx.arc(body.position.x, body.position.y, PROJECTILE_RADIUS, 0, 2 * Math.PI);
+    ctx.arc(body.position.x, body.position.y, settings.STANDARD_PROJECTILE_RADIUS, 0, 2 * Math.PI);
     const ownerIndex = body.custom?.firedByPlayerIndex ?? 0;
     ctx.fillStyle = ownerIndex === 0 ? '#add8e6' : '#ffcccb';
     ctx.fill();
@@ -243,9 +229,9 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
   const viewport = useDynamicViewport({
       engine: physicsHandles?.engine ?? null,
       getDynamicBodies: physicsHandles?.getDynamicBodies ?? (() => []),
-      virtualWidth: VIRTUAL_WIDTH,
-      virtualHeight: VIRTUAL_HEIGHT,
-      designAspectRatio: DESIGN_ASPECT_RATIO,
+      virtualWidth: settings.VIRTUAL_WIDTH,
+      virtualHeight: settings.VIRTUAL_HEIGHT,
+      designAspectRatio: settings.VIRTUAL_WIDTH / settings.VIRTUAL_HEIGHT,
       canvasSize,
   });
 
@@ -253,8 +239,6 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
   useEffect(() => {
     latestTracesRef.current = lastShotTraces;
   }, [lastShotTraces]);
-
-  // Imperative Handle removed
 
   // Effects for background image and resize (no change)
   useEffect(() => { 
@@ -338,15 +322,15 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
 
         // Draw Background and Border first
         drawBackground(ctx, backgroundImage);
-        drawBorder(ctx, viewport.scale);
+        drawBorder(ctx, viewport.scale, settings);
 
         // Get bodies and remove conditional logging
         const bodies = bodiesGetter();
 
         // Iterate and draw
-        bodies.forEach(body => {
+        bodies.forEach((body: Matter.Body) => {
             if (body.label === 'planet' || body.label === 'orange-planet') {
-                 drawPlanet(ctx, body);
+                 drawPlanet(ctx, body, settings);
             } else if (body.label.startsWith('ship-')) {
                 drawShip(ctx, body, blueShipImage, redShipImage, settings); 
                 
@@ -378,14 +362,14 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
                 // Reset line dash for other drawing operations
                 ctx.setLineDash([]);
             } else if (body.label.startsWith('projectile-')) {
-                drawProjectile(ctx, body as ProjectileBody);
+                drawProjectile(ctx, body as Matter.Body & ProjectileBody, settings);
             }
         });
 
         // Draw Historical Traces (Corrected iteration)
         const currentTraces = latestTracesRef.current;
-        currentTraces[0].forEach(trace => drawHistoricalTrace(ctx, trace)); // Player 0 traces
-        currentTraces[1].forEach(trace => drawHistoricalTrace(ctx, trace)); // Player 1 traces
+        currentTraces[0].forEach((trace: Matter.Vector[]) => drawHistoricalTrace(ctx, trace)); // Player 0 traces
+        currentTraces[1].forEach((trace: Matter.Vector[]) => drawHistoricalTrace(ctx, trace)); // Player 1 traces
 
         ctx.restore(); 
         animationFrameId = requestAnimationFrame(renderLoop);
@@ -394,6 +378,13 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
     animationFrameId = requestAnimationFrame(renderLoop);
     return () => cancelAnimationFrame(animationFrameId);
   }, [viewport, physicsHandles, backgroundImage, blueShipImage, redShipImage, settings, aimStates]); 
+
+  // Add logging to verify settings
+  console.log('[GameRenderer] Settings:', {
+      SHIP_RADIUS: settings.SHIP_RADIUS,
+      STANDARD_PROJECTILE_RADIUS: settings.STANDARD_PROJECTILE_RADIUS,
+      SPLITTER_FRAGMENT_RADIUS: settings.SPLITTER_FRAGMENT_RADIUS
+  });
 
   return (
       <canvas 

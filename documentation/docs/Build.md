@@ -27,7 +27,7 @@
    **Target Features (To Be Implemented/Completed):**
    - **Visuals:** Render actual sprites/assets for ships, planets, projectiles, effects.
    - **Zapsliggers Gameplay:** Implement ability *effects* (Splitter, Gravity, Plastic). Implement full win conditions (based on HP/Vulnerability). Implement Vulnerability state. Enforce match-level ability limits (3 total, 1/type). Implement turn structure (timer, 5-shot limit), round scoring (Best of 3), and Sudden Death mechanics.
-   - **Advanced Levels:** Add Gas Giants, moving planets.
+   - **Advanced Levels:** Add Sligger planets, moving planets.
    - **Nostr Integration:** Full matchmaking flow (Accept/Reject challenges). **Refine/Complete Turn/State synchronization (`kind:30079`)**. Robust error handling.
    - **Wagering (Mandatory):** NUT-18 backend service integration (API definition, frontend flow, verification).
    - **UX:** Finalize UI controls, add tutorials/tooltips, refine PWA behavior.
@@ -139,7 +139,7 @@
      - Implement HP system, Ability selection/effects, Vulnerability, Sudden Death.
      - Implement Zapsliggers win conditions.
      - Implement turn structure (timer, state changes).
-     - Add Gas Giants, moving planets.
+     - Add Sligger planets, moving planets.
    - **Phase 2: Nostr Multiplayer & Wagering:**
      - **Challenge Flow:** Refine `LobbyScreen` UI for listing/accepting challenges... 
      - **Wagering (NUT-18):** Define/Implement Backend Service API...
@@ -162,7 +162,7 @@
      - Implement turn timer and limits.
      - Implement Sudden Death mechanics.
    - **Polish:**
-     - Add Gas Giants, moving planets.
+     - Add Sligger planets, moving planets.
      - Visual polish (animations, effects), Sound, Error Handling, Tutorials.
 
 --- 

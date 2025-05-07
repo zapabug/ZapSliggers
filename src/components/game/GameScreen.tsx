@@ -73,6 +73,9 @@ const GameScreen: React.FC<GameScreenProps> = ({
 
     return (
         <div className="relative w-full h-dvh bg-black text-white overflow-hidden flex flex-col">
+            <div className="absolute inset-0 bg-black border-t-2 border-yellow-600">
+                <div className="absolute inset-0 bg-[url('/backdrop.png')] bg-no-repeat bg-fixed bg-top"></div>
+            </div>
             <div className="flex-shrink-0 w-full flex justify-start p-2 bg-gray-800 shadow-md z-20">
                 <button
                     onClick={onBackToMenu}
@@ -125,7 +128,7 @@ const GameScreen: React.FC<GameScreenProps> = ({
                     )}
                 </div>
 
-                <div className="absolute bottom-4 left-4 z-10 pointer-events-auto flex flex-col items-start max-w-xs">
+                <div className="absolute bottom-6 left-6 z-10 pointer-events-auto flex flex-col items-start max-w-xs">
                     <AimingInterface
                         currentAngle={localAimState.angle}
                         currentPower={localAimState.power}
@@ -133,7 +136,7 @@ const GameScreen: React.FC<GameScreenProps> = ({
                     />
                 </div>
 
-                <div className="absolute bottom-4 right-4 z-10 pointer-events-auto flex flex-col items-end">
+                <div className="absolute bottom-6 right-6 z-10 pointer-events-auto flex flex-col items-end">
                     <ActionButtons
                         onFire={handleFire}
                         onAbilitySelect={handleSelectAbility}

@@ -152,7 +152,7 @@ export const useMatterPhysics = ({
         VIRTUAL_WIDTH, 
         GRAVITY_CONSTANT,
         // --- Orange Planet Settings ---
-        ORANGE_PLANET_REPULSION_CONSTANT, // Need this
+        SLINGGER_PLANET_REPULSION_CONSTANT, // Need this
         // ---------------------------
         PLASTIC_GRAVITY_FACTOR,
         SHIP_GRAVITY_RANGE_FACTOR,
@@ -265,10 +265,10 @@ export const useMatterPhysics = ({
               
               if (coreRadius && distance <= coreRadius) {
                   // Inside core radius - Add strong Repulsive force
-                  // NOTE: ORANGE_PLANET_REPULSION_CONSTANT likely needs to be significantly larger than GRAVITY_CONSTANT 
+                  // NOTE: SLINGGER_PLANET_REPULSION_CONSTANT likely needs to be significantly larger than GRAVITY_CONSTANT 
                   // and might need distance scaling adjusted (e.g., 1/distance^3) for a strong slingshot.
                   // Start with 1/distanceSq scaling for now.
-                  const repulsiveForceMagnitude = (ORANGE_PLANET_REPULSION_CONSTANT * projectileBody.mass * coreRadius) / distanceSq; 
+                  const repulsiveForceMagnitude = (SLINGGER_PLANET_REPULSION_CONSTANT * projectileBody.mass * coreRadius) / distanceSq; 
                   const repulsiveForce = Vector.mult(Vector.normalise(distanceVector), -repulsiveForceMagnitude); // Negative magnitude for repulsion
                   
                   netForce = Vector.add(netForce, repulsiveForce); // Add repulsion to the net force
@@ -436,6 +436,13 @@ export const useMatterPhysics = ({
     const localSettings = currentSettingsRef.current; // Get settings from ref
     const shipBody = shipBodiesRef.current[playerIndex];
     if (!engine || !shipBody || !localSettings) return;
+
+    // Add logging to verify settings
+    console.log('[Physics] Settings:', {
+        SHIP_RADIUS: localSettings.SHIP_RADIUS,
+        STANDARD_PROJECTILE_RADIUS: localSettings.STANDARD_PROJECTILE_RADIUS,
+        SPLITTER_FRAGMENT_RADIUS: localSettings.SPLITTER_FRAGMENT_RADIUS
+    });
 
     // Destructure settings needed here
     const {

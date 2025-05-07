@@ -41,7 +41,7 @@ This document outlines the core gameplay loop and dynamics for Zapsliggers.
    - **Pre-Game State:** Login -> `LobbyScreen` (Challenge/Practice).
    - **Planet Types & Gravity:**
      - Standard Planets: Solid, destroy projectiles.
-     - Gas Giants (Future): Pass-through outer layers, solid core.
+     - Sligger planets (Future): Pass-through outer layers, solid core.
      - Gravity Strength: Proportional to effective planet size, randomized per level.
 
 **3. Turn Flow (Target: Simultaneous Turns - Approx. 60s):**

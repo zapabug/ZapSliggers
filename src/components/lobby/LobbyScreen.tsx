@@ -1,29 +1,28 @@
 import React, { useState } from 'react';
 import NDK, { NDKUser } from '@nostr-dev-kit/ndk';
-import { ChallengeHandler } from '../ChallengeHandler';
-import { QRCodeCanvas } from 'qrcode.react';
+import ChallengeHandler from '../ChallengeHandler';
 import { QRCodeReader } from '../QRCodeReader';
+import { QRCodeCanvas } from 'qrcode.react';
 import { nip19 } from 'nostr-tools';
 
 interface LobbyScreenProps {
     ndk: NDK;
     currentUser: NDKUser;
-    onChallengeAccepted: (opponentPubkey: string, matchId: string) => void;
+    onChallengeAccepted: (opponent: string, confirmedMatchId: string) => void;
     onBackToMenu: () => void;
 }
 
-const LobbyScreen: React.FC<LobbyScreenProps> = ({ 
-    ndk, 
-    currentUser, 
-    onChallengeAccepted, 
-    onBackToMenu
-}) => {
+const LobbyScreen: React.FC<LobbyScreenProps> = ({ ndk, currentUser, onChallengeAccepted, onBackToMenu }) => {
     const userNpub = currentUser.npub;
     const nostrUri = userNpub ? `nostr:${userNpub}` : '';
     
     const [recipientNpubOrHex, setRecipientNpubOrHex] = useState('');
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [showPermissionHelper, setShowPermissionHelper] = useState(false);
+
+    const handleChallengeAccepted = (opponentPubkey: string, matchId: string) => {
+        onChallengeAccepted(opponentPubkey, matchId);
+    };
 
     const handleScanSuccess = (scannedText: string) => {
         console.log('Scanned QR Code:', scannedText);
@@ -75,7 +74,7 @@ const LobbyScreen: React.FC<LobbyScreenProps> = ({
     };
     
     return (
-        <div className="w-full h-full flex flex-col items-center justify-start pt-4 p-4 text-white bg-gray-800 overflow-y-auto">
+        <div className="relative w-full h-dvh bg-black text-white overflow-hidden flex flex-col">
             {isScannerOpen && (
                 <div 
                     className="fixed inset-0 bg-black bg-opacity-75 flex flex-col items-center justify-center z-50 p-4"
@@ -144,10 +143,10 @@ const LobbyScreen: React.FC<LobbyScreenProps> = ({
                         Your browser will ask for camera permission to scan the code.
                     </p>
                 )}
-                <ChallengeHandler 
-                    ndk={ndk} 
-                    loggedInPubkey={currentUser.pubkey} 
-                    onChallengeAccepted={onChallengeAccepted} 
+                <ChallengeHandler
+                    ndk={ndk}
+                    loggedInPubkey={currentUser.pubkey}
+                    onChallengeAccepted={handleChallengeAccepted}
                     recipientNpubOrHex={recipientNpubOrHex}
                     setRecipientNpubOrHex={setRecipientNpubOrHex}
                 />

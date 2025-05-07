@@ -41,7 +41,7 @@
 *   **Key Steps:**
     1.  **Visual Polish:** Add 2D sprite animations, particle effects, UI transitions.
     2.  **Sound Effects:** Integrate sound effects.
-    3.  **Advanced Levels:** Add Gas Giants, moving planets.
+    3.  **Advanced Levels:** Add Sligger planets, moving planets.
     4.  **Error Handling:** Improve Nostr/payment/game error handling robustness.
     5.  **Tutorials/Onboarding:** Implement help popups or guides.
     6.  **Testing:** Thoroughly test game balance, Nostr interactions, payments, and mobile responsiveness.
