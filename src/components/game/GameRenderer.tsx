@@ -246,19 +246,19 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
       const bgImg = new Image();
       bgImg.onload = () => setBackgroundImage(bgImg);
       bgImg.onerror = () => console.error("Failed to load background image.");
-      bgImg.src = '/images/backdrop.png'; 
+      bgImg.src = '/ZapSliggers/images/backdrop.png'; 
 
       // Load blue ship
       const blueShip = new Image();
       blueShip.onload = () => setBlueShipImage(blueShip);
       blueShip.onerror = () => console.error("Failed to load blue ship image.");
-      blueShip.src = '/icons/spaceship_small_blue.png';
+      blueShip.src = '/ZapSliggers/icons/spaceship_small_blue.png';
 
       // Load red ship
       const redShip = new Image();
       redShip.onload = () => setRedShipImage(redShip);
       redShip.onerror = () => console.error("Failed to load red ship image.");
-      redShip.src = '/icons/spaceship_small_red.png'; // Assuming this is the name
+      redShip.src = '/ZapSliggers/icons/spaceship_small_red.png'; // Assuming this is the name
 
   }, []); // Run only once on mount
 
