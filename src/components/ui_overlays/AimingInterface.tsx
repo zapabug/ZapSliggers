@@ -119,7 +119,7 @@ const AimingInterface: React.FC<AimingInterfaceProps> = ({
             w-10 h-10 bg-purple-500 rounded-full 
             shadow-lg shadow-purple-500/50 ring-2 ring-purple-400/30 
             pointer-events-none transition-transform duration-100 ease-linear
-            ${isDragging ? 'opacity-100' : 'opacity-50'}
+            ${isDragging ? 'opacity-100' : 'opacity-40'}
           `}
           style={{ filter: 'blur(1px)' }}
         ></div>

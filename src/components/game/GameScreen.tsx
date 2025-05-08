@@ -136,7 +136,7 @@ const GameScreen: React.FC<GameScreenProps> = ({
                     />
                 </div>
 
-                <div className="absolute bottom-6 right-6 z-10 pointer-events-auto flex flex-col items-end">
+                <div className="absolute bottom-5 right-5 z-8 pointer-events-auto flex flex-col items-end">
                     <ActionButtons
                         onFire={handleFire}
                         onAbilitySelect={handleSelectAbility}

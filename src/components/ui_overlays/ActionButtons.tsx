@@ -36,7 +36,7 @@ const ActionButtons: React.FC<ActionButtonsProps> = (props) => {
     availableAbilities, // Destructure new prop
   } = props;
 
-  const radius = 50; // Increased from 40 to give more space
+  const radius = 65; // Increased from 40 to give more space
 
   // Calculate dynamic angles based on the number of available abilities
   const numAbilities = availableAbilities.length;
@@ -65,7 +65,7 @@ const ActionButtons: React.FC<ActionButtonsProps> = (props) => {
       <button
         onClick={handleFireClick}
         disabled={disabled}
-        className={`absolute bottom-1 right-1 z-20 px-5 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-lg transition-colors duration-150 focus:outline-none select-none bg-opacity-75 text-opacity-90 ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+        className={`absolute bottom-6 right-6 z-20 px-5 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg shadow-lg transition-colors duration-150 focus:outline-none select-none bg-opacity-75 text-opacity-90 ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
       >
         {'Fire!'}
       </button>
@@ -111,7 +111,7 @@ const ActionButtons: React.FC<ActionButtonsProps> = (props) => {
                 left: '0px'
               }}
               title={(
-                ability === 'splitter' ? 'Splitter 🔱: Splits into 3 after a short time.' :
+                ability === 'splitter' ? 'splitter 🔱: Splits into 3 after a short time.' :
                 ability === 'gravity' ? 'Gravity 🧲: Projectile is attracted towards opponent ship.' :
                 ability === 'plastic' ? 'Plastic 🌬️: Less affected by planet gravity.' :
                 ability // Fallback

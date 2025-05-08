@@ -62,14 +62,6 @@ const GameScreen: React.FC<GameScreenProps> = ({
 
   return (
     <div className="relative w-full h-screen flex flex-col bg-black text-white overflow-hidden">
-      {/* REMOVED Absolute Back Button */}
-      {/* <button
-        onClick={onBackToMenu}
-        className="absolute top-2 left-2 z-20 px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs font-semibold"
-      >
-        Back to Menu
-      </button> */}
-
       {/* Minimalist Top-Right Close Button */}
       <button
           onClick={onBackToMenu}

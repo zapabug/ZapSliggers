@@ -112,13 +112,36 @@ const drawBorder = (ctx: CanvasRenderingContext2D, scale: number, settings: Game
     const borderHeight = settings.VIRTUAL_HEIGHT * 3;
     ctx.strokeRect(borderX, borderY, borderWidth, borderHeight);
  };
+const drawInnerBorder = (ctx: CanvasRenderingContext2D, scale: number, settings: GameSettingsProfile) => {
+    // Dimensions of the existing outer border
+    const outerBorderWidth = settings.VIRTUAL_WIDTH * 2;
+    const outerBorderHeight = settings.VIRTUAL_HEIGHT * 3;
+    const outerBorderX = -settings.VIRTUAL_WIDTH / 2;
+    const outerBorderY = -settings.VIRTUAL_HEIGHT;
+
+    // Calculate center of the outer border
+    const centerX = outerBorderX + outerBorderWidth / 2;
+    const centerY = outerBorderY + outerBorderHeight / 2;
+
+    // Calculate dimensions for the inner border (20% smaller)
+    const innerWidth = outerBorderWidth * 0.6;
+    const innerHeight = outerBorderHeight * 0.6;
+
+    // Calculate top-left for the inner border to keep it centered
+    const innerX = centerX - innerWidth / 2;
+    const innerY = centerY - innerHeight / 2;
+
+    ctx.strokeStyle = 'rgba(220, 165, 40, 0.7)'; // A slightly different gold/brown
+    ctx.lineWidth = 1.5 / scale; // Can be same or different
+    ctx.strokeRect(innerX, innerY, innerWidth, innerHeight);
+};
 const drawPlanet = (ctx: CanvasRenderingContext2D, body: Matter.Body, settings: GameSettingsProfile) => {
     const { x, y } = body.position;
     const radius = body.plugin?.Zapslingers?.radius || settings.PLANET_MIN_RADIUS;
 
     let gradient: CanvasGradient;
 
-    if (body.label === 'orange-planet') {
+    if (body.label === 'slingger-planet') {
         // Orange planet: Radial gradient, brighter for larger planets
         const baseOrange = '#D97706'; // Tailwind orange-600
         const brightOrange = '#F59E0B'; // Tailwind amber-500
@@ -218,17 +241,15 @@ const drawHistoricalTrace = (ctx: CanvasRenderingContext2D, trace: Matter.Vector
 const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerHandlers, settings, aimStates }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null);
-  // Add state for ship images
   const [blueShipImage, setBlueShipImage] = useState<HTMLImageElement | null>(null);
   const [redShipImage, setRedShipImage] = useState<HTMLImageElement | null>(null);
-
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
 
   const { lastShotTraces } = shotTracerHandlers;
 
   const viewport = useDynamicViewport({
       engine: physicsHandles?.engine ?? null,
-      getDynamicBodies: physicsHandles?.getDynamicBodies ?? (() => []),
+      bodies: physicsHandles?.getDynamicBodies ? physicsHandles.getDynamicBodies() : [],
       virtualWidth: settings.VIRTUAL_WIDTH,
       virtualHeight: settings.VIRTUAL_HEIGHT,
       designAspectRatio: settings.VIRTUAL_WIDTH / settings.VIRTUAL_HEIGHT,
@@ -240,25 +261,49 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
     latestTracesRef.current = lastShotTraces;
   }, [lastShotTraces]);
 
-  // Effects for background image and resize (no change)
+  // Effects for background image and resize
   useEffect(() => { 
+      const baseUrl = import.meta.env.BASE_URL;
+      console.log('Base URL:', baseUrl);
+
       // Load background
       const bgImg = new Image();
-      bgImg.onload = () => setBackgroundImage(bgImg);
-      bgImg.onerror = () => console.error("Failed to load background image.");
-      bgImg.src = '/ZapSliggers/images/backdrop.png'; 
+      bgImg.onload = () => {
+        console.log('Background image loaded successfully');
+        setBackgroundImage(bgImg);
+      };
+      bgImg.onerror = (e) => {
+        console.error("Failed to load background image:", e);
+        console.error("Attempted to load from:", bgImg.src);
+      };
+      bgImg.src = `${baseUrl}icons/backdrop.png`;
+      console.log('Attempting to load background from:', bgImg.src);
 
       // Load blue ship
       const blueShip = new Image();
-      blueShip.onload = () => setBlueShipImage(blueShip);
-      blueShip.onerror = () => console.error("Failed to load blue ship image.");
-      blueShip.src = '/ZapSliggers/icons/spaceship_small_blue.png';
+      blueShip.onload = () => {
+        console.log('Blue ship image loaded successfully');
+        setBlueShipImage(blueShip);
+      };
+      blueShip.onerror = (e) => {
+        console.error("Failed to load blue ship image:", e);
+        console.error("Attempted to load from:", blueShip.src);
+      };
+      blueShip.src = `${baseUrl}icons/spaceship_small_blue.png`;
+      console.log('Attempting to load blue ship from:', blueShip.src);
 
       // Load red ship
       const redShip = new Image();
-      redShip.onload = () => setRedShipImage(redShip);
-      redShip.onerror = () => console.error("Failed to load red ship image.");
-      redShip.src = '/ZapSliggers/icons/spaceship_small_red.png'; // Assuming this is the name
+      redShip.onload = () => {
+        console.log('Red ship image loaded successfully');
+        setRedShipImage(redShip);
+      };
+      redShip.onerror = (e) => {
+        console.error("Failed to load red ship image:", e);
+        console.error("Attempted to load from:", redShip.src);
+      };
+      redShip.src = `${baseUrl}icons/spaceship_small_red.png`;
+      console.log('Attempting to load red ship from:', redShip.src);
 
   }, []); // Run only once on mount
 
@@ -323,13 +368,14 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
         // Draw Background and Border first
         drawBackground(ctx, backgroundImage);
         drawBorder(ctx, viewport.scale, settings);
+        drawInnerBorder(ctx, viewport.scale, settings);
 
         // Get bodies and remove conditional logging
         const bodies = bodiesGetter();
 
         // Iterate and draw
         bodies.forEach((body: Matter.Body) => {
-            if (body.label === 'planet' || body.label === 'orange-planet') {
+            if (body.label === 'planet' || body.label === 'slingger-planet') {
                  drawPlanet(ctx, body, settings);
             } else if (body.label.startsWith('ship-')) {
                 drawShip(ctx, body, blueShipImage, redShipImage, settings); 
@@ -383,7 +429,7 @@ const GameRenderer: React.FC<GameRendererProps> = ({ physicsHandles, shotTracerH
   // console.log('[GameRenderer] Settings:', {
   //     SHIP_RADIUS: settings.SHIP_RADIUS,
   //     STANDARD_PROJECTILE_RADIUS: settings.STANDARD_PROJECTILE_RADIUS,
-  //     SPLITTER_FRAGMENT_RADIUS: settings.SPLITTER_FRAGMENT_RADIUS,
+  //     splitter_FRAGMENT_RADIUS: settings.splitter_FRAGMENT_RADIUS,
   //     // Add other settings as needed for debugging
   // });
 

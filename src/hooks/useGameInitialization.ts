@@ -119,7 +119,7 @@ export const generateInitialPositions = (settings: GameSettingsProfile): Initial
     const planetSpawnAreaHeight = initialViewHeight * PLANET_SPAWN_AREA_FACTOR;
     const planetSpawnMinX = initialViewMinX + (initialViewWidth - planetSpawnAreaWidth) / 2;
     const planetSpawnMaxX = planetSpawnMinX + planetSpawnAreaWidth;
-    const planetSpawnMinY = initialViewMinY + (initialViewHeight - planetSpawnAreaHeight) / 2;
+    const planetSpawnMinY = initialViewMinY + (initialViewHeight - planetSpawnAreaHeight) / 1.5;
     const planetSpawnMaxY = planetSpawnMinY + planetSpawnAreaHeight;
 
     // --- Generate Planets (Normal + Orange) ---
@@ -153,61 +153,88 @@ export const generateInitialPositions = (settings: GameSettingsProfile): Initial
         if (attemptIsOrange) {
             let orangeAttempts = 0;
             let foundOrangeSpot = false;
-            // Padding from virtual edge
             const planetEdgePadding = radius + edgePadding;
+            
+            // Calculate visible game area bounds (the inner box)
+            const gameViewWidth = VIRTUAL_WIDTH * GAME_VIEW_WIDTH_FACTOR;
+            const gameViewHeight = VIRTUAL_HEIGHT * GAME_VIEW_HEIGHT_FACTOR;
+            const gameViewMinX = (VIRTUAL_WIDTH - gameViewWidth) / 2;
+            const gameViewMaxX = gameViewMinX + gameViewWidth;
+            const gameViewMinY = (VIRTUAL_HEIGHT - gameViewHeight) / 2;
+            const gameViewMaxY = gameViewMinY + gameViewHeight;
+
+            // Extra padding to ensure planets are well outside the view
+            const extraPadding = Math.max(gameViewWidth, gameViewHeight) * 0.2; // 20% of the larger dimension
+
+            // Track diagonal corners for SLINGGER placement
+            const usedCorners = new Set<number>();
+            planets.forEach(planet => {
+                if (planet.label === 'slingger-planet') {
+                    const pos = planet.position;
+                    // Check which corner this planet is in
+                    if (pos.x < gameViewMinX && pos.y < gameViewMinY) usedCorners.add(0); // Top-left
+                    if (pos.x > gameViewMaxX && pos.y < gameViewMinY) usedCorners.add(1); // Top-right
+                    if (pos.x < gameViewMinX && pos.y > gameViewMaxY) usedCorners.add(2); // Bottom-left
+                    if (pos.x > gameViewMaxX && pos.y > gameViewMaxY) usedCorners.add(3); // Bottom-right
+                }
+            });
+
+            // Choose corners for diagonal placement
+            let chosenCorner: number;
+            if (orangePlanetsPlaced === 0) {
+                // First SLINGGER: randomly choose any corner
+                chosenCorner = Math.floor(Math.random() * 4);
+            } else {
+                // Second SLINGGER: pick the diagonal opposite corner
+                const usedCorner = Array.from(usedCorners)[0];
+                // Map corners to their diagonal opposites: 0->3, 1->2, 2->1, 3->0
+                chosenCorner = usedCorner < 2 ? usedCorner + 2 : usedCorner - 2;
+            }
 
             do {
-                // Choose a random edge zone (0: Left, 1: Right, 2: Top, 3: Bottom)
-                const edgeZone = Math.floor(Math.random() * 4);
                 let candidateX = 0;
                 let candidateY = 0;
 
-                switch(edgeZone) {
-                    case 0: // Left Edge
-                        // Spawn between edgePadding and (initialViewMinX - edgePadding)
-                        candidateX = Math.random() * (initialViewMinX - edgePadding * 2) + edgePadding;
-                        candidateY = Math.random() * (VIRTUAL_HEIGHT - planetEdgePadding * 2) + planetEdgePadding;
+                switch(chosenCorner) {
+                    case 0: // Top-left corner
+                        candidateX = Math.random() * (gameViewMinX - planetEdgePadding - extraPadding) + planetEdgePadding;
+                        candidateY = Math.random() * (gameViewMinY - planetEdgePadding - extraPadding) + planetEdgePadding;
                         break;
-                    case 1: // Right Edge
-                        // Spawn between (initialViewMaxX + edgePadding) and (VIRTUAL_WIDTH - edgePadding)
-                        candidateX = Math.random() * (VIRTUAL_WIDTH - initialViewMaxX - edgePadding * 2) + initialViewMaxX + edgePadding;
-                        candidateY = Math.random() * (VIRTUAL_HEIGHT - planetEdgePadding * 2) + planetEdgePadding;
+                    case 1: // Top-right corner
+                        candidateX = Math.random() * (VIRTUAL_WIDTH - gameViewMaxX - planetEdgePadding - extraPadding) + gameViewMaxX + extraPadding;
+                        candidateY = Math.random() * (gameViewMinY - planetEdgePadding - extraPadding) + planetEdgePadding;
                         break;
-                    case 2: // Top Edge
-                        // Spawn between edgePadding and (initialViewMinY - edgePadding)
-                        candidateY = Math.random() * (initialViewMinY - edgePadding * 2) + edgePadding;
-                        // Keep within central X band, but ensure padding from initialView edges if they extend beyond
-                        candidateX = Math.random() * (initialViewMaxX - initialViewMinX - planetEdgePadding * 2) + initialViewMinX + planetEdgePadding; 
+                    case 2: // Bottom-left corner
+                        candidateX = Math.random() * (gameViewMinX - planetEdgePadding - extraPadding) + planetEdgePadding;
+                        candidateY = Math.random() * (VIRTUAL_HEIGHT - gameViewMaxY - planetEdgePadding - extraPadding) + gameViewMaxY + extraPadding;
                         break;
-                    case 3: // Bottom Edge
-                         // Spawn between (initialViewMaxY + edgePadding) and (VIRTUAL_HEIGHT - edgePadding)
-                        candidateY = Math.random() * (VIRTUAL_HEIGHT - initialViewMaxY - edgePadding * 2) + initialViewMaxY + edgePadding;
-                        // Keep within central X band, ensuring padding
-                        candidateX = Math.random() * (initialViewMaxX - initialViewMinX - planetEdgePadding * 2) + initialViewMinX + planetEdgePadding;
+                    case 3: // Bottom-right corner
+                        candidateX = Math.random() * (VIRTUAL_WIDTH - gameViewMaxX - planetEdgePadding - extraPadding) + gameViewMaxX + extraPadding;
+                        candidateY = Math.random() * (VIRTUAL_HEIGHT - gameViewMaxY - planetEdgePadding - extraPadding) + gameViewMaxY + extraPadding;
                         break;
                 }
                 
                 // Check collision for this specific spot
                 const candidatePos = { x: candidateX, y: candidateY };
                 let collision = false;
-                // Ensure not too close to ships (only check ships, not planets initially for edge placement)
+                // Ensure not too close to ships
                 for (const ship of ships) { if (calculateDistance(candidatePos, ship) < radius + SHIP_RADIUS + MIN_PLANET_SHIP_DISTANCE) { collision = true; break; } }
                 if (collision) { orangeAttempts++; continue; }
-                // Check collision with other planets AFTER checking ships
+                // Check collision with other planets
                 for (const existingPlanet of planets) { const existingRadius = existingPlanet.plugin?.Zapslingers?.radius || PLANET_MIN_RADIUS; if (calculateDistance(candidatePos, existingPlanet.position) < radius + existingRadius + MIN_PLANET_PLANET_DISTANCE) { collision = true; break; } }
                 if (collision) { orangeAttempts++; continue; }
                 
-                // Spot is valid, assign and mark success
+                // Spot is valid
                 x = candidateX;
                 y = candidateY;
-                isOrange = true; // Set type for body creation
+                isOrange = true;
                 placedSuccessfully = true;
                 foundOrangeSpot = true;
-                break; 
+                break;
                 
-            } while (orangeAttempts < 50); 
+            } while (orangeAttempts < 50);
             
-            if (!foundOrangeSpot && !isNormalCandidate) continue; 
+            if (!foundOrangeSpot && !isNormalCandidate) continue;
         }
         
         // If didn't place orange (or wasn't candidate, or failed and normal is available)
@@ -243,7 +270,7 @@ export const generateInitialPositions = (settings: GameSettingsProfile): Initial
             const coreRadius = radius * SLINGGER_PLANET_CORE_RADIUS_FACTOR;
             planetBody = Bodies.circle(x, y, radius, {
                 isStatic: true,
-                label: 'orange-planet',
+                label: 'slingger-planet',
                 friction: 0.5,
                 restitution: 0.5,
                 plugin: { Zapslingers: { radius: radius, coreRadius: coreRadius } }

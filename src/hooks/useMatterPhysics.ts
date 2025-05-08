@@ -237,7 +237,7 @@ export const useMatterPhysics = ({
         // --- Apply Planet Gravity / Repulsion ---
         Composite.allBodies(currentEngine.world).forEach(staticBody => {
           // Skip if not a planet type
-          if (staticBody.label !== 'planet' && staticBody.label !== 'orange-planet') return;
+          if (staticBody.label !== 'planet' && staticBody.label !== 'slingger-planet') return;
 
           const distanceVector = Vector.sub(staticBody.position, projectileBody.position);
           const distanceSq = Vector.magnitudeSquared(distanceVector);
@@ -259,22 +259,23 @@ export const useMatterPhysics = ({
           netForce = Vector.add(netForce, attractiveForce); // Add attraction to net force
 
           // --- Add Repulsion if Orange Planet Core is Hit ---
-          if (staticBody.label === 'orange-planet') {
+          if (staticBody.label === 'slingger-planet') {
               const coreRadius = staticBody.plugin?.Zapslingers?.coreRadius;
               const distance = Vector.magnitude(distanceVector); // Need actual distance now
               
               if (coreRadius && distance <= coreRadius) {
-                  // Inside core radius - Add strong Repulsive force
-                  // NOTE: SLINGGER_PLANET_REPULSION_CONSTANT likely needs to be significantly larger than GRAVITY_CONSTANT 
-                  // and might need distance scaling adjusted (e.g., 1/distance^3) for a strong slingshot.
-                  // Start with 1/distanceSq scaling for now.
-                  const repulsiveForceMagnitude = (SLINGGER_PLANET_REPULSION_CONSTANT * projectileBody.mass * coreRadius) / distanceSq; 
-                  const repulsiveForce = Vector.mult(Vector.normalise(distanceVector), -repulsiveForceMagnitude); // Negative magnitude for repulsion
-                  
-                  netForce = Vector.add(netForce, repulsiveForce); // Add repulsion to the net force
-                  
-                  // Optional: Log when repulsion is active
-                  // console.log(`Orange planet ${staticBody.id} core hit! Repulsion applied. Dist: ${distance.toFixed(1)}, CoreRadius: ${coreRadius.toFixed(1)}`);
+                  // Prevent extreme force at very close range
+                  const safeDistance = Math.max(distance, coreRadius * 0.5);
+
+                  // Use 1/distance^3 for a sharper, more dramatic kick
+                  const repulsiveForceMagnitude =
+                      (SLINGGER_PLANET_REPULSION_CONSTANT * projectileBody.mass * coreRadius) / Math.pow(safeDistance, 3);
+
+                  const repulsiveForce = Vector.mult(Vector.normalise(distanceVector), -repulsiveForceMagnitude);
+                  netForce = Vector.add(netForce, repulsiveForce);
+
+                  // Optional: Log for tuning
+                   console.log(`SLINGGER repulsion: dist=${distance.toFixed(2)}, force=${repulsiveForceMagnitude.toExponential(2)}`);
               }
           } 
 
@@ -450,11 +451,13 @@ export const useMatterPhysics = ({
         DEFAULT_FRICTION_AIR,
         PLASTIC_FRICTION_AIR,
         GRAVITY_FRICTION_AIR,
-        STANDARD_PROJECTILE_RADIUS
+        STANDARD_PROJECTILE_RADIUS,
+        PROJECTILE_SPEED,
+        AIM_POWER_RATIO
     } = localSettings;
 
     const angle = shipBody.angle;
-    const speed = 10 + power * 1.5; 
+    const speed = PROJECTILE_SPEED + power * AIM_POWER_RATIO;
     const velocity = Vector.mult(Vector.rotate({ x: 1, y: 0 }, angle), speed);
 
     // Use SHIP_RADIUS from settings
